@@ -205,7 +205,9 @@ func (z *Reader) Read(buf []byte) (n int, err error) {
 			return n, zb.err
 		}
 		bLen := len(zb.data)
-		z.checksum.Write(zb.data)
+		if !z.NoChecksum {
+			z.checksum.Write(zb.data)
+		}
 		m := copy(buf[n:], zb.data)
 		// buffer the remaining data (this is necessarily the last block)
 		if m < bLen {

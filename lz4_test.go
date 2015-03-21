@@ -86,20 +86,20 @@ var (
 	lorem = []byte("Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.")
 	// Initial data items used for testing. More are added with random and other kind of data.
 	testDataItems = []testData{
-		testData{"empty", nil},
-		testData{
+		{"empty", nil},
+		{
 			"small pattern",
 			[]byte("aaaaaaaaaaaaaaaaaaa"),
 		},
-		testData{
+		{
 			"small pattern long",
 			[]byte("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
 		},
-		testData{
+		{
 			"medium pattern",
 			[]byte("abcdefghijklmnopqabcdefghijklmnopq"),
 		},
-		testData{
+		{
 			"lorem",
 			lorem,
 		},
@@ -174,13 +174,13 @@ func buildHeaders(options map[string][]interface{}) []testHeader {
 func init() {
 	// Only set the relevant headers having an impact on the comrpession.
 	seed := map[string][]interface{}{
-		"BlockDependency": []interface{}{true},
-		"BlockChecksum":   []interface{}{true},
-		"NoChecksum":      []interface{}{true},
-		// "Dict":            []interface{}{true},
+		"BlockDependency": {true},
+		"BlockChecksum":   {true},
+		"NoChecksum":      {true},
+		// "Dict":            {true},
 		// Enabling this substantially increase the testing time.
 		// As this test is not really required it is disabled.
-		// "HighCompression": []interface{}{true},
+		// "HighCompression": {true},
 	}
 	for _, bms := range lz4.BlockMaxSizeItems {
 		seed["BlockMaxSize"] = append(seed["BlockMaxSize"], bms)
@@ -307,14 +307,14 @@ func BenchmarkCompressBlockHC(b *testing.B) {
 func TestNoWrite(t *testing.T) {
 	// that is 2*2*2*2*2*2^4 = 512 headers!
 	seed := map[string][]interface{}{
-		"BlockDependency": []interface{}{true},
-		"BlockChecksum":   []interface{}{true},
-		"NoChecksum":      []interface{}{true},
-		"Size":            []interface{}{999},
-		// "Dict":            []interface{}{true},
+		"BlockDependency": {true},
+		"BlockChecksum":   {true},
+		"NoChecksum":      {true},
+		"Size":            {999},
+		// "Dict":            {true},
 		// Enabling this substantially increase the testing time.
 		// As this test is not really required it is disabled.
-		// "HighCompression": []interface{}{true},
+		// "HighCompression": {true},
 	}
 	for _, bms := range lz4.BlockMaxSizeItems {
 		seed["BlockMaxSize"] = append(seed["BlockMaxSize"], bms)

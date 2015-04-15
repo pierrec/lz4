@@ -245,9 +245,9 @@ func (z *Writer) compressBlock(zb *block) {
 
 // writeBlock writes a frame block to the underlying io.Writer (size, data).
 func (z *Writer) writeBlock(zb *block) (int, error) {
-	bLen := int32(len(zb.zdata))
+	bLen := uint32(len(zb.zdata))
 	if !zb.compressed {
-		bLen = -bLen
+		bLen |= 1 << 31
 	}
 
 	n := 0

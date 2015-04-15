@@ -223,7 +223,7 @@ func (z *Reader) Read(buf []byte) (n int, err error) {
 // The input buffer is the one that will receive the decompressed data.
 // If the end of the frame is detected, it returns the errEndOfBlock error.
 func (z *Reader) readBlock(buf []byte, b *block) error {
-	var bLen int32
+	var bLen uint32
 	if err := binary.Read(z.src, binary.LittleEndian, &bLen); err != nil {
 		return err
 	}
@@ -232,13 +232,14 @@ func (z *Reader) readBlock(buf []byte, b *block) error {
 	switch {
 	case bLen == 0:
 		return errEndOfBlock
-	case bLen > 0:
+	case bLen & (1<<31) == 0:
 		b.compressed = true
 		b.data = buf
 		b.zdata = make([]byte, bLen)
 	default:
-		b.data = buf[:-bLen]
-		b.zdata = buf[:-bLen]
+		bLen = bLen & (1<<31-1)
+		b.data = buf[:bLen]
+		b.zdata = buf[:bLen]
 	}
 	if _, err := io.ReadFull(z.src, b.zdata); err != nil {
 		return err

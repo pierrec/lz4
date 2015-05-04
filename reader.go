@@ -20,8 +20,8 @@ var errEndOfBlock = errors.New("end of block")
 // The Header is set after the first call to Read().
 // The Header may change between Read() calls in case of concatenated frames.
 type Reader struct {
+	Pos int64 // position within the source
 	Header
-	Pos      int64 // position within the source
 	src      io.Reader
 	checksum hash.Hash32    // frame hash
 	wg       sync.WaitGroup // decompressing go routine wait group
@@ -227,17 +227,17 @@ func (z *Reader) readBlock(buf []byte, b *block) error {
 	if err := binary.Read(z.src, binary.LittleEndian, &bLen); err != nil {
 		return err
 	}
-	z.Pos += 4
+	atomic.AddInt64(&z.Pos, 4)
 
 	switch {
 	case bLen == 0:
 		return errEndOfBlock
-	case bLen & (1<<31) == 0:
+	case bLen&(1<<31) == 0:
 		b.compressed = true
 		b.data = buf
 		b.zdata = make([]byte, bLen)
 	default:
-		bLen = bLen & (1<<31-1)
+		bLen = bLen & (1<<31 - 1)
 		b.data = buf[:bLen]
 		b.zdata = buf[:bLen]
 	}
@@ -278,7 +278,7 @@ func (z *Reader) decompressBlock(b *block, abort *uint32) {
 		}
 		b.data = b.data[n : n+m]
 	}
-	z.Pos += int64(len(b.data))
+	atomic.AddInt64(&z.Pos, int64(len(b.data)))
 }
 
 // close validates the frame checksum (if any) and checks the next frame (if any).

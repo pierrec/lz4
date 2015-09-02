@@ -74,7 +74,7 @@ func UncompressBlock(src, dst []byte, di int) (int, error) {
 			return di, ErrInvalidSource
 		}
 		offset := int(src[si-2]) | int(src[si-1])<<8
-		if di-offset < 0 {
+		if di-offset < 0 || offset == 0 {
 			return di - di0, ErrInvalidSource
 		}
 

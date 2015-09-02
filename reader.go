@@ -238,6 +238,9 @@ func (z *Reader) readBlock(buf []byte, b *block) error {
 		b.zdata = make([]byte, bLen)
 	default:
 		bLen = bLen & (1<<31 - 1)
+		if int(bLen) > len(buf) {
+			return fmt.Errorf("lz4.Read: invalid block size: %d", bLen)
+		}
 		b.data = buf[:bLen]
 		b.zdata = buf[:bLen]
 	}

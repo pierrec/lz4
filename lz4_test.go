@@ -565,3 +565,20 @@ func TestSkippable(t *testing.T) {
 	}
 
 }
+
+func TestWrittenCountAfterBufferedWrite(t *testing.T) {
+	w := lz4.NewWriter(bytes.NewBuffer(nil))
+	w.Header.BlockDependency = true
+
+	if n, _ := w.Write([]byte{1}); n != 1 {
+		t.Errorf("expected to write 1 byte, wrote %d", n)
+		t.FailNow()
+	}
+
+	forcesWrite := make([]byte, 1<<16)
+
+	if n, _ := w.Write(forcesWrite); n != len(forcesWrite) {
+		t.Errorf("expected to write %d bytes, wrote %d", len(forcesWrite), n)
+		t.FailNow()
+	}
+}

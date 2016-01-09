@@ -187,11 +187,14 @@ func (z *Reader) Read(buf []byte) (n int, err error) {
 		// cannot decompress concurrently when dealing with block dependency
 		z.decompressBlock(zb, nil)
 		// the last block may not contain enough data
+		if len(z.window) == 0 {
+			z.window = make([]byte, winSize)
+		}
 		if len(zb.data) >= winSize {
-			if len(z.window) == 0 {
-				z.window = make([]byte, winSize)
-			}
 			copy(z.window, zb.data[len(zb.data)-winSize:])
+		} else {
+			copy(z.window, z.window[len(zb.data):])
+			copy(z.window[len(zb.data)+1:], zb.data)
 		}
 	}
 	z.wg.Wait()

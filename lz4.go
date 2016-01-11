@@ -43,7 +43,8 @@ const (
 	// Its value influences the compression speed and memory usage, the lower the faster,
 	// but at the expense of the compression ratio.
 	// 16 seems to be the best compromise.
-	hashLog = 16
+	hashLog   = 16
+	hashShift = uint((minMatch * 8) - hashLog)
 
 	mfLimit      = 8 + minMatch // The last match cannot start within the last 12 bytes.
 	skipStrength = 6            // variable step for fast scan

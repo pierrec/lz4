@@ -275,30 +275,32 @@ func BenchmarkUncompressBlock(b *testing.B) {
 }
 
 func BenchmarkCompressBlock(b *testing.B) {
-	d := make([]byte, len(lorem))
+	d := append([]byte{}, lorem...)
 	z := make([]byte, len(lorem))
-	n, err := lz4.CompressBlock(lorem, z, 0)
+	n, err := lz4.CompressBlock(d, z, 0)
 	if err != nil {
 		b.Errorf("CompressBlock: %s", err)
 		b.FailNow()
 	}
 	z = z[:n]
 	for i := 0; i < b.N; i++ {
-		lz4.CompressBlock(z, d, 0)
+		d = append([]byte{}, lorem...)
+		lz4.CompressBlock(d, z, 0)
 	}
 }
 
 func BenchmarkCompressBlockHC(b *testing.B) {
-	d := make([]byte, len(lorem))
+	d := append([]byte{}, lorem...)
 	z := make([]byte, len(lorem))
-	n, err := lz4.CompressBlockHC(lorem, z, 0)
+	n, err := lz4.CompressBlockHC(d, z, 0)
 	if err != nil {
 		b.Errorf("CompressBlock: %s", err)
 		b.FailNow()
 	}
 	z = z[:n]
 	for i := 0; i < b.N; i++ {
-		lz4.CompressBlockHC(z, d, 0)
+		d = append([]byte{}, lorem...)
+		lz4.CompressBlockHC(d, z, 0)
 	}
 }
 
@@ -582,3 +584,4 @@ func TestWrittenCountAfterBufferedWrite(t *testing.T) {
 		t.FailNow()
 	}
 }
+

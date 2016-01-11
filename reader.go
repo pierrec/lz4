@@ -12,6 +12,10 @@ import (
 	"sync/atomic"
 )
 
+// ErrInvalid is returned when the data being read is not an LZ4 archive
+// (LZ4 magic number detection failed).
+var ErrInvalid = errors.New("invalid lz4 data")
+
 // errEndOfBlock is returned by readBlock when it has reached the last block of the frame.
 // It is not an error.
 var errEndOfBlock = errors.New("end of block")
@@ -67,7 +71,7 @@ func (z *Reader) readHeader(first bool) error {
 			continue
 		}
 		if magic != frameMagic {
-			return fmt.Errorf("lz4.Read: invalid frame magic number: got %x expected %x", magic, frameMagic)
+			return ErrInvalid
 		}
 		break
 	}

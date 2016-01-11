@@ -1,6 +1,9 @@
 package lz4
 
-import "errors"
+import (
+	"encoding/binary"
+	"errors"
+)
 
 // block represents a frame data block.
 // Used when compressing or decompressing frame blocks concurrently.
@@ -128,22 +131,32 @@ func CompressBlock(src, dst []byte, soffset int) (int, error) {
 	// Initialise the hash table with the first 64Kb of the input buffer
 	// (used when compressing dependent blocks)
 	for si < soffset {
-		h := (uint32(src[si+3])<<24 | uint32(src[si+2])<<16 | uint32(src[si+1])<<8 | uint32(src[si])) * hasher >> hashShift
+		h := binary.LittleEndian.Uint32(src[si:]) * hasher >> hashShift
 		si++
 		hashTable[h] = si
 	}
 
 	anchor := si
-	fma := 1<<skipStrength + 3
+	fma := 1 << skipStrength
 	for si < sn-minMatch {
 		// hash the next 4 bytes (sequence)...
-		h := (uint32(src[si+3])<<24 | uint32(src[si+2])<<16 | uint32(src[si+1])<<8 | uint32(src[si])) * hasher >> hashShift
+		h := binary.LittleEndian.Uint32(src[si:]) * hasher >> hashShift
 		// -1 to separate existing entries from new ones
 		ref := hashTable[h] - 1
 		// ...and store the position of the hash in the hash table (+1 to compensate the -1 upon saving)
 		hashTable[h] = si + 1
+		// no need to check the last 3 bytes in the first literal 4 bytes as
+		// this guarantees that the next match, if any, is compressed with
+		// a lower size, since to have some compression we must have:
+		// ll+ml-overlap > 1 + (ll-15)/255 + (ml-4-15)/255 + 2 (uncompressed size>compressed size)
+		// => ll+ml>3+2*overlap => ll+ml>= 4+2*overlap
+		// and by definition we do have:
+		// ll >= 1, ml >= 4
+		// => ll+ml >= 5
+		// => so overlap must be 0
+
 		// the sequence is new, out of bound (64kb) or not valid: try next sequence
-		if ref < 0 ||
+		if ref < 0 || fma&(1<<skipStrength-1) < 4 ||
 			(si-ref)>>winSizeLog > 0 ||
 			src[ref] != src[si] ||
 			src[ref+1] != src[si+1] ||
@@ -155,7 +168,7 @@ func CompressBlock(src, dst []byte, soffset int) (int, error) {
 			continue
 		}
 		// match found
-		fma = 1<<skipStrength + 3
+		fma = 1 << skipStrength
 		lLen := si - anchor
 		offset := si - ref
 
@@ -284,7 +297,7 @@ func CompressBlockHC(src, dst []byte, soffset int) (int, error) {
 	// Initialise the hash table with the first 64Kb of the input buffer
 	// (used when compressing dependent blocks)
 	for si < soffset {
-		h := (uint32(src[si+3])<<24 | uint32(src[si+2])<<16 | uint32(src[si+1])<<8 | uint32(src[si])) * hasher >> hashShift
+		h := binary.LittleEndian.Uint32(src[si:]) * hasher >> hashShift
 		chainTable[si&winMask] = hashTable[h]
 		si++
 		hashTable[h] = si
@@ -293,7 +306,7 @@ func CompressBlockHC(src, dst []byte, soffset int) (int, error) {
 	anchor := si
 	for si < sn-minMatch {
 		// hash the next 4 bytes (sequence)...
-		h := (uint32(src[si+3])<<24 | uint32(src[si+2])<<16 | uint32(src[si+1])<<8 | uint32(src[si])) * hasher >> hashShift
+		h := binary.LittleEndian.Uint32(src[si:]) * hasher >> hashShift
 
 		// follow the chain until out of window and give the longest match
 		mLen := 0
@@ -326,7 +339,7 @@ func CompressBlockHC(src, dst []byte, soffset int) (int, error) {
 		// update hash/chain tables with overlaping bytes:
 		// si already hashed, add everything from si+1 up to the match length
 		for si, ml := si+1, si+mLen; si < ml; {
-			h := (uint32(src[si+3])<<24 | uint32(src[si+2])<<16 | uint32(src[si+1])<<8 | uint32(src[si])) * hasher >> hashShift
+			h := binary.LittleEndian.Uint32(src[si:]) * hasher >> hashShift
 			chainTable[si&winMask] = hashTable[h]
 			si++
 			hashTable[h] = si

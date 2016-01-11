@@ -225,6 +225,30 @@ func init() {
 	}
 }
 
+func TestBlockIn(t *testing.T) {
+	for _, item := range testDataItems {
+		data := item.data
+		var z []byte
+		z = append(z, data...)
+		if !lz4.CompressInBlock(&z) {
+			// not compressible
+			continue
+		}
+		// fmt.Printf(">> %d z=%v\n", len(z), z)
+		d := make([]byte, len(data))
+		n, err := lz4.UncompressBlock(z, d, 0)
+		if err != nil {
+			t.Errorf("CompressInBlock: UncompressBlock: %s at %d", err, n)
+			t.FailNow()
+		}
+		d = d[:n]
+		if !bytes.Equal(d, data) {
+			t.Errorf("CompressInBlock: invalid decompressed data: %s: %s", item.label, string(d))
+			t.FailNow()
+		}
+	}
+}
+
 // Test low levels core functions:
 // a. compress and compare with supplied data if any
 // b. decompress the previous data and compare it with the original one
@@ -274,31 +298,45 @@ func BenchmarkUncompressBlock(b *testing.B) {
 	}
 }
 
+func BenchmarkCompressInBlock(b *testing.B) {
+	d := append([]byte{}, lorem...)
+	if !lz4.CompressInBlock(&d) {
+		b.Errorf("CompressInBlock: not compressible")
+		b.FailNow()
+	}
+	for i := 0; i < b.N; i++ {
+		d = append([]byte{}, lorem...)
+		lz4.CompressInBlock(&d)
+	}
+}
+
 func BenchmarkCompressBlock(b *testing.B) {
-	d := make([]byte, len(lorem))
+	d := append([]byte{}, lorem...)
 	z := make([]byte, len(lorem))
-	n, err := lz4.CompressBlock(lorem, z, 0)
+	n, err := lz4.CompressBlock(d, z, 0)
 	if err != nil {
 		b.Errorf("CompressBlock: %s", err)
 		b.FailNow()
 	}
 	z = z[:n]
 	for i := 0; i < b.N; i++ {
-		lz4.CompressBlock(z, d, 0)
+		d = append([]byte{}, lorem...)
+		lz4.CompressBlock(d, z, 0)
 	}
 }
 
 func BenchmarkCompressBlockHC(b *testing.B) {
-	d := make([]byte, len(lorem))
+	d := append([]byte{}, lorem...)
 	z := make([]byte, len(lorem))
-	n, err := lz4.CompressBlockHC(lorem, z, 0)
+	n, err := lz4.CompressBlockHC(d, z, 0)
 	if err != nil {
 		b.Errorf("CompressBlock: %s", err)
 		b.FailNow()
 	}
 	z = z[:n]
 	for i := 0; i < b.N; i++ {
-		lz4.CompressBlockHC(z, d, 0)
+		d = append([]byte{}, lorem...)
+		lz4.CompressBlockHC(d, z, 0)
 	}
 }
 
@@ -565,3 +603,21 @@ func TestSkippable(t *testing.T) {
 	}
 
 }
+
+func TestWrittenCountAfterBufferedWrite(t *testing.T) {
+	w := lz4.NewWriter(bytes.NewBuffer(nil))
+	w.Header.BlockDependency = true
+
+	if n, _ := w.Write([]byte{1}); n != 1 {
+		t.Errorf("expected to write 1 byte, wrote %d", n)
+		t.FailNow()
+	}
+
+	forcesWrite := make([]byte, 1<<16)
+
+	if n, _ := w.Write(forcesWrite); n != len(forcesWrite) {
+		t.Errorf("expected to write %d bytes, wrote %d", len(forcesWrite), n)
+		t.FailNow()
+	}
+}
+

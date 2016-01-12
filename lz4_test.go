@@ -582,3 +582,53 @@ func TestWrittenCountAfterBufferedWrite(t *testing.T) {
 		t.FailNow()
 	}
 }
+
+func TestWrittenBlocksExactlyWindowSize(t *testing.T) {
+	input := make([]byte, 128*1024)
+
+	copy(input[64*1024-1:], []byte{1, 2, 3, 4, 1, 2, 3, 4})
+
+	output := writeReadChunked(t, input, 64*1024)
+
+	if !bytes.Equal(input, output) {
+		t.Errorf("output is not equal to source input")
+		t.FailNow()
+	}
+}
+
+func TestWrittenBlocksLessThanWindowSize(t *testing.T) {
+	input := make([]byte, 80*1024)
+
+	copy(input[64*1024-1:], []byte{1, 2, 3, 4, 1, 2, 3, 4})
+	copy(input[72*1024-1:], []byte{5, 6, 7, 8, 5, 6, 7, 8})
+
+	output := writeReadChunked(t, input, 8*1024)
+	if !bytes.Equal(input, output) {
+		t.Errorf("output is not equal to source input")
+		t.FailNow()
+	}
+}
+
+func writeReadChunked(t *testing.T, in []byte, chunkSize int) []byte {
+	compressed := bytes.NewBuffer(nil)
+	w := lz4.NewWriter(compressed)
+	w.Header.BlockDependency = true
+
+	buf := bytes.NewBuffer(in)
+	for buf.Len() > 0 {
+		_, err := w.Write(buf.Next(chunkSize))
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+			t.FailNow()
+		}
+	}
+
+	r := lz4.NewReader(compressed)
+	out := make([]byte, len(in))
+	_, err := io.ReadFull(r, out)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+		t.FailNow()
+	}
+	return out
+}

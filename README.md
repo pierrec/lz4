@@ -1,3 +1,6 @@
+[![godoc](https://godoc.org/github.com/pierrec/lz4?status.png)](https://godoc.org/github.com/pierrec/lz4)
+[![Build Status](https://travis-ci.org/pierrec/lz4.svg?branch=master)](https://travis-ci.org/pierrec/lz4)
+
 # lz4
 LZ4 compression and decompression in pure Go
 

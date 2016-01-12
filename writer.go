@@ -216,8 +216,11 @@ func (z *Writer) Write(buf []byte) (n int, err error) {
 			z.window = make([]byte, winSize)
 		}
 		// last buffer may be shorter than the window
-		if len(buf) > winSize {
+		if len(buf) >= winSize {
 			copy(z.window, buf[len(buf)-winSize:])
+		} else {
+			copy(z.window, z.window[len(buf):])
+			copy(z.window[len(buf)+1:], buf)
 		}
 	}
 

@@ -59,6 +59,9 @@ func main() {
 			if _, err := io.Copy(zw, in); err != nil {
 				log.Fatalf("Error while compressing input: %v", err)
 			}
+			if err := zw.Close(); err != nil {
+				log.Fatalf("Error while closing stream: %v", err)
+			}
 		}
 	}
 

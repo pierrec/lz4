@@ -132,6 +132,7 @@ func CompressBlock(src, dst []byte, soffset int) (int, error) {
 // inefficient but it is significantly faster on littleEndian machines,
 // which include x84, amd64, and some ARM processors.
 func getUint32(b []byte) uint32 {
+	_ = b[3]
 	if isLittleEndian {
 		return *(*uint32)(unsafe.Pointer(&b))
 	}

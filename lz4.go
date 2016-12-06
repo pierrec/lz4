@@ -20,6 +20,7 @@ package lz4
 import (
 	"hash"
 	"sync"
+	"unsafe"
 
 	"github.com/pierrec/xxHash/xxHash32"
 )
@@ -43,8 +44,9 @@ const (
 	// Its value influences the compression speed and memory usage, the lower the faster,
 	// but at the expense of the compression ratio.
 	// 16 seems to be the best compromise.
-	hashLog   = 16
-	hashShift = uint((minMatch * 8) - hashLog)
+	hashLog       = 16
+	hashTableSize = 1 << hashLog
+	hashShift     = uint((minMatch * 8) - hashLog)
 
 	mfLimit      = 8 + minMatch // The last match cannot start within the last 12 bytes.
 	skipStrength = 6            // variable step for fast scan
@@ -61,6 +63,18 @@ func init() {
 	for i, v := range bsMapID {
 		bsMapValue[v] = i
 	}
+}
+
+var isLittleEndian = getIsLittleEndian()
+
+func getIsLittleEndian() (ret bool) {
+	var i int = 0x1
+	bs := (*[1]byte)(unsafe.Pointer(&i))
+	if bs[0] == 0 {
+		return false
+	}
+
+	return true
 }
 
 // Header describes the various flags that can be set on a Writer or obtained from a Reader.

@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/big"
 	"reflect"
 	"testing"
@@ -302,15 +301,6 @@ func BenchmarkCompressBlockHC(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		d = append([]byte{}, lorem...)
 		lz4.CompressBlockHC(d, z, 0)
-	}
-}
-func BenchmarkCompressEndToEnd(b *testing.B) {
-	w := lz4.NewWriter(ioutil.Discard)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		if _, err := w.Write(lorem); err != nil {
-			b.Fatal(err)
-		}
 	}
 }
 

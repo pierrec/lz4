@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/ioutil"
 	"math/big"
+	"os"
 	"reflect"
 	"testing"
 
@@ -662,4 +663,27 @@ func writeReadChunked(t *testing.T, in []byte, chunkSize int) []byte {
 		t.FailNow()
 	}
 	return out
+}
+
+func TestMultiBlockWrite(t *testing.T) {
+	f, err := os.Open("testdata/207326ba-36f8-11e7-954a-aca46ba8ca73.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	zbuf := bytes.NewBuffer(nil)
+	zw := lz4.NewWriter(zbuf)
+	if _, err := io.Copy(zw, f); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Flush(); err != nil {
+		t.Fatal(err)
+	}
+
+	buf := bytes.NewBuffer(nil)
+	zr := lz4.NewReader(zbuf)
+	if _, err := io.Copy(buf, zr); err != nil {
+		t.Fatal(err)
+	}
 }

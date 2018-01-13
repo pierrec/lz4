@@ -284,6 +284,7 @@ func TestBlockCompression(t *testing.T) {
 func BenchmarkUncompressBlock(b *testing.B) {
 	d := make([]byte, len(lorem))
 	z := make([]byte, len(lorem))
+	b.SetBytes(int64(len(lorem)))
 	n, err := lz4.CompressBlock(lorem, z, 0)
 	if err != nil {
 		b.Errorf("CompressBlock: %s", err)
@@ -299,6 +300,7 @@ func BenchmarkUncompressConstantBlock(b *testing.B) {
 	d := make([]byte, 4096)
 	z := make([]byte, 4096)
 	source := make([]byte, 4096)
+	b.SetBytes(int64(len(source)))
 	n, err := lz4.CompressBlock(source, z, 0)
 	if err != nil {
 		b.Errorf("CompressBlock: %s", err)
@@ -313,6 +315,7 @@ func BenchmarkUncompressConstantBlock(b *testing.B) {
 func BenchmarkCompressBlock(b *testing.B) {
 	d := append([]byte{}, lorem...)
 	z := make([]byte, len(lorem))
+	b.SetBytes(int64(len(d)))
 	n, err := lz4.CompressBlock(d, z, 0)
 	if err != nil {
 		b.Errorf("CompressBlock: %s", err)
@@ -328,6 +331,7 @@ func BenchmarkCompressBlock(b *testing.B) {
 func BenchmarkCompressConstantBlock(b *testing.B) {
 	d := make([]byte, 4096)
 	z := make([]byte, 4096)
+	b.SetBytes(int64(len(d)))
 	n, err := lz4.CompressBlock(d, z, 0)
 	if err != nil {
 		b.Errorf("CompressBlock: %s", err)
@@ -342,6 +346,7 @@ func BenchmarkCompressConstantBlock(b *testing.B) {
 func BenchmarkCompressBlockHC(b *testing.B) {
 	d := append([]byte{}, lorem...)
 	z := make([]byte, len(lorem))
+	b.SetBytes(int64(len(d)))
 	n, err := lz4.CompressBlockHC(d, z, 0)
 	if err != nil {
 		b.Errorf("CompressBlock: %s", err)
@@ -355,6 +360,7 @@ func BenchmarkCompressBlockHC(b *testing.B) {
 }
 func BenchmarkCompressEndToEnd(b *testing.B) {
 	w := lz4.NewWriter(ioutil.Discard)
+	b.SetBytes(int64(len(lorem)))
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		if _, err := w.Write(lorem); err != nil {

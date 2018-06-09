@@ -14,7 +14,7 @@ import (
 	"strings"
 
 	"github.com/pierrec/lz4"
-	profile "v/github.com/pkg/profile@v1.2.1"
+	"github.com/pkg/profile"
 )
 
 func main() {

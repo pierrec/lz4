@@ -86,7 +86,9 @@ func (z *Writer) writeHeader() error {
 		return err
 	}
 	z.Header.done = true
-	debug("wrote header %v", z.Header)
+	if debugFlag {
+		debug("wrote header %v", z.Header)
+	}
 
 	return nil
 }
@@ -103,7 +105,9 @@ func (z *Writer) Write(buf []byte) (int, error) {
 	if !z.NoChecksum {
 		z.checksum.Write(buf)
 	}
-	debug("input buffer len=%d index=%d", len(buf), z.idx)
+	if debugFlag {
+		debug("input buffer len=%d index=%d", len(buf), z.idx)
+	}
 
 	var n int
 	for len(buf) > 0 {
@@ -112,11 +116,15 @@ func (z *Writer) Write(buf []byte) (int, error) {
 		n += m
 		z.idx += m
 		buf = buf[m:]
-		debug("%d bytes copied to buf, current index %d", n, z.idx)
+		if debugFlag {
+			debug("%d bytes copied to buf, current index %d", n, z.idx)
+		}
 
 		if z.idx < len(z.data) {
 			// Buffer not filled.
-			debug("need more data for compression")
+			if debugFlag {
+				debug("need more data for compression")
+			}
 			return n, nil
 		}
 
@@ -144,7 +152,9 @@ func (z *Writer) compressBlock(data []byte) error {
 
 	var zdata []byte
 	var bLen uint32
-	debug("block compression %d => %d", len(data), zn)
+	if debugFlag {
+		debug("block compression %d => %d", len(data), zn)
+	}
 	if err == nil && zn > 0 && zn < len(data) {
 		// Compressible and compressed size smaller than uncompressed: ok!
 		bLen = uint32(zn)
@@ -154,7 +164,9 @@ func (z *Writer) compressBlock(data []byte) error {
 		bLen = uint32(len(data)) | compressedBlockFlag
 		zdata = data
 	}
-	debug("block compression to be written len=%d data len=%d", bLen, len(zdata))
+	if debugFlag {
+		debug("block compression to be written len=%d data len=%d", bLen, len(zdata))
+	}
 
 	// Write the block.
 	if err := z.writeUint32(bLen); err != nil {
@@ -166,12 +178,16 @@ func (z *Writer) compressBlock(data []byte) error {
 
 	if z.BlockChecksum {
 		checksum := xxh32.ChecksumZero(zdata)
-		debug("block checksum %x", checksum)
+		if debugFlag {
+			debug("block checksum %x", checksum)
+		}
 		if err := z.writeUint32(checksum); err != nil {
 			return err
 		}
 	}
-	debug("current frame checksum %x", z.checksum.Sum32())
+	if debugFlag {
+		debug("current frame checksum %x", z.checksum.Sum32())
+	}
 
 	return nil
 }
@@ -180,7 +196,9 @@ func (z *Writer) compressBlock(data []byte) error {
 // Flush does not return until the data has been written.
 // If the underlying writer returns an error, Flush returns that error.
 func (z *Writer) Flush() error {
-	debug("flush with index %d", z.idx)
+	if debugFlag {
+		debug("flush with index %d", z.idx)
+	}
 	if z.idx == 0 {
 		return nil
 	}
@@ -200,13 +218,17 @@ func (z *Writer) Close() error {
 		return err
 	}
 
-	debug("writing last empty block")
+	if debugFlag {
+		debug("writing last empty block")
+	}
 	if err := z.writeUint32(0); err != nil {
 		return err
 	}
 	if !z.NoChecksum {
 		checksum := z.checksum.Sum32()
-		debug("stream checksum %x", checksum)
+		if debugFlag {
+			debug("stream checksum %x", checksum)
+		}
 		if err := z.writeUint32(checksum); err != nil {
 			return err
 		}

@@ -16,7 +16,6 @@ type testcase struct {
 }
 
 var rawFiles = []testcase{
-	// {"testdata/207326ba-36f8-11e7-954a-aca46ba8ca73.png", true, nil},
 	{"testdata/e.txt", true, nil},
 	{"testdata/gettysburg.txt", true, nil},
 	{"testdata/Mark.Twain-Tom.Sawyer.txt", true, nil},
@@ -91,6 +90,6 @@ func TestCompressUncompressBlock(t *testing.T) {
 				})
 			})
 		})
-		fmt.Printf("%-40s: %8d / %8d / %8d\n", tc.file, n, nhc, len(src))
+		t.Logf("%-40s: %8d / %8d / %8d\n", tc.file, n, nhc, len(src))
 	}
 }

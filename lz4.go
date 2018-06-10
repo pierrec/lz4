@@ -16,9 +16,9 @@ import (
 )
 
 const (
-	// Extension is the LZ4 frame file name extension
+	// Extension is the LZ4 frame file name extension.
 	Extension = ".lz4"
-	// Version is the LZ4 frame format version
+	// Version is the LZ4 frame format version.
 	Version = 1
 
 	frameMagic     uint32 = 0x184D2204
@@ -40,8 +40,7 @@ const (
 	hashTableSize = 1 << hashLog
 	hashShift     = uint((minMatch * 8) - hashLog)
 
-	mfLimit      = 8 + minMatch // The last match cannot start within the last 12 bytes.
-	skipStrength = 6            // variable step for fast scan
+	mfLimit = 8 + minMatch // The last match cannot start within the last 12 bytes.
 )
 
 // map the block max size id with its value in bytes: 64Kb, 256Kb, 1Mb and 4Mb.

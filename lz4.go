@@ -10,11 +10,6 @@
 //
 package lz4
 
-import (
-	"fmt"
-	"strings"
-)
-
 const (
 	// Extension is the LZ4 frame file name extension
 	Extension = ".lz4"
@@ -70,25 +65,4 @@ type Header struct {
 	Size             uint64 // Frame total size. It is _not_ computed by the Writer.
 	CompressionLevel int    // Compression level (higher is better, use 0 for fastest compression).
 	done             bool   // Header processed flag (Read or Write and checked).
-}
-
-func (h Header) String() string {
-	var s strings.Builder
-
-	s.WriteString(fmt.Sprintf("%T{", h))
-	if h.BlockChecksum {
-		s.WriteString("BlockChecksum: true ")
-	}
-	if h.NoChecksum {
-		s.WriteString("NoChecksum: true ")
-	}
-	if bs := h.BlockMaxSize; bs != 0 && bs != 4<<20 {
-		s.WriteString(fmt.Sprintf("BlockMaxSize: %d ", bs))
-	}
-	if l := h.CompressionLevel; l != 0 {
-		s.WriteString(fmt.Sprintf("CompressionLevel: %d ", l))
-	}
-	s.WriteByte('}')
-
-	return s.String()
 }

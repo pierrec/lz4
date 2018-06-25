@@ -13,7 +13,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/pierrec/lz4"
+	lz4 "github.com/pierrec/lz4/v2"
 	"github.com/pkg/profile"
 )
 

@@ -6,7 +6,7 @@ import (
 	"io/ioutil"
 	"testing"
 
-	"github.com/pierrec/lz4"
+	lz4 "github.com/pierrec/lz4/v2"
 )
 
 func BenchmarkCompress(b *testing.B) {

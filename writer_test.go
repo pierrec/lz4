@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/pierrec/lz4"
+	lz4 "github.com/pierrec/lz4/v2"
 )
 
 func TestWriter(t *testing.T) {

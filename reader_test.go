@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	lz4 "github.com/pierrec/lz4/v2"
+	"github.com/pierrec/lz4"
 )
 
 func TestReader(t *testing.T) {

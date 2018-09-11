@@ -2,8 +2,6 @@
 package main
 
 import (
-	// 	"bytes"
-
 	"flag"
 	"fmt"
 	"io"
@@ -13,7 +11,7 @@ import (
 	"runtime"
 	"strings"
 
-	lz4 "github.com/pierrec/lz4/v2"
+	"github.com/pierrec/lz4"
 	"github.com/pkg/profile"
 )
 

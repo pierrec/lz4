@@ -17,6 +17,7 @@ func TestReader(t *testing.T) {
 		"testdata/e.txt.lz4",
 		"testdata/gettysburg.txt.lz4",
 		"testdata/Mark.Twain-Tom.Sawyer.txt.lz4",
+		"testdata/Mark.Twain-Tom.Sawyer_long.txt.lz4",
 		"testdata/pg1661.txt.lz4",
 		"testdata/pi.txt.lz4",
 		"testdata/random.data.lz4",

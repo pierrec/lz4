@@ -16,6 +16,7 @@ func TestWriter(t *testing.T) {
 		"testdata/e.txt",
 		"testdata/gettysburg.txt",
 		"testdata/Mark.Twain-Tom.Sawyer.txt",
+		"testdata/Mark.Twain-Tom.Sawyer_long.txt",
 		"testdata/pg1661.txt",
 		"testdata/pi.txt",
 		"testdata/random.data",

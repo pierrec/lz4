@@ -96,3 +96,38 @@ func TestCompressUncompressBlock(t *testing.T) {
 		fmt.Printf("%-40s: %8d / %8d / %8d\n", tc.file, n, nhc, len(src))
 	}
 }
+
+func TestCompressCornerCase_CopyDstUpperBound(t *testing.T) {
+	type compressor func(s, d []byte) (int, error)
+
+	run := func(src []byte, compress compressor) {
+		t.Helper()
+
+		// Compress the data.
+		zbuf := make([]byte, int(float64(len(src))*0.85))
+		_, err := compress(src, zbuf)
+		if err != lz4.ErrInvalidSourceShortBuffer {
+			t.Fatal("err should be ErrInvalidSourceShortBuffer")
+		}
+	}
+
+	file := "testdata/upperbound.data"
+	src, err := ioutil.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run(file, func(t *testing.T) {
+		t.Parallel()
+		run(src, func(src, dst []byte) (int, error) {
+			var ht [1 << 16]int
+			return lz4.CompressBlock(src, dst, ht[:])
+		})
+	})
+	t.Run(fmt.Sprintf("%s HC", file), func(t *testing.T) {
+		t.Parallel()
+		run(src, func(src, dst []byte) (int, error) {
+			return lz4.CompressBlockHC(src, dst, -1)
+		})
+	})
+}

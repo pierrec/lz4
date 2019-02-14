@@ -37,13 +37,6 @@ func UncompressBlock(src, dst []byte) (di int, err error) {
 	}
 
 	di = decodeBlock(dst, src)
-	switch di {
-	case -1:
-		return 0, errors.New("TODO: bad data")
-	case -2:
-		// this is short dst really
-		return 0, ErrInvalidSourceShortBuffer
-	}
 	if di < 0 {
 		return 0, ErrInvalidSourceShortBuffer
 	}

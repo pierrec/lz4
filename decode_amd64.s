@@ -13,6 +13,9 @@
 // SI &src
 // R8 &dst + len(dst)
 // R9 &src + len(src)
+// R11 &dst
+// R12 short output end
+// R13 short input end
 // func decodeBlock(dst, src []byte) int
 // using 50 bytes of stack currently
 TEXT ·decodeBlock(SB), NOSPLIT, $64-56
@@ -24,6 +27,14 @@ TEXT ·decodeBlock(SB), NOSPLIT, $64-56
 	MOVQ src_base+24(FP), SI
 	MOVQ src_len+32(FP), R9
 	ADDQ SI, R9
+
+	// shortcut ends
+	// short output end
+	MOVQ R8, R12
+	SUBQ $32, R12
+	// short input end
+	MOVQ R9, R13
+	SUBQ $16, R13
 
 loop:
 	// for si < len(src)
@@ -40,11 +51,74 @@ loop:
 	MOVQ DX, CX
 	SHRQ $4, CX
 
+	// if lit_len != 0xF
+	CMPQ CX, $0xF
+	JEQ lit_len_loop_pre
+	CMPQ DI, R12
+	JGE lit_len_loop_pre
+	CMPQ SI, R13
+	JGE lit_len_loop_pre
+
+	// copy shortcut
+
+	// A two-stage shortcut for the most common case:
+	// 1) If the literal length is 0..14, and there is enough space,
+	// enter the shortcut and copy 16 bytes on behalf of the literals
+	// (in the fast mode, only 8 bytes can be safely copied this way).
+	// 2) Further if the match length is 4..18, copy 18 bytes in a similar
+	// manner; but we ensure that there's enough space in the output for
+	// those 18 bytes earlier, upon entering the shortcut (in other words,
+	// there is a combined check for both stages).
+
+	// copy literal
+	MOVOU (SI), X0
+	MOVOU X0, (DI)
+	ADDQ CX, DI
+	ADDQ CX, SI
+
+	MOVQ DX, CX
+	ANDQ $0xF, CX
+
+	// The second stage: prepare for match copying, decode full info.
+	// If it doesn't work out, the info won't be wasted.
+	// offset := uint16(data[:2])
+	MOVWQZX (SI), DX
+	ADDQ $2, SI
+
+	MOVQ DI, AX
+	SUBQ DX, AX
+	CMPQ AX, DI
+	JGT err_short_buf
+
+	// if we can't do the second stage then jump straight to read the
+	// match length, we already have the offset.
+	CMPQ CX, $0xF
+	JEQ match_len_loop_pre
+	CMPQ DX, $8
+	JLT match_len_loop_pre
+	CMPQ AX, R11
+	JLT err_short_buf
+
+	// memcpy(op + 0, match + 0, 8);
+	MOVQ (AX), BX
+	MOVQ BX, (DI)
+	// memcpy(op + 8, match + 8, 8);
+	MOVQ 8(AX), BX
+	MOVQ BX, 8(DI)
+	// memcpy(op +16, match +16, 2);
+	MOVW 16(AX), BX
+	MOVW BX, 16(DI)
+
+	ADDQ $4, DI // minmatch
+	ADDQ CX, DI
+
+	// shortcut complete, load next token
+	JMP loop
+
+lit_len_loop_pre:
 	// if lit_len > 0
 	CMPQ CX, $0
 	JEQ offset
-
-	// if lit_len != 0xF
 	CMPQ CX, $0xF
 	JNE copy_literal
 
@@ -128,6 +202,10 @@ memmove_lit:
 	ADDQ dst_len+8(FP), R8
 	MOVQ src_base+24(FP), R9
 	ADDQ src_len+32(FP), R9
+	MOVQ R8, R12
+	SUBQ $32, R12
+	MOVQ R9, R13
+	SUBQ $16, R13
 
 finish_lit_copy:
 	ADDQ CX, SI
@@ -155,8 +233,10 @@ offset:
 	CMPQ DX, $0
 	JEQ err_corrupt
 
-	// if mlen != 0xF
 	ANDB $0xF, CX
+
+match_len_loop_pre:
+	// if mlen != 0xF
 	CMPB CX, $0xF
 	JNE copy_match
 
@@ -273,6 +353,10 @@ memmove_match:
 	ADDQ dst_len+8(FP), R8
 	MOVQ src_base+24(FP), R9
 	ADDQ src_len+32(FP), R9
+	MOVQ R8, R12
+	SUBQ $32, R12
+	MOVQ R9, R13
+	SUBQ $16, R13
 
 	ADDQ CX, DI
 	JMP loop

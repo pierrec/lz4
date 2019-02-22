@@ -19,27 +19,51 @@ func decodeBlock(dst, src []byte) (ret int) {
 
 		// Literals.
 		if lLen := b >> 4; lLen > 0 {
-			if lLen == 0xF {
+			switch {
+			case lLen < 0xF && di+18 < len(dst) && si+16 < len(src):
+				// Shortcut 1
+				// if we have enough room in src and dst, and the literals length
+				// is small enough (0..14) then copy all 16 bytes, even if not all
+				// are part of the literals.
+				copy(dst[di:], src[si:si+16])
+				si += lLen
+				di += lLen
+				if mLen := b & 0xF; mLen < 0xF {
+					// Shortcut 2
+					// if the match length (4..18) fits within the literals, then copy
+					// all 18 bytes, even if not all are part of the literals.
+					mLen += 4
+					if offset := int(src[si]) | int(src[si+1])<<8; mLen <= offset {
+						i := di - offset
+						copy(dst[di:], dst[i:i+18])
+						si += 2
+						di += mLen
+						continue
+					}
+				}
+			case lLen == 0xF:
 				for src[si] == 0xFF {
 					lLen += 0xFF
 					si++
 				}
 				lLen += int(src[si])
 				si++
-			}
-			i := si
-			si += lLen
-			di += copy(dst[di:di+si-i], src[i:si])
-
-			if si >= len(src) {
-				return di
+				fallthrough
+			default:
+				copy(dst[di:di+lLen], src[si:si+lLen])
+				si += lLen
+				di += lLen
 			}
 		}
+		if si >= len(src) {
+			return di
+		}
 
-		si++
-		_ = src[si] // Bound check elimination.
-		offset := int(src[si-1]) | int(src[si])<<8
-		si++
+		offset := int(src[si]) | int(src[si+1])<<8
+		if offset == 0 {
+			return -2
+		}
+		si += 2
 
 		// Match.
 		mLen := b & 0xF
@@ -54,18 +78,17 @@ func decodeBlock(dst, src []byte) (ret int) {
 		mLen += minMatch
 
 		// Copy the match.
-		i := di - offset
-		if offset > 0 && mLen >= offset {
+		expanded := dst[di-offset:]
+		if mLen > offset {
 			// Efficiently copy the match dst[di-offset:di] into the dst slice.
 			bytesToCopy := offset * (mLen / offset)
-			expanded := dst[i:]
 			for n := offset; n <= bytesToCopy+offset; n *= 2 {
 				copy(expanded[n:], expanded[:n])
 			}
 			di += bytesToCopy
 			mLen -= bytesToCopy
 		}
-		di += copy(dst[di:di+mLen], dst[i:i+mLen])
+		di += copy(dst[di:di+mLen], expanded[:mLen])
 	}
 
 	return di

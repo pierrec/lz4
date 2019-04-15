@@ -77,3 +77,22 @@ func TestWriter(t *testing.T) {
 		}
 	}
 }
+
+func TestIssue41(t *testing.T) {
+	r, w := io.Pipe()
+	zw := lz4.NewWriter(w)
+	zr := lz4.NewReader(r)
+
+	data := "x"
+	go func() {
+		_, _ = fmt.Fprint(zw, data)
+		_ = zw.Flush()
+		_ = zw.Close()
+		_ = w.Close()
+	}()
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(zr)
+	if got, want := buf.String(), data; got != want {
+		t.Fatal("uncompressed data does not match original")
+	}
+}

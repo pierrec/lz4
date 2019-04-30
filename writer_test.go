@@ -98,12 +98,12 @@ func TestIssue41(t *testing.T) {
 	}
 }
 
-func TestIssue42(t *testing.T) {
+func TestIssue43(t *testing.T) {
 	r, w := io.Pipe()
 	go func() {
 		defer w.Close()
 
-		f, err := os.Open("testdata/issue42.data")
+		f, err := os.Open("testdata/issue43.data")
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -2,6 +2,7 @@ package cmds
 
 import (
 	"flag"
+	"fmt"
 	"github.com/schollz/progressbar/v2"
 	"io"
 	"os"
@@ -47,15 +48,24 @@ func Uncompress(_ *flag.FlagSet) cmdflag.Handler {
 			if err != nil {
 				return err
 			}
-			var out io.Writer = file
-			if size := zfinfo.Size(); size > 0 {
-				out = progressbar.NewOptions(0,
+			var (
+				size  int
+				out   io.Writer = file
+				zsize           = zfinfo.Size()
+				bar   *progressbar.ProgressBar
+			)
+			if zsize > 0 {
+				bar = progressbar.NewOptions64(zsize,
 					// File transfers are usually slow, make sure we display the bar at 0%.
 					progressbar.OptionSetRenderBlankState(true),
 					// Display the filename.
 					progressbar.OptionSetDescription(filename),
 					progressbar.OptionClearOnFinish(),
 				)
+				out = io.MultiWriter(out, bar)
+				zr.OnBlockDone = func(n int) {
+					size += n
+				}
 			}
 
 			// Uncompress.
@@ -68,6 +78,11 @@ func Uncompress(_ *flag.FlagSet) cmdflag.Handler {
 				if err != nil {
 					return err
 				}
+			}
+
+			if bar != nil {
+				_ = bar.Clear()
+				fmt.Printf("%s %d\n", zfilename, size)
 			}
 		}
 

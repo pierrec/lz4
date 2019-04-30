@@ -214,6 +214,9 @@ func (z *Reader) Read(buf []byte) (int, error) {
 				return 0, err
 			}
 			z.pos += int64(bLen)
+			if z.OnBlockDone != nil {
+				z.OnBlockDone(int(bLen))
+			}
 
 			if z.BlockChecksum {
 				checksum, err := z.readUint32()

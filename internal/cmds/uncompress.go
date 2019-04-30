@@ -2,6 +2,7 @@ package cmds
 
 import (
 	"flag"
+	"github.com/schollz/progressbar/v2"
 	"io"
 	"os"
 	"strings"
@@ -9,8 +10,6 @@ import (
 	"github.com/pierrec/lz4"
 	"github.com/pierrec/lz4/internal/cmdflag"
 )
-
-//TODO add progress bar and stats
 
 // Uncompress uncompresses a set of files or from stdin to stdout.
 func Uncompress(_ *flag.FlagSet) cmdflag.Handler {
@@ -44,8 +43,23 @@ func Uncompress(_ *flag.FlagSet) cmdflag.Handler {
 			}
 			zr.Reset(zfile)
 
+			zfinfo, err := zfile.Stat()
+			if err != nil {
+				return err
+			}
+			var out io.Writer = file
+			if size := zfinfo.Size(); size > 0 {
+				out = progressbar.NewOptions(0,
+					// File transfers are usually slow, make sure we display the bar at 0%.
+					progressbar.OptionSetRenderBlankState(true),
+					// Display the filename.
+					progressbar.OptionSetDescription(filename),
+					progressbar.OptionClearOnFinish(),
+				)
+			}
+
 			// Uncompress.
-			_, err = io.Copy(file, zr)
+			_, err = io.Copy(out, zr)
 			if err != nil {
 				return err
 			}

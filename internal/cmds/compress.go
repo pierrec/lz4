@@ -7,12 +7,11 @@ import (
 	"os"
 
 	"code.cloudfoundry.org/bytefmt"
+	"github.com/schollz/progressbar/v2"
 
 	"github.com/pierrec/lz4"
 	"github.com/pierrec/lz4/internal/cmdflag"
 )
-
-//TODO add progress bar and stats
 
 // Compress compresses a set of files or from stdin to stdout.
 func Compress(fs *flag.FlagSet) cmdflag.Handler {
@@ -61,6 +60,27 @@ func Compress(fs *flag.FlagSet) cmdflag.Handler {
 			}
 			mode := finfo.Mode() // use the same mode for the output file
 
+			// Accumulate compressed bytes num.
+			var (
+				zsize int
+				size  = finfo.Size()
+			)
+			if size > 0 {
+				// Progress bar setup.
+				numBlocks := int(size) / zw.Header.BlockMaxSize
+				bar := progressbar.NewOptions(numBlocks,
+					// File transfers are usually slow, make sure we display the bar at 0%.
+					progressbar.OptionSetRenderBlankState(true),
+					// Display the filename.
+					progressbar.OptionSetDescription(filename),
+					progressbar.OptionClearOnFinish(),
+				)
+				zw.OnBlockDone = func(n int) {
+					_ = bar.Add(1)
+					zsize += n
+				}
+			}
+
 			// Output file.
 			zfilename := fmt.Sprintf("%s%s", filename, lz4.Extension)
 			zfile, err := os.OpenFile(zfilename, os.O_CREATE|os.O_WRONLY, mode)
@@ -79,6 +99,10 @@ func Compress(fs *flag.FlagSet) cmdflag.Handler {
 				if err != nil {
 					return err
 				}
+			}
+
+			if size > 0 {
+				fmt.Printf("%s %.02f%%\n", zfilename, float64(zsize)*100/float64(size))
 			}
 		}
 

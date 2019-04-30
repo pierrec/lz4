@@ -46,8 +46,8 @@ func (z *Writer) writeHeader() error {
 	if n := 2 * bSize; cap(z.zdata) < n {
 		z.zdata = make([]byte, n, n)
 	}
-	z.zdata = z.zdata[:bSize]
-	z.data = z.zdata[:cap(z.zdata)][bSize:]
+	z.data = z.zdata[:bSize]
+	z.zdata = z.zdata[:cap(z.zdata)][bSize:]
 	z.idx = 0
 
 	// Size is optional.

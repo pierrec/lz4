@@ -101,7 +101,7 @@ func (z *Reader) readHeader(first bool) error {
 	z.data = z.zdata[:cap(z.zdata)][bSize:]
 	z.idx = len(z.data)
 
-	z.checksum.Write(buf[0:2])
+	_, _ = z.checksum.Write(buf[0:2])
 
 	if frameSize {
 		buf := buf[:8]
@@ -110,7 +110,7 @@ func (z *Reader) readHeader(first bool) error {
 		}
 		z.Size = binary.LittleEndian.Uint64(buf)
 		z.pos += 8
-		z.checksum.Write(buf)
+		_, _ = z.checksum.Write(buf)
 	}
 
 	// Header checksum.
@@ -258,7 +258,7 @@ func (z *Reader) Read(buf []byte) (int, error) {
 		}
 
 		if !z.NoChecksum {
-			z.checksum.Write(z.data)
+			_, _ = z.checksum.Write(z.data)
 			if debugFlag {
 				debug("current frame checksum %x", z.checksum.Sum32())
 			}

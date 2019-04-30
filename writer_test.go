@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"os"
 	"reflect"
 	"testing"
 
@@ -94,5 +95,30 @@ func TestIssue41(t *testing.T) {
 	_, _ = buf.ReadFrom(zr)
 	if got, want := buf.String(), data; got != want {
 		t.Fatal("uncompressed data does not match original")
+	}
+}
+
+func TestIssue42(t *testing.T) {
+	r, w := io.Pipe()
+	go func() {
+		defer w.Close()
+
+		f, err := os.Open("testdata/issue42.data")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+
+		zw := lz4.NewWriter(w)
+		defer zw.Close()
+
+		_, err = io.Copy(zw, f)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+	_, err := io.Copy(ioutil.Discard, lz4.NewReader(r))
+	if err != nil {
+		t.Fatal(err)
 	}
 }

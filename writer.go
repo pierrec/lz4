@@ -11,6 +11,9 @@ import (
 // Writer implements the LZ4 frame encoder.
 type Writer struct {
 	Header
+	// Handler called when a block has been successfully written out.
+	// It provides the number of bytes written.
+	OnBlockDone func(size int)
 
 	buf       [19]byte      // magic number(4) + header(flags(2)+[Size(8)+DictID(4)]+checksum(1)) does not exceed 19 bytes
 	dst       io.Writer     // Destination.
@@ -182,8 +185,12 @@ func (z *Writer) compressBlock(data []byte) error {
 	if err := z.writeUint32(bLen); err != nil {
 		return err
 	}
-	if _, err := z.dst.Write(zdata); err != nil {
+	written, err := z.dst.Write(zdata)
+	if err != nil {
 		return err
+	}
+	if h := z.OnBlockDone; h != nil {
+		h(written)
 	}
 
 	if z.BlockChecksum {

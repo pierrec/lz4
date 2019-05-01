@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"runtime/debug"
 	"strings"
 	"sync"
 )
@@ -111,12 +110,9 @@ func Parse() error {
 			if b, ok := v.Get().(bool); ok && b {
 				// The flag was defined as a bool and is set.
 				program := programName(args[0])
-				if bi, ok := debug.ReadBuildInfo(); ok {
-					fmt.Fprintf(out, "%s version %s", program, bi.Main.Version)
-				} else {
-					fmt.Fprintf(out, "%s no version available (not built with module support)", program)
-				}
-				fmt.Fprintf(out, " %s/%s\n", runtime.GOOS, runtime.GOARCH)
+				fmt.Fprintf(out, "%s version %s %s/%s\n",
+					program, buildinfo(),
+					runtime.GOOS, runtime.GOARCH)
 				return nil
 			}
 		}

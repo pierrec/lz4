@@ -21,7 +21,7 @@ const VersionBoolFlag = "version"
 // Usage is the function used for help.
 var Usage = func() {
 	fset := flag.CommandLine
-	out := fset.Output()
+	out := fsetOutput(fset)
 
 	program := programName(os.Args[0])
 	fmt.Fprintf(out, "Usage of %s:\n", program)

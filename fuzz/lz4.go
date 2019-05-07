@@ -7,7 +7,7 @@ import (
 	"github.com/pierrec/lz4"
 )
 
-// lz4.Reader fuzz function
+// Fuzz function for the Reader and Writer.
 func Fuzz(data []byte) int {
 	// uncompress some data
 	d, err := ioutil.ReadAll(lz4.NewReader(bytes.NewReader(data)))

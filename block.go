@@ -198,7 +198,7 @@ func CompressBlockHC(src, dst []byte, depth int) (di int, err error) {
 	var si int
 
 	// hashTable: stores the last position found for a given hash
-	// chaingTable: stores previous positions for a given hash
+	// chainTable: stores previous positions for a given hash
 	var hashTable, chainTable [winSize]int
 
 	if depth <= 0 {

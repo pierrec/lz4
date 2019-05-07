@@ -90,6 +90,4 @@ func decodeBlock(dst, src []byte) (ret int) {
 		}
 		di += copy(dst[di:di+mLen], expanded[:mLen])
 	}
-
-	return di
 }

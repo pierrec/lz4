@@ -3,10 +3,11 @@ package cmds
 import (
 	"flag"
 	"fmt"
-	"github.com/schollz/progressbar/v2"
 	"io"
 	"os"
 	"strings"
+
+	"github.com/schollz/progressbar/v2"
 
 	"github.com/pierrec/lz4"
 	"github.com/pierrec/lz4/internal/cmdflag"

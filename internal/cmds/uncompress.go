@@ -9,31 +9,31 @@ import (
 
 	"github.com/schollz/progressbar/v2"
 
+	"github.com/pierrec/cmdflag"
 	"github.com/pierrec/lz4"
-	"github.com/pierrec/lz4/internal/cmdflag"
 )
 
 // Uncompress uncompresses a set of files or from stdin to stdout.
 func Uncompress(_ *flag.FlagSet) cmdflag.Handler {
-	return func(args ...string) error {
+	return func(args ...string) (int, error) {
 		zr := lz4.NewReader(nil)
 
 		// Use stdin/stdout if no file provided.
 		if len(args) == 0 {
 			zr.Reset(os.Stdin)
 			_, err := io.Copy(os.Stdout, zr)
-			return err
+			return 0, err
 		}
 
-		for _, zfilename := range args {
+		for fidx, zfilename := range args {
 			// Input file.
 			zfile, err := os.Open(zfilename)
 			if err != nil {
-				return err
+				return fidx, err
 			}
 			zinfo, err := zfile.Stat()
 			if err != nil {
-				return err
+				return fidx, err
 			}
 			mode := zinfo.Mode() // use the same mode for the output file
 
@@ -41,13 +41,13 @@ func Uncompress(_ *flag.FlagSet) cmdflag.Handler {
 			filename := strings.TrimSuffix(zfilename, lz4.Extension)
 			file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, mode)
 			if err != nil {
-				return err
+				return fidx, err
 			}
 			zr.Reset(zfile)
 
 			zfinfo, err := zfile.Stat()
 			if err != nil {
-				return err
+				return fidx, err
 			}
 			var (
 				size  int
@@ -72,12 +72,12 @@ func Uncompress(_ *flag.FlagSet) cmdflag.Handler {
 			// Uncompress.
 			_, err = io.Copy(out, zr)
 			if err != nil {
-				return err
+				return fidx, err
 			}
 			for _, c := range []io.Closer{zfile, file} {
 				err := c.Close()
 				if err != nil {
-					return err
+					return fidx, err
 				}
 			}
 
@@ -87,6 +87,6 @@ func Uncompress(_ *flag.FlagSet) cmdflag.Handler {
 			}
 		}
 
-		return nil
+		return len(args), nil
 	}
 }

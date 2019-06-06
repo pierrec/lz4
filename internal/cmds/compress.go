@@ -9,8 +9,8 @@ import (
 	"code.cloudfoundry.org/bytefmt"
 	"github.com/schollz/progressbar/v2"
 
+	"github.com/pierrec/cmdflag"
 	"github.com/pierrec/lz4"
-	"github.com/pierrec/lz4/internal/cmdflag"
 )
 
 // Compress compresses a set of files or from stdin to stdout.
@@ -24,10 +24,10 @@ func Compress(fs *flag.FlagSet) cmdflag.Handler {
 	var level int
 	fs.IntVar(&level, "l", 0, "compression level (0=fastest)")
 
-	return func(args ...string) error {
+	return func(args ...string) (int, error) {
 		sz, err := bytefmt.ToBytes(blockMaxSize)
 		if err != nil {
-			return err
+			return 0, err
 		}
 
 		zw := lz4.NewWriter(nil)
@@ -43,20 +43,20 @@ func Compress(fs *flag.FlagSet) cmdflag.Handler {
 			zw.Reset(os.Stdout)
 			_, err := io.Copy(zw, os.Stdin)
 			if err != nil {
-				return err
+				return 0, err
 			}
-			return zw.Close()
+			return 0, zw.Close()
 		}
 
-		for _, filename := range args {
+		for fidx, filename := range args {
 			// Input file.
 			file, err := os.Open(filename)
 			if err != nil {
-				return err
+				return fidx, err
 			}
 			finfo, err := file.Stat()
 			if err != nil {
-				return err
+				return fidx, err
 			}
 			mode := finfo.Mode() // use the same mode for the output file
 
@@ -85,19 +85,19 @@ func Compress(fs *flag.FlagSet) cmdflag.Handler {
 			zfilename := fmt.Sprintf("%s%s", filename, lz4.Extension)
 			zfile, err := os.OpenFile(zfilename, os.O_CREATE|os.O_WRONLY, mode)
 			if err != nil {
-				return err
+				return fidx, err
 			}
 			zw.Reset(zfile)
 
 			// Compress.
 			_, err = io.Copy(zw, file)
 			if err != nil {
-				return err
+				return fidx, err
 			}
 			for _, c := range []io.Closer{zw, zfile} {
 				err := c.Close()
 				if err != nil {
-					return err
+					return fidx, err
 				}
 			}
 
@@ -106,6 +106,6 @@ func Compress(fs *flag.FlagSet) cmdflag.Handler {
 			}
 		}
 
-		return nil
+		return len(args), nil
 	}
 }

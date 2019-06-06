@@ -64,10 +64,8 @@ func CompressBlock(src, dst []byte, hashTable []int) (di int, err error) {
 	var si int
 
 	// Fast scan strategy: the hash table only stores the last 4 bytes sequences.
-	// const accInit = 1 << skipStrength
 
 	anchor := si // Position of the current literals.
-	// acc := accInit // Variable step: improves performance on non-compressible data.
 
 	for si < sn {
 		// Hash the next 4 bytes (sequence)...
@@ -83,8 +81,6 @@ func CompressBlock(src, dst []byte, hashTable []int) (di int, err error) {
 		offset := si - ref
 		if offset <= 0 || offset >= winSize || // Out of window.
 			match != binary.LittleEndian.Uint32(src[ref:]) { // Hash collision on different matches.
-			// si += acc >> skipStrength
-			// acc++
 			si++
 			continue
 		}

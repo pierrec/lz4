@@ -2,44 +2,42 @@ package lz4
 
 import (
 	"bytes"
-	"io/ioutil"
-
 	"github.com/pierrec/lz4"
+	"io"
 )
 
 // Fuzz function for the Reader and Writer.
 func Fuzz(data []byte) int {
-	// uncompress some data
-	d, err := ioutil.ReadAll(lz4.NewReader(bytes.NewReader(data)))
-	if err != nil {
-		return 0
-	}
-
-	// got valid compressed data
-	// compress the uncompressed data
-	// and compare with the original input
-	buf := bytes.NewBuffer(nil)
-	zw := lz4.NewWriter(buf)
-	n, err := zw.Write(d)
+	var (
+		r      = bytes.NewReader(data)
+		w      = new(bytes.Buffer)
+		pr, pw = io.Pipe()
+		zr     = lz4.NewReader(pr)
+		zw     = lz4.NewWriter(pw)
+	)
+	// Compress.
+	go func() {
+		_, err := io.Copy(zw, r)
+		if err != nil {
+			panic(err)
+		}
+		err = zw.Close()
+		if err != nil {
+			panic(err)
+		}
+		err = pw.Close()
+		if err != nil {
+			panic(err)
+		}
+	}()
+	// Decompress.
+	_, err := io.Copy(w, zr)
 	if err != nil {
 		panic(err)
 	}
-	if n != len(d) {
-		panic("short write")
-	}
-	err = zw.Close()
-	if err != nil {
-		panic(err)
-	}
-
-	// uncompress the newly compressed data
-	ud, err := ioutil.ReadAll(lz4.NewReader(buf))
-	if err != nil {
-		panic(err)
-	}
-	if bytes.Compare(d, ud) != 0 {
+	// Check that the data is valid.
+	if !bytes.Equal(data, w.Bytes()) {
 		panic("not equal")
 	}
-
 	return 1
 }

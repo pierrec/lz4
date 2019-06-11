@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/pierrec/cmdflag"
-	"github.com/pierrec/lz4/internal/cmds"
 )
 
 func main() {
@@ -17,14 +16,14 @@ func main() {
 		Args:  "[arguments] [<file name> ...]",
 		Descr: "Compress the given files or from stdin to stdout.",
 		Err:   flag.ExitOnError,
-		Init:  cmds.Compress,
+		Init:  Compress,
 	})
 	cli.MustAdd(cmdflag.Application{
 		Name:  "uncompress",
 		Args:  "[arguments] [<file name> ...]",
 		Descr: "Uncompress the given files or from stdin to stdout.",
 		Err:   flag.ExitOnError,
-		Init:  cmds.Uncompress,
+		Init:  Uncompress,
 	})
 
 	if err := cli.Parse(); err != nil {

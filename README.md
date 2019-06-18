@@ -1,6 +1,11 @@
 # lz4 : LZ4 compression in pure Go
 
-## Overview [![GoDoc](https://godoc.org/github.com/pierrec/lz4?status.svg)](https://godoc.org/github.com/pierrec/lz4) [![Build Status](https://travis-ci.org/pierrec/lz4.svg?branch=master)](https://travis-ci.org/pierrec/lz4) [![Go Report Card](https://goreportcard.com/badge/github.com/pierrec/lz4)](https://goreportcard.com/report/github.com/pierrec/lz4)
+[![GoDoc](https://godoc.org/github.com/pierrec/lz4?status.svg)](https://godoc.org/github.com/pierrec/lz4)
+[![Build Status](https://travis-ci.org/pierrec/lz4.svg?branch=master)](https://travis-ci.org/pierrec/lz4)
+[![Go Report Card](https://goreportcard.com/badge/github.com/pierrec/lz4)](https://goreportcard.com/report/github.com/pierrec/lz4)
+[![GitHub tag (latest SemVer)](https://img.shields.io/github/tag/pierrec/lz4.svg?style=social)](https://github.com/pierrec/lz4/tags)
+
+## Overview
 
 This package provides a streaming interface to [LZ4 data streams](http://fastcompression.blogspot.fr/2013/04/lz4-streaming-format-final.html) as well as low level compress and uncompress functions for LZ4 data blocks.
 The implementation is based on the reference C [one](https://github.com/lz4/lz4).
@@ -49,7 +54,7 @@ uncompress [arguments] [<file name> ...]
 ```
 // Compress and uncompress an input string.
 s := "hello world"
-r := bytes.NewReader([]byte(s))
+r := strings.NewReader(s)
 
 // The pipe will uncompress the data from the writer.
 pr, pw := io.Pipe()

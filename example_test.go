@@ -1,7 +1,6 @@
 package lz4_test
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -13,7 +12,7 @@ import (
 func Example() {
 	// Compress and uncompress an input string.
 	s := "hello world"
-	r := bytes.NewReader([]byte(s))
+	r := strings.NewReader(s)
 
 	// The pipe will uncompress the data from the writer.
 	pr, pw := io.Pipe()

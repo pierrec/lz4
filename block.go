@@ -2,15 +2,6 @@ package lz4
 
 import (
 	"encoding/binary"
-	"errors"
-)
-
-var (
-	// ErrInvalidSourceShortBuffer is returned by UncompressBlock or CompressBLock when a compressed
-	// block is corrupted or the destination buffer is not large enough for the uncompressed data.
-	ErrInvalidSourceShortBuffer = errors.New("lz4: invalid source or destination buffer too short")
-	// ErrInvalid is returned when reading an invalid LZ4 archive.
-	ErrInvalid = errors.New("lz4: bad magic number")
 )
 
 // blockHash hashes 4 bytes into a value < winSize.
@@ -30,17 +21,14 @@ func CompressBlockBound(n int) int {
 // The destination buffer must be sized appropriately.
 //
 // An error is returned if the source data is invalid or the destination buffer is too small.
-func UncompressBlock(src, dst []byte) (di int, err error) {
-	sn := len(src)
-	if sn == 0 {
+func UncompressBlock(src, dst []byte) (int, error) {
+	if len(src) == 0 {
 		return 0, nil
 	}
-
-	di = decodeBlock(dst, src)
-	if di < 0 {
-		return 0, ErrInvalidSourceShortBuffer
+	if di := decodeBlock(dst, src); di >= 0 {
+		return di, nil
 	}
-	return di, nil
+	return 0, ErrInvalidSourceShortBuffer
 }
 
 // CompressBlock compresses the source buffer into the destination one.
@@ -51,11 +39,7 @@ func UncompressBlock(src, dst []byte) (di int, err error) {
 //
 // An error is returned if the destination buffer is too small.
 func CompressBlock(src, dst []byte, hashTable []int) (di int, err error) {
-	defer func() {
-		if recover() != nil {
-			err = ErrInvalidSourceShortBuffer
-		}
-	}()
+	defer recoverBlock(&err)
 
 	sn, dn := len(src)-mfLimit, len(dst)
 	if sn <= 0 || dn == 0 {
@@ -181,11 +165,7 @@ func CompressBlock(src, dst []byte, hashTable []int) (di int, err error) {
 //
 // An error is returned if the destination buffer is too small.
 func CompressBlockHC(src, dst []byte, depth int) (di int, err error) {
-	defer func() {
-		if recover() != nil {
-			err = ErrInvalidSourceShortBuffer
-		}
-	}()
+	defer recoverBlock(&err)
 
 	sn, dn := len(src)-mfLimit, len(dst)
 	if sn <= 0 || dn == 0 {

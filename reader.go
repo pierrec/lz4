@@ -79,7 +79,7 @@ func (z *Reader) readHeader(first bool) error {
 		return fmt.Errorf("lz4: invalid version: got %d; expected %d", v, Version)
 	}
 	if b>>5&1 == 0 {
-		return fmt.Errorf("lz4: block dependency not supported")
+		return ErrBlockDependency
 	}
 	z.BlockChecksum = b>>4&1 > 0
 	frameSize := b>>3&1 > 0

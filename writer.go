@@ -193,20 +193,18 @@ func (z *Writer) compressBlock(data []byte) error {
 		h(written)
 	}
 
-	if z.BlockChecksum {
-		checksum := xxh32.ChecksumZero(zdata)
+	if !z.BlockChecksum {
 		if debugFlag {
-			debug("block checksum %x", checksum)
+			debug("current frame checksum %x", z.checksum.Sum32())
 		}
-		if err := z.writeUint32(checksum); err != nil {
-			return err
-		}
+		return nil
 	}
+	checksum := xxh32.ChecksumZero(zdata)
 	if debugFlag {
-		debug("current frame checksum %x", z.checksum.Sum32())
+		debug("block checksum %x", checksum)
+		defer func() { debug("current frame checksum %x", z.checksum.Sum32()) }()
 	}
-
-	return nil
+	return z.writeUint32(checksum)
 }
 
 // Flush flushes any pending compressed data to the underlying writer.
@@ -234,7 +232,6 @@ func (z *Writer) Close() error {
 			return err
 		}
 	}
-
 	if err := z.Flush(); err != nil {
 		return err
 	}
@@ -245,16 +242,14 @@ func (z *Writer) Close() error {
 	if err := z.writeUint32(0); err != nil {
 		return err
 	}
-	if !z.NoChecksum {
-		checksum := z.checksum.Sum32()
-		if debugFlag {
-			debug("stream checksum %x", checksum)
-		}
-		if err := z.writeUint32(checksum); err != nil {
-			return err
-		}
+	if z.NoChecksum {
+		return nil
 	}
-	return nil
+	checksum := z.checksum.Sum32()
+	if debugFlag {
+		debug("stream checksum %x", checksum)
+	}
+	return z.writeUint32(checksum)
 }
 
 // Reset clears the state of the Writer z such that it is equivalent to its

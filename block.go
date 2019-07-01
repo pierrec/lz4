@@ -42,6 +42,11 @@ func UncompressBlock(src, dst []byte) (int, error) {
 func CompressBlock(src, dst []byte, hashTable []int) (di int, err error) {
 	defer recoverBlock(&err)
 
+	// adaptSkipLog sets how quickly the compressor begins skipping blocks when data is incompressible.
+	// This significantly speeds up incompressible data and usually has very small impact on compresssion.
+	// bytes to skip =  1 + (bytes since last match >> adaptSkipLog)
+	const adaptSkipLog = 7
+
 	sn, dn := len(src)-mfLimit, len(dst)
 	if sn <= 0 || dn == 0 {
 		return 0, nil
@@ -60,13 +65,13 @@ func CompressBlock(src, dst []byte, hashTable []int) (di int, err error) {
 		ref := hashTable[h]
 		hashTable[h] = si
 		if ref >= sn { // Invalid reference (dirty hashtable).
-			si++
+			si += 1 + (si-anchor)>>adaptSkipLog
 			continue
 		}
 		offset := si - ref
 		if offset <= 0 || offset >= winSize || // Out of window.
 			match != binary.LittleEndian.Uint32(src[ref:]) { // Hash collision on different matches.
-			si++
+			si += 1 + (si-anchor)>>adaptSkipLog
 			continue
 		}
 
@@ -171,6 +176,11 @@ func CompressBlock(src, dst []byte, hashTable []int) (di int, err error) {
 func CompressBlockHC(src, dst []byte, depth int) (di int, err error) {
 	defer recoverBlock(&err)
 
+	// adaptSkipLog sets how quickly the compressor begins skipping blocks when data is incompressible.
+	// This significantly speeds up incompressible data and usually has very small impact on compresssion.
+	// bytes to skip =  1 + (bytes since last match >> adaptSkipLog)
+	const adaptSkipLog = 7
+
 	sn, dn := len(src)-mfLimit, len(dst)
 	if sn <= 0 || dn == 0 {
 		return 0, nil
@@ -227,7 +237,7 @@ func CompressBlockHC(src, dst []byte, depth int) (di int, err error) {
 
 		// No match found.
 		if mLen == 0 {
-			si++
+			si += 1 + (si-anchor)>>adaptSkipLog
 			continue
 		}
 

@@ -21,6 +21,19 @@ func BenchmarkCompress(b *testing.B) {
 	}
 }
 
+func BenchmarkCompressRandom(b *testing.B) {
+	var hashTable [1 << 16]int
+	buf := make([]byte, len(randomLZ4))
+
+	b.ReportAllocs()
+	b.SetBytes(int64(len(random)))
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		lz4.CompressBlock(random, buf, hashTable[:])
+	}
+}
+
 func BenchmarkCompressHC(b *testing.B) {
 	buf := make([]byte, len(pg1661))
 

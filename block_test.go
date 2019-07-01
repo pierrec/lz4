@@ -11,6 +11,9 @@ import (
 	"github.com/pierrec/lz4"
 )
 
+// Hash table size.
+const htSize = 1 << 16 // 64kb
+
 type testcase struct {
 	file         string
 	compressible bool
@@ -98,7 +101,7 @@ func TestCompressUncompressBlock(t *testing.T) {
 			t.Run(tc.file, func(t *testing.T) {
 				// t.Parallel()
 				n = run(t, tc, func(src, dst []byte) (int, error) {
-					var ht [1 << 16]int
+					var ht [htSize]int
 					return lz4.CompressBlock(src, dst, ht[:])
 				})
 			})
@@ -138,7 +141,7 @@ func TestCompressCornerCase_CopyDstUpperBound(t *testing.T) {
 	t.Run(file, func(t *testing.T) {
 		t.Parallel()
 		run(src, func(src, dst []byte) (int, error) {
-			var ht [1 << 16]int
+			var ht [htSize]int
 			return lz4.CompressBlock(src, dst, ht[:])
 		})
 	})
@@ -148,4 +151,21 @@ func TestCompressCornerCase_CopyDstUpperBound(t *testing.T) {
 			return lz4.CompressBlockHC(src, dst, -1)
 		})
 	})
+}
+
+func TestIssue23(t *testing.T) {
+	compressBuf := make([]byte, lz4.CompressBlockBound(htSize))
+	for j := 1; j < 16; j++ {
+		var buf [htSize]byte
+		var ht [htSize]int
+
+		for i := 0; i < len(buf); i += j {
+			buf[i] = 1
+		}
+
+		n, _ := lz4.CompressBlock(buf[:], compressBuf, ht[:])
+		if got, want := n, 300; got > want {
+			t.Fatalf("not able to compress repeated data: got %d; want %d", got, want)
+		}
+	}
 }

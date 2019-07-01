@@ -2,6 +2,7 @@ package lz4
 
 import (
 	"encoding/binary"
+	"math/bits"
 )
 
 // blockHash hashes 4 bytes into a value < winSize.
@@ -77,12 +78,15 @@ func CompressBlock(src, dst []byte, hashTable []int) (di int, err error) {
 		si += minMatch
 		mLen := si // Match length has minMatch already.
 		// Find the longest match, first looking by batches of 8 bytes.
-		for si < sn && binary.LittleEndian.Uint64(src[si:]) == binary.LittleEndian.Uint64(src[si-offset:]) {
-			si += 8
-		}
-		// Then byte by byte.
-		for si < sn && src[si] == src[si-offset] {
-			si++
+		for si < sn {
+			x := binary.LittleEndian.Uint64(src[si:]) ^ binary.LittleEndian.Uint64(src[si-offset:])
+			if x == 0 {
+				si += 8
+			} else {
+				// Stop is first non-zero byte.
+				si += bits.TrailingZeros64(x) >> 3
+				break
+			}
 		}
 
 		mLen = si - mLen
@@ -198,11 +202,15 @@ func CompressBlockHC(src, dst []byte, depth int) (di int, err error) {
 			}
 			ml := 0
 			// Compare the current position with a previous with the same hash.
-			for ml < sn-si && binary.LittleEndian.Uint64(src[next+ml:]) == binary.LittleEndian.Uint64(src[si+ml:]) {
-				ml += 8
-			}
-			for ml < sn-si && src[next+ml] == src[si+ml] {
-				ml++
+			for ml < sn-si {
+				x := binary.LittleEndian.Uint64(src[next+ml:]) ^ binary.LittleEndian.Uint64(src[si+ml:])
+				if x == 0 {
+					ml += 8
+				} else {
+					// Stop is first non-zero byte.
+					ml += bits.TrailingZeros64(x) >> 3
+					break
+				}
 			}
 			if ml < minMatch || ml <= mLen {
 				// Match too small (<minMath) or smaller than the current match.

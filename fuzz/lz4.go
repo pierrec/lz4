@@ -2,8 +2,9 @@ package lz4
 
 import (
 	"bytes"
-	"github.com/pierrec/lz4"
 	"io"
+
+	"github.com/pierrec/lz4/v3"
 )
 
 // Fuzz function for the Reader and Writer.

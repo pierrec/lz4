@@ -8,7 +8,7 @@ import (
 	"io/ioutil"
 	"testing"
 
-	"github.com/pierrec/lz4"
+	"github.com/pierrec/lz4/v3"
 )
 
 // Hash table size.

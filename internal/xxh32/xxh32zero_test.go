@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	qt "github.com/frankban/quicktest"
-	"github.com/pierrec/lz4/internal/xxh32"
+	"github.com/pierrec/lz4/v3/internal/xxh32"
 )
 
 type test struct {

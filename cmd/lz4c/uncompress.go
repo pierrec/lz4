@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/schollz/progressbar/v2"
+	"github.com/schollz/progressbar"
 
 	"github.com/pierrec/cmdflag"
 	"github.com/pierrec/lz4"

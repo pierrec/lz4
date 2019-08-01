@@ -15,7 +15,7 @@ The implementation is based on the reference C [one](https://github.com/lz4/lz4)
 Assuming you have the go toolchain installed:
 
 ```
-go get github.com/pierrec/lz4
+go get github.com/pierrec/lz4/v3
 ```
 
 There is a command line interface tool to compress and decompress LZ4 files.
@@ -103,3 +103,4 @@ Thanks to all contributors so far:
 - [@ikkeps](https://github.com/ikkeps)
 
 Special thanks to [@Zariel](https://github.com/Zariel) for his asm implementation of the decoder
+Special thanks to [@klauspost](https://github.com/klauspost) for his work on optimizing the code

@@ -11,8 +11,11 @@ import (
 	"github.com/pierrec/lz4"
 )
 
-// Hash table size.
-const htSize = 1 << 16 // 64kb
+const (
+	// Should match values in lz4.go
+	hashLog = 16
+	htSize  = 1 << hashLog
+)
 
 type testcase struct {
 	file         string
@@ -22,11 +25,11 @@ type testcase struct {
 
 var rawFiles = []testcase{
 	// {"testdata/207326ba-36f8-11e7-954a-aca46ba8ca73.png", true, nil},
-	{"testdata/e.txt", true, nil},
+	{"testdata/e.txt", false, nil},
 	{"testdata/gettysburg.txt", true, nil},
 	{"testdata/Mark.Twain-Tom.Sawyer.txt", true, nil},
 	{"testdata/pg1661.txt", true, nil},
-	{"testdata/pi.txt", true, nil},
+	{"testdata/pi.txt", false, nil},
 	{"testdata/random.data", false, nil},
 	{"testdata/repeat.txt", true, nil},
 	{"testdata/pg1661.txt", true, nil},
@@ -125,10 +128,12 @@ func TestCompressCornerCase_CopyDstUpperBound(t *testing.T) {
 		t.Helper()
 
 		// Compress the data.
-		zbuf := make([]byte, int(float64(len(src))*0.85))
+		// We provide a destination that is too small to trigger an out-of-bounds,
+		// which makes it return the error we want.
+		zbuf := make([]byte, int(float64(len(src))*0.40))
 		_, err := compress(src, zbuf)
 		if err != lz4.ErrInvalidSourceShortBuffer {
-			t.Fatal("err should be ErrInvalidSourceShortBuffer")
+			t.Fatal("err should be ErrInvalidSourceShortBuffer, was", err)
 		}
 	}
 
@@ -154,9 +159,9 @@ func TestCompressCornerCase_CopyDstUpperBound(t *testing.T) {
 }
 
 func TestIssue23(t *testing.T) {
-	compressBuf := make([]byte, lz4.CompressBlockBound(htSize))
+	compressBuf := make([]byte, lz4.CompressBlockBound(1<<16))
 	for j := 1; j < 16; j++ {
-		var buf [htSize]byte
+		var buf [1 << 16]byte
 		var ht [htSize]int
 
 		for i := 0; i < len(buf); i += j {

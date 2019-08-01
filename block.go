@@ -76,13 +76,24 @@ func CompressBlock(src, dst []byte, hashTable []int) (di int, err error) {
 		}
 
 		// Match found.
-		// acc = accInit
 		lLen := si - anchor // Literal length.
+		// We already matched 4 bytes.
+		mLen := 4
 
-		// Encode match length part 1.
-		si += minMatch
-		mLen := si // Match length has minMatch already.
-		// Find the longest match, first looking by batches of 8 bytes.
+		// Extend backwards if we can, reducing literals.
+		tOff := si - offset - 1
+		for lLen > 0 && tOff >= 0 && src[si-1] == src[tOff] {
+			si--
+			tOff--
+			lLen--
+			mLen++
+		}
+
+		// Add the match length, so we continue search at the end.
+		// Use mLen to store the offset base.
+		si, mLen = si+mLen, si+minMatch
+
+		// Find the longest match by looking by batches of 8 bytes.
 		for si < sn {
 			x := binary.LittleEndian.Uint64(src[si:]) ^ binary.LittleEndian.Uint64(src[si-offset:])
 			if x == 0 {

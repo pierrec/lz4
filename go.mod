@@ -1,4 +1,4 @@
-module github.com/pierrec/lz4
+module github.com/pierrec/lz4/v3
 
 go 1.12
 

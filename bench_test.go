@@ -10,7 +10,7 @@ import (
 )
 
 func BenchmarkCompress(b *testing.B) {
-	var hashTable [1 << 16]int
+	var hashTable [htSize]int
 	buf := make([]byte, len(pg1661))
 
 	b.ReportAllocs()
@@ -22,7 +22,7 @@ func BenchmarkCompress(b *testing.B) {
 }
 
 func BenchmarkCompressRandom(b *testing.B) {
-	var hashTable [1 << 16]int
+	var hashTable [htSize]int
 	buf := make([]byte, len(randomLZ4))
 
 	b.ReportAllocs()

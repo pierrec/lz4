@@ -148,3 +148,24 @@ func TestIssue51(t *testing.T) {
 		t.Fatal("processed data does not match input")
 	}
 }
+
+func BenchmarkWrite(b *testing.B) {
+	writer := lz4.NewWriter(nil)
+
+	src, err := ioutil.ReadFile("testdata/gettysburg.txt")
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	for n := 0; n < b.N; n++ {
+		var buf bytes.Buffer
+		writer.Reset(&buf)
+
+		if _, err := writer.Write(src); err != nil {
+			b.Fatal(err)
+		}
+		if err := writer.Close(); err != nil {
+			b.Fatal(err)
+		}
+	}
+}

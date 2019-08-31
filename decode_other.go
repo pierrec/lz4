@@ -35,7 +35,7 @@ func decodeBlock(dst, src []byte) (ret int) {
 					if offset := int(src[si]) | int(src[si+1])<<8; mLen <= offset {
 						i := di - offset
 						end := i + 18
-						if end >= len(dst) {
+						if end > len(dst) {
 							// The remaining buffer may not hold 18 bytes.
 							// See https://github.com/pierrec/lz4/issues/51.
 							end = len(dst)

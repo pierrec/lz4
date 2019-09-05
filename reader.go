@@ -2,6 +2,7 @@ package lz4
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -25,6 +26,7 @@ type Reader struct {
 	data     []byte        // Uncompressed data.
 	idx      int           // Index of unread bytes into data.
 	checksum xxh32.XXHZero // Frame hash.
+	skip     int64         // Bytes to skip before next read.
 }
 
 // NewReader returns a new LZ4 frame decoder.
@@ -275,6 +277,15 @@ func (z *Reader) Read(buf []byte) (int, error) {
 		z.idx = 0
 	}
 
+	if z.skip > int64(len(z.data[z.idx:])) {
+		z.skip -= int64(len(z.data[z.idx:]))
+		z.idx = len(z.data)
+		return 0, nil
+	}
+
+	z.idx += int(z.skip)
+	z.skip = 0
+
 	n := copy(buf, z.data[z.idx:])
 	z.idx += n
 	if debugFlag {
@@ -282,6 +293,17 @@ func (z *Reader) Read(buf []byte) (int, error) {
 	}
 
 	return n, nil
+}
+
+// Skip n bytes in the output stream. Equivalent to a forward seek.
+// Note this may cause future calls to Read() to read 0 bytes if all of the
+// data they would have returned is skipped.
+func (z *Reader) SkipBytes(n int64) error {
+	if n < 0 {
+		return errors.New("can only skip forward")
+	}
+	z.skip += n
+	return nil
 }
 
 // Reset discards the Reader's state and makes it equivalent to the

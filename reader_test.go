@@ -56,6 +56,39 @@ func TestReader(t *testing.T) {
 			if got, want := out.Bytes(), raw; !reflect.DeepEqual(got, want) {
 				t.Fatal("uncompressed data does not match original")
 			}
+
+			if len(raw) < 20 {
+				return
+			}
+
+			f2, err := os.Open(fname)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer f2.Close()
+
+			out.Reset()
+			zr = lz4.NewReader(f2)
+			_, err = io.CopyN(&out, zr, 10)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(out.Bytes(), raw[:10]) {
+				t.Fatal("partial read does not match original")
+			}
+			err = zr.SkipBytes(int64(len(raw) - 20))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			out.Reset()
+			_, err = io.CopyN(&out, zr, 10)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(out.Bytes(), raw[len(raw)-10:]) {
+				t.Fatal("after seek, partial read does not match original")
+			}
 		})
 	}
 }

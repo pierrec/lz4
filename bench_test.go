@@ -118,7 +118,7 @@ func benchmarkSkipBytes(b *testing.B, compressed []byte) {
 	for i := 0; i < b.N; i++ {
 		r.Reset(compressed)
 		zr.Reset(r)
-		zr.SkipBytes(uncompressedSize)
+		zr.Seek(uncompressedSize, io.SeekCurrent)
 		_, _ = io.Copy(ioutil.Discard, zr)
 	}
 }

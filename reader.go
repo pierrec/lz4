@@ -2,7 +2,6 @@ package lz4
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -27,6 +26,7 @@ type Reader struct {
 	idx      int           // Index of unread bytes into data.
 	checksum xxh32.XXHZero // Frame hash.
 	skip     int64         // Bytes to skip before next read.
+	dpos     int64         // Position in dest
 }
 
 // NewReader returns a new LZ4 frame decoder.
@@ -279,15 +279,18 @@ func (z *Reader) Read(buf []byte) (int, error) {
 
 	if z.skip > int64(len(z.data[z.idx:])) {
 		z.skip -= int64(len(z.data[z.idx:]))
+		z.dpos += int64(len(z.data[z.idx:]))
 		z.idx = len(z.data)
 		return 0, nil
 	}
 
 	z.idx += int(z.skip)
+	z.dpos += z.skip
 	z.skip = 0
 
 	n := copy(buf, z.data[z.idx:])
 	z.idx += n
+	z.dpos += int64(n)
 	if debugFlag {
 		debug("copied %d bytes to input", n)
 	}
@@ -295,15 +298,18 @@ func (z *Reader) Read(buf []byte) (int, error) {
 	return n, nil
 }
 
-// Skip n bytes in the output stream. Equivalent to a forward seek.
+// Seek implements io.Seeker, but supports seeking forward from the current
+// position only. Any other seek will return an error. Allows skipping output
+// bytes which aren't needed, which in some scenarios is faster than reading
+// and discarding them.
 // Note this may cause future calls to Read() to read 0 bytes if all of the
 // data they would have returned is skipped.
-func (z *Reader) SkipBytes(n int64) error {
-	if n < 0 {
-		return errors.New("can only skip forward")
+func (z *Reader) Seek(offset int64, whence int) (int64, error) {
+	if offset < 0 || whence != io.SeekCurrent {
+		return z.dpos + z.skip, ErrUnsupportedSeek
 	}
-	z.skip += n
-	return nil
+	z.skip += offset
+	return z.dpos + z.skip, nil
 }
 
 // Reset discards the Reader's state and makes it equivalent to the

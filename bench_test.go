@@ -101,6 +101,33 @@ func BenchmarkUncompressDigits(b *testing.B) { benchmarkUncompress(b, digitsLZ4)
 func BenchmarkUncompressTwain(b *testing.B)  { benchmarkUncompress(b, twainLZ4) }
 func BenchmarkUncompressRand(b *testing.B)   { benchmarkUncompress(b, randomLZ4) }
 
+func benchmarkSkipBytes(b *testing.B, compressed []byte) {
+	r := bytes.NewReader(compressed)
+	zr := lz4.NewReader(r)
+
+	// Determine the uncompressed size of testfile.
+	uncompressedSize, err := io.Copy(ioutil.Discard, zr)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	b.SetBytes(uncompressedSize)
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		r.Reset(compressed)
+		zr.Reset(r)
+		zr.Seek(uncompressedSize, io.SeekCurrent)
+		_, _ = io.Copy(ioutil.Discard, zr)
+	}
+}
+
+func BenchmarkSkipBytesPg1661(b *testing.B) { benchmarkSkipBytes(b, pg1661LZ4) }
+func BenchmarkSkipBytesDigits(b *testing.B) { benchmarkSkipBytes(b, digitsLZ4) }
+func BenchmarkSkipBytesTwain(b *testing.B)  { benchmarkSkipBytes(b, twainLZ4) }
+func BenchmarkSkipBytesRand(b *testing.B)   { benchmarkSkipBytes(b, randomLZ4) }
+
 func benchmarkCompress(b *testing.B, uncompressed []byte) {
 	w := bytes.NewBuffer(nil)
 	zw := lz4.NewWriter(w)

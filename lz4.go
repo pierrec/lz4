@@ -10,6 +10,8 @@
 //
 package lz4
 
+import "sync"
+
 const (
 	// Extension is the LZ4 frame file name extension
 	Extension = ".lz4"
@@ -47,8 +49,24 @@ const (
 
 var (
 	bsMapID    = map[byte]int{4: blockSize64K, 5: blockSize256K, 6: blockSize1M, 7: blockSize4M}
-	bsMapValue = map[int]byte{blockSize64K: 4, blockSize256K: 5, blockSize1M: 6, blockSize4M: 7}
+	bsMapValue = map[int]struct {
+		byte
+		*sync.Pool
+	}{
+		blockSize64K:  {4, newBufferPool(2 * blockSize64K)},
+		blockSize256K: {5, newBufferPool(2 * blockSize256K)},
+		blockSize1M:   {6, newBufferPool(2 * blockSize1M)},
+		blockSize4M:   {7, newBufferPool(2 * blockSize4M)},
+	}
 )
+
+func newBufferPool(size int) *sync.Pool {
+	return &sync.Pool{
+		New: func() interface{} {
+			return make([]byte, size)
+		},
+	}
+}
 
 // Header describes the various flags that can be set on a Writer or obtained from a Reader.
 // The default values match those of the LZ4 frame format definition

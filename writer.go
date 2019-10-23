@@ -157,12 +157,11 @@ func (z *Writer) compressBlock(data []byte) error {
 
 	// The compressed block size cannot exceed the input's.
 	var zn int
-	var err error
 
 	if level := z.Header.CompressionLevel; level != 0 {
-		zn, err = CompressBlockHC(data, z.zdata, level)
+		zn = compressBlockHC(data, z.zdata, level)
 	} else {
-		zn, err = CompressBlock(data, z.zdata, z.hashtable[:])
+		zn = compressBlock(data, z.zdata, z.hashtable[:])
 	}
 
 	var zdata []byte
@@ -170,7 +169,7 @@ func (z *Writer) compressBlock(data []byte) error {
 	if debugFlag {
 		debug("block compression %d => %d", len(data), zn)
 	}
-	if err == nil && zn > 0 && zn < len(data) {
+	if zn > 0 && zn < len(data) {
 		// Compressible and compressed size smaller than uncompressed: ok!
 		bLen = uint32(zn)
 		zdata = z.zdata[:zn]

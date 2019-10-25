@@ -18,7 +18,6 @@ type Writer struct {
 	buf       [19]byte      // magic number(4) + header(flags(2)+[Size(8)+DictID(4)]+checksum(1)) does not exceed 19 bytes
 	dst       io.Writer     // Destination.
 	checksum  xxh32.XXHZero // Frame checksum.
-	zdata     []byte        // Compressed data.
 	data      []byte        // Data to be compressed.
 	idx       int           // Index into data.
 	hashtable [winSize]int  // Hash table used in CompressBlock().
@@ -46,13 +45,12 @@ func (z *Writer) writeHeader() error {
 	bSizeID := blockSizeValueToIndex(bSize)
 	// Allocate the compressed/uncompressed buffers.
 	// The compressed buffer cannot exceed the uncompressed one.
-	if cap(z.zdata) < bSize {
+	if cap(z.data) < bSize {
 		// Only allocate if there is not enough capacity.
 		// Allocate both buffers at once.
-		z.zdata = make([]byte, 2*bSize)
+		z.data = make([]byte, 2*bSize)
 	}
-	z.data = z.zdata[:bSize]                 // Uncompressed buffer is the first half.
-	z.zdata = z.zdata[:cap(z.zdata)][bSize:] // Compressed buffer is the second half.
+	z.data = z.data[:bSize] // Uncompressed buffer is the first half, compressed buffer is the second half.
 	z.idx = 0
 
 	// Size is optional.
@@ -159,13 +157,13 @@ func (z *Writer) compressBlock(data []byte) error {
 	var zn int
 	var err error
 
+	zdata := z.data[z.Header.BlockMaxSize:cap(z.data)]
 	if level := z.Header.CompressionLevel; level != 0 {
-		zn, err = CompressBlockHC(data, z.zdata, level)
+		zn, err = CompressBlockHC(data, zdata, level)
 	} else {
-		zn, err = CompressBlock(data, z.zdata, z.hashtable[:])
+		zn, err = CompressBlock(data, zdata, z.hashtable[:])
 	}
 
-	var zdata []byte
 	var bLen uint32
 	if debugFlag {
 		debug("block compression %d => %d", len(data), zn)
@@ -173,7 +171,7 @@ func (z *Writer) compressBlock(data []byte) error {
 	if err == nil && zn > 0 && zn < len(data) {
 		// Compressible and compressed size smaller than uncompressed: ok!
 		bLen = uint32(zn)
-		zdata = z.zdata[:zn]
+		zdata = zdata[:zn]
 	} else {
 		// Uncompressed block.
 		bLen = uint32(len(data)) | compressedBlockFlag
@@ -261,7 +259,6 @@ func (z *Writer) Reset(w io.Writer) {
 	z.Header = Header{}
 	z.dst = w
 	z.checksum.Reset()
-	z.zdata = z.zdata[:0]
 	z.data = z.data[:0]
 	z.idx = 0
 }

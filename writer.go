@@ -36,14 +36,14 @@ func NewWriter(dst io.Writer) *Writer {
 func (z *Writer) writeHeader() error {
 	// Default to 4Mb if BlockMaxSize is not set.
 	if z.Header.BlockMaxSize == 0 {
-		z.Header.BlockMaxSize = bsMapID[7]
+		z.Header.BlockMaxSize = blockSize4M
 	}
 	// The only option that needs to be validated.
 	bSize := z.Header.BlockMaxSize
-	bSizeID, ok := bsMapValue[bSize]
-	if !ok {
+	if !isValidBlockSize(bSize) {
 		return fmt.Errorf("lz4: invalid block max size: %d", bSize)
 	}
+	bSizeID := blockSizeValueToIndex(bSize)
 	// Allocate the compressed/uncompressed buffers.
 	// The compressed buffer cannot exceed the uncompressed one.
 	if cap(z.zdata) < bSize {

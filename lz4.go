@@ -48,7 +48,8 @@ const (
 )
 
 var (
-	bsMapID    = map[byte]int{4: blockSize64K, 5: blockSize256K, 6: blockSize1M, 7: blockSize4M}
+	bsMapID = map[byte]int{4: blockSize64K, 5: blockSize256K, 6: blockSize1M, 7: blockSize4M}
+	// Keep a pool of buffers for each valid block sizes.
 	bsMapValue = map[int]struct {
 		byte
 		*sync.Pool
@@ -60,11 +61,19 @@ var (
 	}
 )
 
+// newBufferPool returns a pool for buffers of the given size.
 func newBufferPool(size int) *sync.Pool {
 	return &sync.Pool{
 		New: func() interface{} {
 			return make([]byte, size)
 		},
+	}
+}
+
+// putBuffer returns a buffer to its pool.
+func putBuffer(size int, buf []byte) {
+	if cap(buf) > 0 {
+		bsMapValue[size].Pool.Put(buf[:cap(buf)])
 	}
 }
 

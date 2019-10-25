@@ -10,6 +10,8 @@
 //
 package lz4
 
+import "math/bits"
+
 import "sync"
 
 const (
@@ -41,10 +43,10 @@ const (
 
 // map the block max size id with its value in bytes: 64Kb, 256Kb, 1Mb and 4Mb.
 const (
-	blockSize64K  = 64 << 10
-	blockSize256K = 256 << 10
-	blockSize1M   = 1 << 20
-	blockSize4M   = 4 << 20
+	blockSize64K = 1 << (16 + 2*iota)
+	blockSize256K
+	blockSize1M
+	blockSize4M
 )
 
 var (
@@ -75,6 +77,17 @@ func putBuffer(size int, buf []byte) {
 	if cap(buf) > 0 {
 		bsMapValue[size].Pool.Put(buf[:cap(buf)])
 	}
+}
+func blockSizeIndexToValue(i byte) int {
+	return 1 << (16 + 2*uint(i))
+}
+func isValidBlockSize(size int) bool {
+	const blockSizeMask = blockSize64K | blockSize256K | blockSize1M | blockSize4M
+
+	return size&blockSizeMask > 0 && bits.OnesCount(uint(size)) == 1
+}
+func blockSizeValueToIndex(size int) byte {
+	return 4 + byte(bits.TrailingZeros(uint(size)>>16)/2)
 }
 
 // Header describes the various flags that can be set on a Writer or obtained from a Reader.

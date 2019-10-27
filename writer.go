@@ -93,7 +93,8 @@ func (z *Writer) WithConcurrency(n int) *Writer {
 // The returned buffers are for decompression and compression respectively.
 func (z *Writer) newBuffers() {
 	bSize := z.Header.BlockMaxSize
-	buf := bsMapValue[bSize].Pool.Get().([]byte)
+	idx := blockSizeValueToIndex(bSize) - 4
+	buf := bsMapValue[idx].Get().([]byte)
 	z.data = buf[:bSize] // Uncompressed buffer is the first half.
 }
 
@@ -108,12 +109,11 @@ func (z *Writer) freeBuffers() {
 func (z *Writer) writeHeader() error {
 	// Default to 4Mb if BlockMaxSize is not set.
 	if z.Header.BlockMaxSize == 0 {
-		z.Header.BlockMaxSize = bsMapID[7]
+		z.Header.BlockMaxSize = blockSize4M
 	}
 	// The only option that needs to be validated.
 	bSize := z.Header.BlockMaxSize
-	m, ok := bsMapValue[bSize]
-	if !ok {
+	if !isValidBlockSize(z.Header.BlockMaxSize) {
 		return fmt.Errorf("lz4: invalid block max size: %d", bSize)
 	}
 	// Allocate the compressed/uncompressed buffers.
@@ -138,7 +138,7 @@ func (z *Writer) writeHeader() error {
 		flg |= 1 << 2
 	}
 	buf[4] = flg
-	buf[5] = m.byte << 4
+	buf[5] = blockSizeValueToIndex(z.Header.BlockMaxSize) << 4
 
 	// Current buffer size: magic(4) + flags(1) + block max size (1).
 	n := 6

@@ -23,6 +23,8 @@ func Compress(fs *flag.FlagSet) cmdflag.Handler {
 	fs.BoolVar(&streamChecksum, "sc", false, "disable stream checksum")
 	var level int
 	fs.IntVar(&level, "l", 0, "compression level (0=fastest)")
+	var concurrency int
+	fs.IntVar(&concurrency, "c", -1, "concurrency (default=all CPUs")
 
 	return func(args ...string) (int, error) {
 		sz, err := bytefmt.ToBytes(blockMaxSize)
@@ -37,6 +39,7 @@ func Compress(fs *flag.FlagSet) cmdflag.Handler {
 			NoChecksum:       streamChecksum,
 			CompressionLevel: level,
 		}
+		zw.WithConcurrency(concurrency)
 
 		// Use stdin/stdout if no file provided.
 		if len(args) == 0 {

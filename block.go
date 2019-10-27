@@ -40,19 +40,22 @@ func UncompressBlock(src, dst []byte) (int, error) {
 // The size of the compressed data is returned. If it is 0 and no error, then the data is incompressible.
 //
 // An error is returned if the destination buffer is too small.
-func CompressBlock(src, dst []byte, hashTable []int) (di int, err error) {
+func CompressBlock(src, dst []byte, hashTable []int) (_ int, err error) {
+	if len(hashTable) < htSize {
+		return 0, fmt.Errorf("hash table too small, should be at least %d in size", htSize)
+	}
 	defer recoverBlock(&err)
+	return compressBlock(src, dst, hashTable), nil
+}
 
+func compressBlock(src, dst []byte, hashTable []int) int {
 	// adaptSkipLog sets how quickly the compressor begins skipping blocks when data is incompressible.
 	// This significantly speeds up incompressible data and usually has very small impact on compresssion.
 	// bytes to skip =  1 + (bytes since last match >> adaptSkipLog)
 	const adaptSkipLog = 7
 	sn, dn := len(src)-mfLimit, len(dst)
 	if sn <= 0 || dn == 0 {
-		return 0, nil
-	}
-	if len(hashTable) < htSize {
-		return 0, fmt.Errorf("hash table too small, should be at least %d in size", htSize)
+		return 0
 	}
 	// Prove to the compiler the table has at least htSize elements.
 	// The compiler can see that "uint32() >> hashShift" cannot be out of bounds.
@@ -60,7 +63,7 @@ func CompressBlock(src, dst []byte, hashTable []int) (di int, err error) {
 
 	// si: Current position of the search.
 	// anchor: Position of the current literals.
-	var si, anchor int
+	var si, di, anchor int
 
 	// Fast scan strategy: the hash table only stores the last 4 bytes sequences.
 	for si < sn {
@@ -186,7 +189,7 @@ func CompressBlock(src, dst []byte, hashTable []int) (di int, err error) {
 
 	if anchor == 0 {
 		// Incompressible.
-		return 0, nil
+		return 0
 	}
 
 	// Last literals.
@@ -207,10 +210,10 @@ func CompressBlock(src, dst []byte, hashTable []int) (di int, err error) {
 	// Write the last literals.
 	if di >= anchor {
 		// Incompressible.
-		return 0, nil
+		return 0
 	}
 	di += copy(dst[di:di+len(src)-anchor], src[anchor:])
-	return di, nil
+	return di
 }
 
 // blockHash hashes 4 bytes into a value < winSize.
@@ -227,9 +230,12 @@ func blockHashHC(x uint32) uint32 {
 // The size of the compressed data is returned. If it is 0 and no error, then the data is not compressible.
 //
 // An error is returned if the destination buffer is too small.
-func CompressBlockHC(src, dst []byte, depth int) (di int, err error) {
+func CompressBlockHC(src, dst []byte, depth int) (_ int, err error) {
 	defer recoverBlock(&err)
+	return compressBlockHC(src, dst, depth), nil
+}
 
+func compressBlockHC(src, dst []byte, depth int) int {
 	// adaptSkipLog sets how quickly the compressor begins skipping blocks when data is incompressible.
 	// This significantly speeds up incompressible data and usually has very small impact on compresssion.
 	// bytes to skip =  1 + (bytes since last match >> adaptSkipLog)
@@ -237,9 +243,9 @@ func CompressBlockHC(src, dst []byte, depth int) (di int, err error) {
 
 	sn, dn := len(src)-mfLimit, len(dst)
 	if sn <= 0 || dn == 0 {
-		return 0, nil
+		return 0
 	}
-	var si int
+	var si, di int
 
 	// hashTable: stores the last position found for a given hash
 	// chainTable: stores previous positions for a given hash
@@ -358,7 +364,7 @@ func CompressBlockHC(src, dst []byte, depth int) (di int, err error) {
 
 	if anchor == 0 {
 		// Incompressible.
-		return 0, nil
+		return 0
 	}
 
 	// Last literals.
@@ -380,8 +386,8 @@ func CompressBlockHC(src, dst []byte, depth int) (di int, err error) {
 	// Write the last literals.
 	if di >= anchor {
 		// Incompressible.
-		return 0, nil
+		return 0
 	}
 	di += copy(dst[di:di+len(src)-anchor], src[anchor:])
-	return di, nil
+	return di
 }

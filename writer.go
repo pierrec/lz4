@@ -40,6 +40,7 @@ type Writer struct {
 // It is ok to change it before the first Write but then not until a Reset() is performed.
 func NewWriter(dst io.Writer) *Writer {
 	z := new(Writer)
+	//z.WithConcurrency(4)
 	z.Reset(dst)
 	return z
 }
@@ -227,9 +228,9 @@ func (z *Writer) compressBlock(data []byte) error {
 		var zn int
 
 		if level := z.Header.CompressionLevel; level != 0 {
-			zn = compressBlockHC(data, zdata, level)
+			zn, _ = CompressBlockHC(data, zdata, level)
 		} else {
-			zn = compressBlock(data, zdata, z.hashtable[:])
+			zn, _ = CompressBlock(data, zdata, z.hashtable[:])
 		}
 
 		var bLen uint32
@@ -283,10 +284,10 @@ func (z *Writer) compressBlock(data []byte) error {
 		// The compressed block size cannot exceed the input's.
 		var zn int
 		if level := header.CompressionLevel; level != 0 {
-			zn = compressBlockHC(data, zdata, level)
+			zn, _ = CompressBlockHC(data, zdata, level)
 		} else {
 			var hashTable [winSize]int
-			zn = compressBlock(data, zdata, hashTable[:])
+			zn, _ = CompressBlock(data, zdata, hashTable[:])
 		}
 		var res zResult
 		if zn > 0 && zn < len(data) {
@@ -318,9 +319,14 @@ func (z *Writer) Flush() error {
 		return nil
 	}
 
+	// Disable concurrency for now.
+	c := z.c
+	z.c = nil
 	if err := z.compressBlock(z.data[:z.idx]); err != nil {
 		return err
 	}
+	z.c = c // Restore concurrency.
+
 	z.idx = 0
 	return nil
 }
@@ -382,6 +388,7 @@ func (z *Writer) Reset(w io.Writer) {
 	z.dst = w
 	z.checksum.Reset()
 	z.idx = 0
+	z.err = nil
 	z.WithConcurrency(n)
 }
 

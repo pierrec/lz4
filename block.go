@@ -45,17 +45,14 @@ func CompressBlock(src, dst []byte, hashTable []int) (_ int, err error) {
 		return 0, fmt.Errorf("hash table too small, should be at least %d in size", htSize)
 	}
 	defer recoverBlock(&err)
-	return compressBlock(src, dst, hashTable), nil
-}
 
-func compressBlock(src, dst []byte, hashTable []int) int {
 	// adaptSkipLog sets how quickly the compressor begins skipping blocks when data is incompressible.
 	// This significantly speeds up incompressible data and usually has very small impact on compresssion.
 	// bytes to skip =  1 + (bytes since last match >> adaptSkipLog)
 	const adaptSkipLog = 7
 	sn, dn := len(src)-mfLimit, len(dst)
 	if sn <= 0 || dn == 0 {
-		return 0
+		return 0, nil
 	}
 	// Prove to the compiler the table has at least htSize elements.
 	// The compiler can see that "uint32() >> hashShift" cannot be out of bounds.
@@ -189,7 +186,7 @@ func compressBlock(src, dst []byte, hashTable []int) int {
 
 	if anchor == 0 {
 		// Incompressible.
-		return 0
+		return 0, nil
 	}
 
 	// Last literals.
@@ -210,10 +207,10 @@ func compressBlock(src, dst []byte, hashTable []int) int {
 	// Write the last literals.
 	if di >= anchor {
 		// Incompressible.
-		return 0
+		return 0, nil
 	}
 	di += copy(dst[di:di+len(src)-anchor], src[anchor:])
-	return di
+	return di, nil
 }
 
 // blockHash hashes 4 bytes into a value < winSize.
@@ -232,10 +229,7 @@ func blockHashHC(x uint32) uint32 {
 // An error is returned if the destination buffer is too small.
 func CompressBlockHC(src, dst []byte, depth int) (_ int, err error) {
 	defer recoverBlock(&err)
-	return compressBlockHC(src, dst, depth), nil
-}
 
-func compressBlockHC(src, dst []byte, depth int) int {
 	// adaptSkipLog sets how quickly the compressor begins skipping blocks when data is incompressible.
 	// This significantly speeds up incompressible data and usually has very small impact on compresssion.
 	// bytes to skip =  1 + (bytes since last match >> adaptSkipLog)
@@ -243,7 +237,7 @@ func compressBlockHC(src, dst []byte, depth int) int {
 
 	sn, dn := len(src)-mfLimit, len(dst)
 	if sn <= 0 || dn == 0 {
-		return 0
+		return 0, nil
 	}
 	var si, di int
 
@@ -364,7 +358,7 @@ func compressBlockHC(src, dst []byte, depth int) int {
 
 	if anchor == 0 {
 		// Incompressible.
-		return 0
+		return 0, nil
 	}
 
 	// Last literals.
@@ -386,8 +380,8 @@ func compressBlockHC(src, dst []byte, depth int) int {
 	// Write the last literals.
 	if di >= anchor {
 		// Incompressible.
-		return 0
+		return 0, nil
 	}
 	di += copy(dst[di:di+len(src)-anchor], src[anchor:])
-	return di
+	return di, nil
 }

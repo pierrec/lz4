@@ -101,3 +101,7 @@ type Header struct {
 	CompressionLevel int    // Compression level (higher is better, use 0 for fastest compression).
 	done             bool   // Header processed flag (Read or Write and checked).
 }
+
+func (h *Header) Reset() {
+	h.done = false
+}

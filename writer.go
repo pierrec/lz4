@@ -384,7 +384,7 @@ func (z *Writer) Reset(w io.Writer) {
 	n := cap(z.c)
 	_ = z.close()
 	z.freeBuffers()
-	z.Header = Header{}
+	z.Header.Reset()
 	z.dst = w
 	z.checksum.Reset()
 	z.idx = 0

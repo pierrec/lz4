@@ -68,6 +68,12 @@ func newBufferPool(size int) *sync.Pool {
 	}
 }
 
+// getBuffer returns a buffer to its pool.
+func getBuffer(size int) []byte {
+	idx := blockSizeValueToIndex(size) - 4
+	return bsMapValue[idx].Get().([]byte)
+}
+
 // putBuffer returns a buffer to its pool.
 func putBuffer(size int, buf []byte) {
 	if cap(buf) > 0 {

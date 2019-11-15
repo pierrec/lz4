@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync/atomic"
 
 	"code.cloudfoundry.org/bytefmt"
 	"github.com/schollz/progressbar/v2"
@@ -65,7 +66,7 @@ func Compress(fs *flag.FlagSet) cmdflag.Handler {
 
 			// Accumulate compressed bytes num.
 			var (
-				zsize int
+				zsize int64
 				size  = finfo.Size()
 			)
 			if size > 0 {
@@ -80,7 +81,7 @@ func Compress(fs *flag.FlagSet) cmdflag.Handler {
 				)
 				zw.OnBlockDone = func(n int) {
 					_ = bar.Add(1)
-					zsize += n
+					atomic.AddInt64(&zsize, int64(n))
 				}
 			}
 

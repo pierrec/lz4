@@ -124,7 +124,7 @@ func CompressBlock(src, dst []byte, hashTable []int) (_ int, err error) {
 		si, mLen = si+mLen, si+minMatch
 
 		// Find the longest match by looking by batches of 8 bytes.
-		for si < sn {
+		for si+8 < sn {
 			x := binary.LittleEndian.Uint64(src[si:]) ^ binary.LittleEndian.Uint64(src[si-offset:])
 			if x == 0 {
 				si += 8

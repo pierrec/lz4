@@ -3,7 +3,7 @@ package lz4
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/pierrec/lz4/internal/xxh32"
+	"github.com/pierrec/lz4/v3/internal/xxh32"
 	"io"
 	"runtime"
 )

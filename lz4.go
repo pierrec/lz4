@@ -38,7 +38,7 @@ const (
 	hashLog = 16
 	htSize  = 1 << hashLog
 
-	mfLimit = 8 + minMatch // The last match cannot start within the last 12 bytes.
+	mfLimit = 10 + minMatch // The last match cannot start within the last 14 bytes.
 )
 
 // map the block max size id with its value in bytes: 64Kb, 256Kb, 1Mb and 4Mb.

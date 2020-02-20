@@ -47,7 +47,7 @@ func CompressBlock(src, dst []byte, hashTable []int) (_ int, err error) {
 	defer recoverBlock(&err)
 
 	// adaptSkipLog sets how quickly the compressor begins skipping blocks when data is incompressible.
-	// This significantly speeds up incompressible data and usually has very small impact on compresssion.
+	// This significantly speeds up incompressible data and usually has very small impact on compression.
 	// bytes to skip =  1 + (bytes since last match >> adaptSkipLog)
 	const adaptSkipLog = 7
 	sn, dn := len(src)-mfLimit, len(dst)
@@ -231,7 +231,7 @@ func CompressBlockHC(src, dst []byte, depth int) (_ int, err error) {
 	defer recoverBlock(&err)
 
 	// adaptSkipLog sets how quickly the compressor begins skipping blocks when data is incompressible.
-	// This significantly speeds up incompressible data and usually has very small impact on compresssion.
+	// This significantly speeds up incompressible data and usually has very small impact on compression.
 	// bytes to skip =  1 + (bytes since last match >> adaptSkipLog)
 	const adaptSkipLog = 7
 

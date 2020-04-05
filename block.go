@@ -2,8 +2,8 @@ package lz4
 
 import (
 	"encoding/binary"
-	"fmt"
 	"math/bits"
+	"sync"
 )
 
 // blockHash hashes the lower 6 bytes into a value < htSize.
@@ -35,15 +35,15 @@ func UncompressBlock(src, dst []byte) (int, error) {
 
 // CompressBlock compresses the source buffer into the destination one.
 // This is the fast version of LZ4 compression and also the default one.
-// The size of hashTable must be at least 1<<16.
+//
+// The argument hashTable is scratch space for a hash table used by the
+// compressor. It provided, it should have length at least 1<<16. If it is
+// shorter (or nil), CompressBlock allocates its own hash table.
 //
 // The size of the compressed data is returned. If it is 0 and no error, then the data is incompressible.
 //
 // An error is returned if the destination buffer is too small.
 func CompressBlock(src, dst []byte, hashTable []int) (_ int, err error) {
-	if len(hashTable) < htSize {
-		return 0, fmt.Errorf("hash table too small, should be at least %d in size", htSize)
-	}
 	defer recoverBlock(&err)
 
 	// adaptSkipLog sets how quickly the compressor begins skipping blocks when data is incompressible.
@@ -53,6 +53,12 @@ func CompressBlock(src, dst []byte, hashTable []int) (_ int, err error) {
 	sn, dn := len(src)-mfLimit, len(dst)
 	if sn <= 0 || dn == 0 {
 		return 0, nil
+	}
+
+	if len(hashTable) < htSize {
+		htIface := htPool.Get()
+		defer htPool.Put(htIface)
+		hashTable = (*(htIface).(*[htSize]int))[:]
 	}
 	// Prove to the compiler the table has at least htSize elements.
 	// The compiler can see that "uint32() >> hashShift" cannot be out of bounds.
@@ -211,6 +217,13 @@ func CompressBlock(src, dst []byte, hashTable []int) (_ int, err error) {
 	}
 	di += copy(dst[di:di+len(src)-anchor], src[anchor:])
 	return di, nil
+}
+
+// Pool of hash tables for CompressBlock.
+var htPool = sync.Pool{
+	New: func() interface{} {
+		return new([htSize]int)
+	},
 }
 
 // blockHash hashes 4 bytes into a value < winSize.

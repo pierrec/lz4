@@ -35,7 +35,7 @@ func UncompressBlock(src, dst []byte) (int, error) {
 
 // CompressBlock compresses the source buffer into the destination one.
 // This is the fast version of LZ4 compression and also the default one.
-// The size of hashTable must be at least 64Kb.
+// The size of hashTable must be at least 1<<16.
 //
 // The size of the compressed data is returned. If it is 0 and no error, then the data is incompressible.
 //

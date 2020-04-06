@@ -98,7 +98,7 @@ func blockSizeValueToIndex(size int) byte {
 // (http://fastcompression.blogspot.com/2013/04/lz4-streaming-format-final.html).
 //
 // NB. in a Reader, in case of concatenated frames, the Header values may change between Read() calls.
-// It is the caller responsibility to check them if necessary.
+// It is the caller's responsibility to check them if necessary.
 type Header struct {
 	BlockChecksum    bool   // Compressed blocks checksum flag.
 	NoChecksum       bool   // Frame checksum flag.

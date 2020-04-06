@@ -37,7 +37,7 @@ func UncompressBlock(src, dst []byte) (int, error) {
 // This is the fast version of LZ4 compression and also the default one.
 //
 // The argument hashTable is scratch space for a hash table used by the
-// compressor. It provided, it should have length at least 1<<16. If it is
+// compressor. If provided, it should have length at least 1<<16. If it is
 // shorter (or nil), CompressBlock allocates its own hash table.
 //
 // The size of the compressed data is returned. If it is 0 and no error, then the data is incompressible.

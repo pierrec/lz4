@@ -10,19 +10,17 @@ import (
 )
 
 func BenchmarkCompress(b *testing.B) {
-	var hashTable [htSize]int
 	buf := make([]byte, len(pg1661))
 
 	b.ReportAllocs()
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		_, _ = lz4.CompressBlock(pg1661, buf, hashTable[:])
+		_, _ = lz4.CompressBlock(pg1661, buf, nil)
 	}
 }
 
 func BenchmarkCompressRandom(b *testing.B) {
-	var hashTable [htSize]int
 	buf := make([]byte, len(randomLZ4))
 
 	b.ReportAllocs()
@@ -30,7 +28,7 @@ func BenchmarkCompressRandom(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		_, _ = lz4.CompressBlock(random, buf, hashTable[:])
+		_, _ = lz4.CompressBlock(random, buf, nil)
 	}
 }
 

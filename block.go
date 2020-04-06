@@ -2,8 +2,8 @@ package lz4
 
 import (
 	"encoding/binary"
-	"fmt"
 	"math/bits"
+	"sync"
 )
 
 // blockHash hashes the lower 6 bytes into a value < htSize.
@@ -35,24 +35,30 @@ func UncompressBlock(src, dst []byte) (int, error) {
 
 // CompressBlock compresses the source buffer into the destination one.
 // This is the fast version of LZ4 compression and also the default one.
-// The size of hashTable must be at least 64Kb.
+//
+// The argument hashTable is scratch space for a hash table used by the
+// compressor. If provided, it should have length at least 1<<16. If it is
+// shorter (or nil), CompressBlock allocates its own hash table.
 //
 // The size of the compressed data is returned. If it is 0 and no error, then the data is incompressible.
 //
 // An error is returned if the destination buffer is too small.
 func CompressBlock(src, dst []byte, hashTable []int) (_ int, err error) {
-	if len(hashTable) < htSize {
-		return 0, fmt.Errorf("hash table too small, should be at least %d in size", htSize)
-	}
 	defer recoverBlock(&err)
 
 	// adaptSkipLog sets how quickly the compressor begins skipping blocks when data is incompressible.
-	// This significantly speeds up incompressible data and usually has very small impact on compresssion.
+	// This significantly speeds up incompressible data and usually has very small impact on compression.
 	// bytes to skip =  1 + (bytes since last match >> adaptSkipLog)
 	const adaptSkipLog = 7
 	sn, dn := len(src)-mfLimit, len(dst)
 	if sn <= 0 || dn == 0 {
 		return 0, nil
+	}
+
+	if len(hashTable) < htSize {
+		htIface := htPool.Get()
+		defer htPool.Put(htIface)
+		hashTable = (*(htIface).(*[htSize]int))[:]
 	}
 	// Prove to the compiler the table has at least htSize elements.
 	// The compiler can see that "uint32() >> hashShift" cannot be out of bounds.
@@ -213,6 +219,13 @@ func CompressBlock(src, dst []byte, hashTable []int) (_ int, err error) {
 	return di, nil
 }
 
+// Pool of hash tables for CompressBlock.
+var htPool = sync.Pool{
+	New: func() interface{} {
+		return new([htSize]int)
+	},
+}
+
 // blockHash hashes 4 bytes into a value < winSize.
 func blockHashHC(x uint32) uint32 {
 	const hasher uint32 = 2654435761 // Knuth multiplicative hash.
@@ -231,7 +244,7 @@ func CompressBlockHC(src, dst []byte, depth int) (_ int, err error) {
 	defer recoverBlock(&err)
 
 	// adaptSkipLog sets how quickly the compressor begins skipping blocks when data is incompressible.
-	// This significantly speeds up incompressible data and usually has very small impact on compresssion.
+	// This significantly speeds up incompressible data and usually has very small impact on compression.
 	// bytes to skip =  1 + (bytes since last match >> adaptSkipLog)
 	const adaptSkipLog = 7
 

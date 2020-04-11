@@ -151,3 +151,35 @@ func TestIssue51(t *testing.T) {
 		t.Fatal("processed data does not match input")
 	}
 }
+
+func TestIssue71(t *testing.T) {
+	for _, tc := range []string{
+		"abc",               // < mfLimit
+		"abcdefghijklmnopq", // > mfLimit
+	} {
+		t.Run(tc, func(t *testing.T) {
+			src := []byte(tc)
+			bound := lz4.CompressBlockBound(len(tc))
+
+			// Small buffer.
+			zSmall := make([]byte, bound-1)
+			n, err := lz4.CompressBlock(src, zSmall, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if n != 0 {
+				t.Fatal("should be incompressible")
+			}
+
+			// Large enough buffer.
+			zLarge := make([]byte, bound)
+			n, err = lz4.CompressBlock(src, zLarge, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if n == 0 {
+				t.Fatal("should be compressible")
+			}
+		})
+	}
+}

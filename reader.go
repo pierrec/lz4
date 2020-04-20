@@ -21,12 +21,30 @@ func NewReader(r io.Reader) *Reader {
 }
 
 type Reader struct {
-	state _State
-	buf   [11]byte  // frame descriptor needs at most 2+8+1=11 bytes
-	src   io.Reader // source reader
-	frame Frame     // frame being read
-	data  []byte    // pending data
-	idx   int       // size of pending data
+	state   _State
+	buf     [11]byte  // frame descriptor needs at most 2+8+1=11 bytes
+	src     io.Reader // source reader
+	frame   Frame     // frame being read
+	data    []byte    // pending data
+	idx     int       // size of pending data
+	handler func(int)
+}
+
+func (r *Reader) Apply(options ...Option) (err error) {
+	defer r.state.check(&err)
+	switch r.state.state {
+	case newState:
+	case errorState:
+		return r.state.err
+	default:
+		return ErrCannotApplyOptions
+	}
+	for _, o := range options {
+		if err = o(r, nil); err != nil {
+			return
+		}
+	}
+	return
 }
 
 // Size returns the size of the underlying uncompressed data, if set in the stream.

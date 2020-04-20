@@ -86,7 +86,7 @@ func Compress(fs *flag.FlagSet) cmdflag.Handler {
 			}
 
 			// Output file.
-			zfilename := fmt.Sprintf("%s%s", filename, lz4.Extension)
+			zfilename := fmt.Sprintf("%s%s", filename, lz4Extension)
 			zfile, err := os.OpenFile(zfilename, os.O_CREATE|os.O_WRONLY, mode)
 			if err != nil {
 				return fidx, err

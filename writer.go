@@ -15,22 +15,23 @@ var writerStates = []aState{
 func NewWriter(w io.Writer) *Writer {
 	zw := new(Writer)
 	zw.state.init(writerStates)
-	_ = defaultBlockSizeOption(zw)
-	_ = defaultChecksumOption(zw)
-	_ = defaultConcurrency(zw)
+	_ = defaultBlockSizeOption(nil, zw)
+	_ = defaultChecksumOption(nil, zw)
+	_ = defaultConcurrency(nil, zw)
 	return zw.Reset(w)
 }
 
 type Writer struct {
-	state _State
-	buf   [11]byte         // frame descriptor needs at most 4+8+1=11 bytes
-	src   io.Writer        // destination writer
-	level CompressionLevel // how hard to try
-	num   int              // concurrency level
-	frame Frame            // frame being built
-	ht    []int            // hash table (set if no concurrency)
-	data  []byte           // pending data
-	idx   int              // size of pending data
+	state   _State
+	buf     [11]byte         // frame descriptor needs at most 4+8+1=11 bytes
+	src     io.Writer        // destination writer
+	level   CompressionLevel // how hard to try
+	num     int              // concurrency level
+	frame   Frame            // frame being built
+	ht      []int            // hash table (set if no concurrency)
+	data    []byte           // pending data
+	idx     int              // size of pending data
+	handler func(int)
 }
 
 func (w *Writer) Apply(options ...Option) (err error) {
@@ -43,8 +44,8 @@ func (w *Writer) Apply(options ...Option) (err error) {
 		return ErrCannotApplyOptions
 	}
 	for _, o := range options {
-		if err := o(w); err != nil {
-			return err
+		if err = o(nil, w); err != nil {
+			return
 		}
 	}
 	return

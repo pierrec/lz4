@@ -38,7 +38,7 @@ func Uncompress(_ *flag.FlagSet) cmdflag.Handler {
 			mode := zinfo.Mode() // use the same mode for the output file
 
 			// Output file.
-			filename := strings.TrimSuffix(zfilename, lz4.Extension)
+			filename := strings.TrimSuffix(zfilename, lz4Extension)
 			file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, mode)
 			if err != nil {
 				return fidx, err

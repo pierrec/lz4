@@ -7,6 +7,8 @@ import (
 	"github.com/pierrec/cmdflag"
 )
 
+const lz4Extension = ".lz4"
+
 func main() {
 	flag.CommandLine.Bool(cmdflag.VersionBoolFlag, false, "print the program version")
 

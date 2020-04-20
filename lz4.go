@@ -48,4 +48,8 @@ const (
 	ErrInvalidCompressionLevel _error = "lz4: invalid compression level"
 	// ErrCannotApplyOptions
 	ErrCannotApplyOptions _error = "lz4: cannot apply options"
+	// ErrInvalidBlockSize
+	ErrInvalidBlockSize _error = "lz4: invalid block size"
+	// ErrOptionNotApplicable
+	ErrOptionNotApplicable _error = "lz4: option not applicable"
 )

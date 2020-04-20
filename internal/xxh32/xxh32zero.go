@@ -51,7 +51,7 @@ func (xxh *XXHZero) Size() int {
 	return 4
 }
 
-// BlockSize gives the minimum number of bytes accepted by Write().
+// BlockSizeIndex gives the minimum number of bytes accepted by Write().
 func (xxh *XXHZero) BlockSize() int {
 	return 1
 }
@@ -172,6 +172,29 @@ func ChecksumZero(input []byte) uint32 {
 		h32 = rol11(h32) * prime1
 		p++
 	}
+
+	h32 ^= h32 >> 15
+	h32 *= prime2
+	h32 ^= h32 >> 13
+	h32 *= prime3
+	h32 ^= h32 >> 16
+
+	return h32
+}
+
+// ChecksumZero10 processes an 10 bytes input.
+func ChecksumZero10(x uint16, y uint64) uint32 {
+	h32 := 10 + prime5
+
+	h32 += (uint32(x)<<16 | uint32(y>>48)) * prime3
+	h32 = rol17(h32) * prime4
+	h32 += uint32(y>>16) * prime3
+	h32 = rol17(h32) * prime4
+
+	h32 += uint32(y>>8) & 0xFF * prime5
+	h32 = rol11(h32) * prime1
+	h32 += uint32(y) & 0xFF * prime5
+	h32 = rol11(h32) * prime1
 
 	h32 ^= h32 >> 15
 	h32 *= prime2

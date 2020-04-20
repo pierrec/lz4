@@ -6,6 +6,15 @@ import (
 	"sync"
 )
 
+// Pool of hash tables for CompressBlock.
+var htPool = sync.Pool{New: func() interface{} { return make([]int, htSize) }}
+
+func recoverBlock(e *error) {
+	if r := recover(); r != nil && *e == nil {
+		*e = ErrInvalidSourceShortBuffer
+	}
+}
+
 // blockHash hashes the lower 6 bytes into a value < htSize.
 func blockHash(x uint64) uint32 {
 	const prime6bytes = 227718039650203
@@ -56,14 +65,13 @@ func CompressBlock(src, dst []byte, hashTable []int) (_ int, err error) {
 	// This significantly speeds up incompressible data and usually has very small impact on compression.
 	// bytes to skip =  1 + (bytes since last match >> adaptSkipLog)
 	const adaptSkipLog = 7
-	if len(hashTable) < htSize {
-		htIface := htPool.Get()
-		defer htPool.Put(htIface)
-		hashTable = (*(htIface).(*[htSize]int))[:]
+	if cap(hashTable) < htSize {
+		hashTable = htPool.Get().([]int)
+		defer htPool.Put(hashTable)
+	} else {
+		hashTable = hashTable[:htSize]
 	}
-	// Prove to the compiler the table has at least htSize elements.
-	// The compiler can see that "uint32() >> hashShift" cannot be out of bounds.
-	hashTable = hashTable[:htSize]
+	_ = hashTable[htSize-1]
 
 	// si: Current position of the search.
 	// anchor: Position of the current literals.
@@ -225,13 +233,6 @@ lastLiterals:
 	return di, nil
 }
 
-// Pool of hash tables for CompressBlock.
-var htPool = sync.Pool{
-	New: func() interface{} {
-		return new([htSize]int)
-	},
-}
-
 // blockHash hashes 4 bytes into a value < winSize.
 func blockHashHC(x uint32) uint32 {
 	const hasher uint32 = 2654435761 // Knuth multiplicative hash.
@@ -249,7 +250,7 @@ func blockHashHC(x uint32) uint32 {
 // the compressed size is 0 and no error, then the data is incompressible.
 //
 // An error is returned if the destination buffer is too small.
-func CompressBlockHC(src, dst []byte, depth int) (_ int, err error) {
+func CompressBlockHC(src, dst []byte, depth CompressionLevel, hashTable []int) (_ int, err error) {
 	defer recoverBlock(&err)
 
 	// Return 0, nil only if the destination buffer size is < CompressBlockBound.
@@ -264,7 +265,16 @@ func CompressBlockHC(src, dst []byte, depth int) (_ int, err error) {
 
 	// hashTable: stores the last position found for a given hash
 	// chainTable: stores previous positions for a given hash
-	var hashTable, chainTable [winSize]int
+	if cap(hashTable) < htSize {
+		hashTable = htPool.Get().([]int)
+		defer htPool.Put(hashTable)
+	} else {
+		hashTable = hashTable[:htSize]
+	}
+	_ = hashTable[htSize-1]
+	chainTable := htPool.Get().([]int)
+	defer htPool.Put(chainTable)
+	_ = chainTable[htSize-1]
 
 	if depth <= 0 {
 		depth = winSize

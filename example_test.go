@@ -16,7 +16,7 @@ func Example() {
 
 	// The pipe will uncompress the data from the writer.
 	pr, pw := io.Pipe()
-	zw := lz4.NewWriter(pw)
+	zw, _ := lz4.NewWriter(pw)
 	zr := lz4.NewReader(pr)
 
 	go func() {
@@ -36,9 +36,8 @@ func ExampleCompressBlock() {
 	s := "hello world"
 	data := []byte(strings.Repeat(s, 100))
 	buf := make([]byte, len(data))
-	ht := make([]int, 64<<10) // buffer for the compression table
 
-	n, err := lz4.CompressBlock(data, buf, ht)
+	n, err := lz4.CompressBlock(data, buf, nil)
 	if err != nil {
 		fmt.Println(err)
 	}

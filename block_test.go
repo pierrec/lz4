@@ -111,7 +111,7 @@ func TestCompressUncompressBlock(t *testing.T) {
 			t.Run(fmt.Sprintf("%s HC", tc.file), func(t *testing.T) {
 				// t.Parallel()
 				nhc = run(t, tc, func(src, dst []byte) (int, error) {
-					return lz4.CompressBlockHC(src, dst, -1)
+					return lz4.CompressBlockHC(src, dst, 16, nil)
 				})
 			})
 		})
@@ -153,7 +153,7 @@ func TestCompressCornerCase_CopyDstUpperBound(t *testing.T) {
 	t.Run(fmt.Sprintf("%s HC", file), func(t *testing.T) {
 		t.Parallel()
 		run(src, func(src, dst []byte) (int, error) {
-			return lz4.CompressBlockHC(src, dst, -1)
+			return lz4.CompressBlockHC(src, dst, 16, nil)
 		})
 	})
 }

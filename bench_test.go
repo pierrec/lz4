@@ -39,7 +39,7 @@ func BenchmarkCompressHC(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		_, _ = lz4.CompressBlockHC(pg1661, buf, 16)
+		_, _ = lz4.CompressBlockHC(pg1661, buf, 16, nil)
 	}
 }
 
@@ -128,7 +128,7 @@ func BenchmarkSkipBytesRand(b *testing.B)   { benchmarkSkipBytes(b, randomLZ4) }
 
 func benchmarkCompress(b *testing.B, uncompressed []byte) {
 	w := bytes.NewBuffer(nil)
-	zw := lz4.NewWriter(w)
+	zw, _ := lz4.NewWriter(w)
 	r := bytes.NewReader(uncompressed)
 
 	// Determine the compressed size of testfile.
@@ -161,7 +161,7 @@ func BenchmarkCompressRand(b *testing.B)   { benchmarkCompress(b, random) }
 func BenchmarkWriterReset(b *testing.B) {
 	b.ReportAllocs()
 
-	zw := lz4.NewWriter(nil)
+	zw, _ := lz4.NewWriter(nil)
 	src := mustLoadFile("testdata/gettysburg.txt")
 	var buf bytes.Buffer
 

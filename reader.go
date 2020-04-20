@@ -17,6 +17,7 @@ var readerStates = []aState{
 func NewReader(r io.Reader) *Reader {
 	zr := new(Reader)
 	zr.state.init(readerStates)
+	_ = defaultOnBlockDone(zr, nil)
 	return zr.Reset(r)
 }
 
@@ -95,6 +96,7 @@ func (r *Reader) Read(buf []byte) (n int, err error) {
 		// Input buffer large enough and no pending data: uncompress directly into it.
 		switch bn, err = r.frame.Blocks.Block.uncompress(r, buf); err {
 		case nil:
+			r.handler(bn)
 			n += bn
 			buf = buf[bn:]
 		case io.EOF:
@@ -110,12 +112,14 @@ func (r *Reader) Read(buf []byte) (n int, err error) {
 	// Read the next block.
 	switch bn, err = r.frame.Blocks.Block.uncompress(r, r.data); err {
 	case nil:
+		r.handler(bn)
 		n += bn
 	case io.EOF:
 		goto close
 	}
 	return
 close:
+	r.handler(bn)
 	n += bn
 	err = r.frame.closeR(r)
 	r.frame.Descriptor.Flags.BlockSizeIndex().put(r.data)

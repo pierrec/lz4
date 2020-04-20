@@ -16,6 +16,7 @@ var (
 	defaultBlockSizeOption = BlockSizeOption(Block4Mb)
 	defaultChecksumOption  = ChecksumOption(true)
 	defaultConcurrency     = ConcurrencyOption(1)
+	defaultOnBlockDone     = OnBlockDoneOption(nil)
 )
 
 const (
@@ -182,8 +183,13 @@ func CompressionLevelOption(level CompressionLevel) Option {
 	}
 }
 
+func onBlockDone(int) {}
+
 // OnBlockDoneOption is triggered
 func OnBlockDoneOption(handler func(size int)) Option {
+	if handler == nil {
+		handler = onBlockDone
+	}
 	return func(r *Reader, w *Writer) error {
 		if r != nil {
 			r.handler = handler

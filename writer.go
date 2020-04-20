@@ -18,6 +18,7 @@ func NewWriter(w io.Writer) *Writer {
 	_ = defaultBlockSizeOption(nil, zw)
 	_ = defaultChecksumOption(nil, zw)
 	_ = defaultConcurrency(nil, zw)
+	_ = defaultOnBlockDone(nil, zw)
 	return zw.Reset(w)
 }
 
@@ -102,12 +103,14 @@ func (w *Writer) Write(buf []byte) (n int, err error) {
 
 func (w *Writer) write() error {
 	if w.isNotConcurrent() {
+		defer w.handler(len(w.data))
 		return w.frame.Blocks.Block.compress(w, w.data, w.ht).write(w)
 	}
 	size := w.frame.Descriptor.Flags.BlockSizeIndex()
 	c := make(chan *FrameDataBlock)
 	w.frame.Blocks.Blocks <- c
 	go func(c chan *FrameDataBlock, data []byte, size BlockSizeIndex) {
+		defer w.handler(len(data))
 		b := newFrameDataBlock(size)
 		zdata := b.Data
 		c <- b.compress(w, data, nil)

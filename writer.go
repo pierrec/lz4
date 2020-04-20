@@ -12,18 +12,16 @@ var writerStates = []aState{
 }
 
 // NewWriter returns a new LZ4 frame encoder.
-func NewWriter(w io.Writer, options ...Option) (io.WriteCloser, error) {
-	zw := new(_Writer)
+func NewWriter(w io.Writer) *Writer {
+	zw := new(Writer)
+	zw.state.init(writerStates)
 	_ = defaultBlockSizeOption(zw)
 	_ = defaultChecksumOption(zw)
 	_ = defaultConcurrency(zw)
-	if err := zw.Reset(w, options...); err != nil {
-		return nil, err
-	}
-	return zw, nil
+	return zw.Reset(w)
 }
 
-type _Writer struct {
+type Writer struct {
 	state _State
 	buf   [11]byte         // frame descriptor needs at most 4+8+1=11 bytes
 	src   io.Writer        // destination writer
@@ -35,11 +33,28 @@ type _Writer struct {
 	idx   int              // size of pending data
 }
 
-func (w *_Writer) isNotConcurrent() bool {
+func (w *Writer) Apply(options ...Option) (err error) {
+	defer w.state.check(&err)
+	switch w.state.state {
+	case newState:
+	case errorState:
+		return w.state.err
+	default:
+		return ErrCannotApplyOptions
+	}
+	for _, o := range options {
+		if err := o(w); err != nil {
+			return err
+		}
+	}
+	return
+}
+
+func (w *Writer) isNotConcurrent() bool {
 	return w.num == 1
 }
 
-func (w *_Writer) Write(buf []byte) (n int, err error) {
+func (w *Writer) Write(buf []byte) (n int, err error) {
 	defer w.state.check(&err)
 	switch w.state.state {
 	case closedState, errorState:
@@ -84,7 +99,7 @@ func (w *_Writer) Write(buf []byte) (n int, err error) {
 	return
 }
 
-func (w *_Writer) write() error {
+func (w *Writer) write() error {
 	if w.isNotConcurrent() {
 		return w.frame.Blocks.Block.compress(w, w.data, w.ht).write(w)
 	}
@@ -116,7 +131,7 @@ func (w *_Writer) write() error {
 
 // Close closes the Writer, flushing any unwritten data to the underlying io.Writer,
 // but does not close the underlying io.Writer.
-func (w *_Writer) Close() error {
+func (w *Writer) Close() error {
 	switch w.state.state {
 	case writeState:
 	case errorState:
@@ -149,16 +164,9 @@ func (w *_Writer) Close() error {
 // No access to writer is performed.
 //
 // w.Close must be called before Reset.
-func (w *_Writer) Reset(writer io.Writer, options ...Option) (err error) {
-	for _, o := range options {
-		if err = o(w); err != nil {
-			break
-		}
-	}
+func (w *Writer) Reset(writer io.Writer) *Writer {
 	w.state.state = noState
-	if w.state.next(err) {
-		return
-	}
+	w.state.next(nil)
 	w.src = writer
 	w.frame.initW(w)
 	size := w.frame.Descriptor.Flags.BlockSizeIndex()
@@ -167,5 +175,5 @@ func (w *_Writer) Reset(writer io.Writer, options ...Option) (err error) {
 	if w.isNotConcurrent() {
 		w.ht = htPool.Get().([]int)
 	}
-	return nil
+	return w
 }

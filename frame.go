@@ -19,14 +19,14 @@ type Frame struct {
 	checksum   xxh32.XXHZero
 }
 
-func (f *Frame) initW(w *_Writer) {
+func (f *Frame) initW(w *Writer) {
 	f.Magic = frameMagic
 	f.Descriptor.initW(w)
 	f.Blocks.initW(w)
 	f.checksum.Reset()
 }
 
-func (f *Frame) closeW(w *_Writer) error {
+func (f *Frame) closeW(w *Writer) error {
 	if err := f.Blocks.closeW(w); err != nil {
 		return err
 	}
@@ -40,7 +40,7 @@ func (f *Frame) closeW(w *_Writer) error {
 	return err
 }
 
-func (f *Frame) initR(r *_Reader) error {
+func (f *Frame) initR(r *Reader) error {
 	if f.Magic > 0 {
 		// Header already read.
 		return nil
@@ -72,7 +72,7 @@ newFrame:
 	return nil
 }
 
-func (f *Frame) closeR(r *_Reader) error {
+func (f *Frame) closeR(r *Reader) error {
 	f.Magic = 0
 	if !f.Descriptor.Flags.ContentChecksum() {
 		return nil
@@ -92,28 +92,27 @@ type FrameDescriptor struct {
 	Checksum    uint8
 }
 
-func (fd *FrameDescriptor) initW(_ *_Writer) {
+func (fd *FrameDescriptor) initW(_ *Writer) {
 	fd.Flags.VersionSet(1)
 	fd.Flags.BlockIndependenceSet(false)
 }
 
-func (fd *FrameDescriptor) write(w *_Writer) error {
+func (fd *FrameDescriptor) write(w *Writer) error {
 	if fd.Checksum > 0 {
 		// Header already written.
 		return nil
 	}
 
-	buf := w.buf[:]
+	buf := w.buf[:2]
 	binary.LittleEndian.PutUint16(buf, uint16(fd.Flags))
 
 	var checksum uint32
 	if fd.Flags.Size() {
-		checksum = xxh32.ChecksumZero10(uint16(fd.Flags), fd.ContentSize)
-		binary.LittleEndian.PutUint64(buf[2:], fd.ContentSize)
 		buf = buf[:10]
+		binary.LittleEndian.PutUint64(buf[2:], fd.ContentSize)
+		checksum = xxh32.ChecksumZero(buf)
 	} else {
-		checksum = xxh32.Uint32Zero(uint32(fd.Flags))
-		buf = buf[:2]
+		checksum = xxh32.ChecksumZero(buf)
 	}
 	fd.Checksum = byte(checksum >> 8)
 	buf = append(buf, fd.Checksum)
@@ -122,34 +121,34 @@ func (fd *FrameDescriptor) write(w *_Writer) error {
 	return err
 }
 
-func (fd *FrameDescriptor) initR(r *_Reader) error {
+func (fd *FrameDescriptor) initR(r *Reader) error {
 	buf := r.buf[:2]
 	if _, err := io.ReadFull(r.src, buf); err != nil {
 		return err
 	}
-	descr := binary.LittleEndian.Uint64(buf)
+	descr := binary.LittleEndian.Uint16(buf)
 	fd.Flags = DescriptorFlags(descr)
 
 	var checksum uint32
 	if fd.Flags.Size() {
-		buf = buf[:9]
-		if _, err := io.ReadFull(r.src, buf); err != nil {
+		buf = buf[:11]
+		if _, err := io.ReadFull(r.src, buf[2:]); err != nil {
 			return err
 		}
 		fd.ContentSize = binary.LittleEndian.Uint64(buf)
-		checksum = xxh32.ChecksumZero10(uint16(fd.Flags), fd.ContentSize)
+		checksum = xxh32.ChecksumZero(buf)
 	} else {
-		buf = buf[:1]
+		buf = buf[:3]
 		var err error
 		if br, ok := r.src.(io.ByteReader); ok {
-			buf[0], err = br.ReadByte()
+			buf[2], err = br.ReadByte()
 		} else {
-			_, err = io.ReadFull(r.src, buf)
+			_, err = io.ReadFull(r.src, buf[2:])
 		}
 		if err != nil {
 			return err
 		}
-		checksum = xxh32.Uint32Zero(uint32(fd.Flags))
+		checksum = xxh32.ChecksumZero(buf)
 	}
 	fd.Checksum = buf[len(buf)-1]
 	if c := byte(checksum >> 8); fd.Checksum != c {
@@ -165,7 +164,7 @@ type Blocks struct {
 	err    error
 }
 
-func (b *Blocks) initW(w *_Writer) {
+func (b *Blocks) initW(w *Writer) {
 	size := w.frame.Descriptor.Flags.BlockSizeIndex()
 	if w.isNotConcurrent() {
 		b.Blocks = nil
@@ -204,7 +203,7 @@ func (b *Blocks) initW(w *_Writer) {
 	}()
 }
 
-func (b *Blocks) closeW(w *_Writer) error {
+func (b *Blocks) closeW(w *Writer) error {
 	if w.isNotConcurrent() {
 		b.Block.closeW(w)
 		b.Block = nil
@@ -219,7 +218,7 @@ func (b *Blocks) closeW(w *_Writer) error {
 	return err
 }
 
-func (b *Blocks) initR(r *_Reader) {
+func (b *Blocks) initR(r *Reader) {
 	size := r.frame.Descriptor.Flags.BlockSizeIndex()
 	b.Block = newFrameDataBlock(size)
 }
@@ -234,13 +233,13 @@ type FrameDataBlock struct {
 	Checksum uint32
 }
 
-func (b *FrameDataBlock) closeW(w *_Writer) {
+func (b *FrameDataBlock) closeW(w *Writer) {
 	size := w.frame.Descriptor.Flags.BlockSizeIndex()
 	size.put(b.Data)
 }
 
 // Block compression errors are ignored since the buffer is sized appropriately.
-func (b *FrameDataBlock) compress(w *_Writer, src []byte, ht []int) *FrameDataBlock {
+func (b *FrameDataBlock) compress(w *Writer, src []byte, ht []int) *FrameDataBlock {
 	dst := b.Data
 	var n int
 	switch w.level {
@@ -268,7 +267,7 @@ func (b *FrameDataBlock) compress(w *_Writer, src []byte, ht []int) *FrameDataBl
 	return b
 }
 
-func (b *FrameDataBlock) write(w *_Writer) error {
+func (b *FrameDataBlock) write(w *Writer) error {
 	buf := w.buf[:]
 	out := w.src
 
@@ -289,7 +288,7 @@ func (b *FrameDataBlock) write(w *_Writer) error {
 	return err
 }
 
-func (b *FrameDataBlock) uncompress(r *_Reader, dst []byte) (int, error) {
+func (b *FrameDataBlock) uncompress(r *Reader, dst []byte) (int, error) {
 	var x uint32
 	if err := readUint32(r.src, r.buf[:], &x); err != nil {
 		return 0, err

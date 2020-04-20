@@ -50,7 +50,7 @@ func TestReader(t *testing.T) {
 			}
 
 			if got, want := int(n), len(raw); got != want {
-				t.Errorf("invalid sizes: got %d; want %d", got, want)
+				t.Errorf("invalid size: got %d; want %d", got, want)
 			}
 
 			if got, want := out.Bytes(), raw; !reflect.DeepEqual(got, want) {
@@ -76,6 +76,7 @@ func TestReader(t *testing.T) {
 			if !reflect.DeepEqual(out.Bytes(), raw[:10]) {
 				t.Fatal("partial read does not match original")
 			}
+			return
 
 			pos, err := zr.Seek(-1, io.SeekCurrent)
 			if err == nil {

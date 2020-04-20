@@ -182,41 +182,6 @@ func ChecksumZero(input []byte) uint32 {
 	return h32
 }
 
-// ChecksumZero10 processes an 10 bytes input.
-func ChecksumZero10(x uint16, y uint64) uint32 {
-	h32 := 10 + prime5
-
-	h32 += (uint32(x)<<16 | uint32(y>>48)) * prime3
-	h32 = rol17(h32) * prime4
-	h32 += uint32(y>>16) * prime3
-	h32 = rol17(h32) * prime4
-
-	h32 += uint32(y>>8) & 0xFF * prime5
-	h32 = rol11(h32) * prime1
-	h32 += uint32(y) & 0xFF * prime5
-	h32 = rol11(h32) * prime1
-
-	h32 ^= h32 >> 15
-	h32 *= prime2
-	h32 ^= h32 >> 13
-	h32 *= prime3
-	h32 ^= h32 >> 16
-
-	return h32
-}
-
-// Uint32Zero hashes x with seed 0.
-func Uint32Zero(x uint32) uint32 {
-	h := prime5 + 4 + x*prime3
-	h = rol17(h) * prime4
-	h ^= h >> 15
-	h *= prime2
-	h ^= h >> 13
-	h *= prime3
-	h ^= h >> 16
-	return h
-}
-
 func rol1(u uint32) uint32 {
 	return u<<1 | u>>31
 }

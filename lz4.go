@@ -5,8 +5,8 @@ const (
 	frameSkipMagic uint32 = 0x184D2A50
 
 	// The following constants are used to setup the compression algorithm.
-	minMatch   = 4           // the minimum size of the match sequence size (4 bytes)
-	winSizeLog = 16          // LZ4 64Kb window size limit
+	minMatch   = 4  // the minimum size of the match sequence size (4 bytes)
+	winSizeLog = 16 // LZ4 64Kb window size limit
 	winSize    = 1 << winSizeLog
 	winMask    = winSize - 1 // 64Kb window of previous data for dependent blocks
 
@@ -44,4 +44,8 @@ const (
 	ErrInvalidBlockChecksum _error = "lz4: invalid block checksum"
 	// ErrInvalidFrameChecksum
 	ErrInvalidFrameChecksum _error = "lz4: invalid frame checksum"
+	// ErrInvalidCompressionLevel
+	ErrInvalidCompressionLevel _error = "lz4: invalid compression level"
+	// ErrCannotApplyOptions
+	ErrCannotApplyOptions _error = "lz4: cannot apply options"
 )

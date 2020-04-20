@@ -16,7 +16,7 @@ func Example() {
 
 	// The pipe will uncompress the data from the writer.
 	pr, pw := io.Pipe()
-	zw, _ := lz4.NewWriter(pw)
+	zw := lz4.NewWriter(pw)
 	zr := lz4.NewReader(pr)
 
 	go func() {

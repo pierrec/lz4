@@ -14,15 +14,15 @@ var readerStates = []aState{
 }
 
 // NewReader returns a new LZ4 frame decoder.
-func NewReader(r io.Reader) io.Reader {
-	zr := &_Reader{src: r}
+func NewReader(r io.Reader) *Reader {
+	zr := new(Reader)
 	zr.state.init(readerStates)
-	return zr
+	return zr.Reset(r)
 }
 
-type _Reader struct {
+type Reader struct {
 	state _State
-	buf   [9]byte   // frame descriptor needs at most 8+1=9 bytes
+	buf   [11]byte  // frame descriptor needs at most 2+8+1=11 bytes
 	src   io.Reader // source reader
 	frame Frame     // frame being read
 	data  []byte    // pending data
@@ -30,7 +30,7 @@ type _Reader struct {
 }
 
 // Size returns the size of the underlying uncompressed data, if set in the stream.
-func (r *_Reader) Size() int {
+func (r *Reader) Size() int {
 	switch r.state.state {
 	case readState, closedState:
 		if r.frame.Descriptor.Flags.Size() {
@@ -40,7 +40,7 @@ func (r *_Reader) Size() int {
 	return 0
 }
 
-func (r *_Reader) Read(buf []byte) (n int, err error) {
+func (r *Reader) Read(buf []byte) (n int, err error) {
 	defer r.state.check(&err)
 	switch r.state.state {
 	case closedState, errorState:
@@ -105,7 +105,7 @@ close:
 	return
 }
 
-func (r *_Reader) reset(reader io.Reader) {
+func (r *Reader) reset(reader io.Reader) {
 	r.src = reader
 	r.data = nil
 	r.idx = 0
@@ -116,12 +116,13 @@ func (r *_Reader) reset(reader io.Reader) {
 // No access to reader is performed.
 //
 // w.Close must be called before Reset.
-func (r *_Reader) Reset(reader io.Reader) {
+func (r *Reader) Reset(reader io.Reader) *Reader {
 	r.reset(reader)
 	r.state.state = noState
 	r.state.next(nil)
+	return r
 }
 
-func (r *_Reader) Seek(offset int64, whence int) (int64, error) {
+func (r *Reader) Seek(offset int64, whence int) (int64, error) {
 	panic("TODO")
 }

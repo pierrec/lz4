@@ -27,10 +27,9 @@ type (
 	}
 )
 
-func (s *_State) init(states []aState) *_State {
+func (s *_State) init(states []aState) {
 	s.states = states
 	s.state = states[0]
-	return s
 }
 
 // next sets the state to the next one unless it is passed a non nil error.
@@ -51,7 +50,7 @@ func (s *_State) check(errp *error) {
 		return
 	}
 	if err := *errp; err != nil {
-		s.err = fmt.Errorf("%s: %w", s.state, err)
+		s.err = fmt.Errorf("%w[%s]", err, s.state)
 		if !errors.Is(err, io.EOF) {
 			s.state = errorState
 		}
@@ -60,6 +59,6 @@ func (s *_State) check(errp *error) {
 
 func (s *_State) fail() error {
 	s.state = errorState
-	s.err = fmt.Errorf("%w: next state for %q", ErrInternalUnhandledState, s.state)
+	s.err = fmt.Errorf("%w[%s]", ErrInternalUnhandledState, s.state)
 	return s.err
 }

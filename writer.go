@@ -15,10 +15,7 @@ var writerStates = []aState{
 func NewWriter(w io.Writer) *Writer {
 	zw := new(Writer)
 	zw.state.init(writerStates)
-	_ = defaultBlockSizeOption(nil, zw)
-	_ = defaultChecksumOption(nil, zw)
-	_ = defaultConcurrency(nil, zw)
-	_ = defaultOnBlockDone(nil, zw)
+	_ = zw.Apply(defaultBlockSizeOption, defaultChecksumOption, defaultConcurrency, defaultOnBlockDone)
 	return zw.Reset(w)
 }
 
@@ -35,6 +32,8 @@ type Writer struct {
 	handler func(int)
 }
 
+func (*Writer) private() {}
+
 func (w *Writer) Apply(options ...Option) (err error) {
 	defer w.state.check(&err)
 	switch w.state.state {
@@ -45,7 +44,7 @@ func (w *Writer) Apply(options ...Option) (err error) {
 		return ErrCannotApplyOptions
 	}
 	for _, o := range options {
-		if err = o(nil, w); err != nil {
+		if err = o(w); err != nil {
 			return
 		}
 	}

@@ -94,7 +94,7 @@ type FrameDescriptor struct {
 
 func (fd *FrameDescriptor) initW(_ *Writer) {
 	fd.Flags.VersionSet(1)
-	fd.Flags.BlockIndependenceSet(false)
+	fd.Flags.BlockIndependenceSet(true)
 }
 
 func (fd *FrameDescriptor) write(w *Writer) error {
@@ -106,15 +106,11 @@ func (fd *FrameDescriptor) write(w *Writer) error {
 	buf := w.buf[:2]
 	binary.LittleEndian.PutUint16(buf, uint16(fd.Flags))
 
-	var checksum uint32
 	if fd.Flags.Size() {
 		buf = buf[:10]
 		binary.LittleEndian.PutUint64(buf[2:], fd.ContentSize)
-		checksum = xxh32.ChecksumZero(buf)
-	} else {
-		checksum = xxh32.ChecksumZero(buf)
 	}
-	fd.Checksum = byte(checksum >> 8)
+	fd.Checksum = descriptorChecksum(buf)
 	buf = append(buf, fd.Checksum)
 
 	_, err := w.src.Write(buf)
@@ -122,40 +118,31 @@ func (fd *FrameDescriptor) write(w *Writer) error {
 }
 
 func (fd *FrameDescriptor) initR(r *Reader) error {
-	buf := r.buf[:2]
+	// Read the flags and the checksum, hoping that there is not content size.
+	buf := r.buf[:3]
 	if _, err := io.ReadFull(r.src, buf); err != nil {
 		return err
 	}
 	descr := binary.LittleEndian.Uint16(buf)
 	fd.Flags = DescriptorFlags(descr)
-
-	var checksum uint32
 	if fd.Flags.Size() {
+		// Append the 8 missing bytes.
 		buf = buf[:11]
-		if _, err := io.ReadFull(r.src, buf[2:]); err != nil {
+		if _, err := io.ReadFull(r.src, buf[3:]); err != nil {
 			return err
 		}
-		fd.ContentSize = binary.LittleEndian.Uint64(buf)
-		checksum = xxh32.ChecksumZero(buf)
-	} else {
-		buf = buf[:3]
-		var err error
-		if br, ok := r.src.(io.ByteReader); ok {
-			buf[2], err = br.ReadByte()
-		} else {
-			_, err = io.ReadFull(r.src, buf[2:])
-		}
-		if err != nil {
-			return err
-		}
-		checksum = xxh32.ChecksumZero(buf)
+		fd.ContentSize = binary.LittleEndian.Uint64(buf[2:])
 	}
-	fd.Checksum = buf[len(buf)-1]
-	if c := byte(checksum >> 8); fd.Checksum != c {
-		return fmt.Errorf("lz4: %w: got %x; expected %x", ErrInvalidHeaderChecksum, c, fd.Checksum)
+	fd.Checksum = buf[len(buf)-1] // the checksum is the last byte
+	buf = buf[:len(buf)-1]        // all descriptor fields except checksum
+	if c := descriptorChecksum(buf); fd.Checksum != c {
+		return fmt.Errorf("%w: got %x; expected %x", ErrInvalidHeaderChecksum, c, fd.Checksum)
 	}
-
 	return nil
+}
+
+func descriptorChecksum(buf []byte) byte {
+	return byte(xxh32.ChecksumZero(buf) >> 8)
 }
 
 type Blocks struct {
@@ -295,6 +282,7 @@ func (b *FrameDataBlock) uncompress(r *Reader, dst []byte) (int, error) {
 	}
 	b.Size = DataBlockSize(x)
 	if b.Size == 0 {
+		// End of frame reached.
 		return 0, io.EOF
 	}
 
@@ -321,7 +309,7 @@ func (b *FrameDataBlock) uncompress(r *Reader, dst []byte) (int, error) {
 			return 0, err
 		}
 		if c := xxh32.ChecksumZero(data); c != b.Checksum {
-			return 0, fmt.Errorf("lz4: %w: got %x; expected %x", ErrInvalidBlockChecksum, c, b.Checksum)
+			return 0, fmt.Errorf("%w: got %x; expected %x", ErrInvalidBlockChecksum, c, b.Checksum)
 		}
 	}
 	if r.frame.Descriptor.Flags.ContentChecksum() {

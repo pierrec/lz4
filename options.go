@@ -8,8 +8,14 @@ import (
 
 //go:generate go run golang.org/x/tools/cmd/stringer -type=BlockSize,CompressionLevel -output options_gen.go
 
-// Option defines the parameters to setup an LZ4 Writer or Reader.
-type Option func(*Reader, *Writer) error
+type (
+	Applier interface {
+		Apply(...Option) error
+		private()
+	}
+	// Option defines the parameters to setup an LZ4 Writer or Reader.
+	Option func(Applier) error
+)
 
 // Default options.
 var (
@@ -86,8 +92,9 @@ func (b BlockSizeIndex) put(buf []byte) {
 
 // BlockSizeOption defines the maximum size of compressed blocks (default=Block4Mb).
 func BlockSizeOption(size BlockSize) Option {
-	return func(r *Reader, w *Writer) error {
-		if r != nil {
+	return func(a Applier) error {
+		w, ok := a.(*Writer)
+		if !ok {
 			return ErrOptionNotApplicable
 		}
 		if !size.isValid() {
@@ -100,8 +107,9 @@ func BlockSizeOption(size BlockSize) Option {
 
 // BlockChecksumOption enables or disables block checksum (default=false).
 func BlockChecksumOption(flag bool) Option {
-	return func(r *Reader, w *Writer) error {
-		if r != nil {
+	return func(a Applier) error {
+		w, ok := a.(*Writer)
+		if !ok {
 			return ErrOptionNotApplicable
 		}
 		w.frame.Descriptor.Flags.BlockChecksumSet(flag)
@@ -111,8 +119,9 @@ func BlockChecksumOption(flag bool) Option {
 
 // ChecksumOption enables/disables all blocks checksum (default=true).
 func ChecksumOption(flag bool) Option {
-	return func(r *Reader, w *Writer) error {
-		if r != nil {
+	return func(a Applier) error {
+		w, ok := a.(*Writer)
+		if !ok {
 			return ErrOptionNotApplicable
 		}
 		w.frame.Descriptor.Flags.ContentChecksumSet(flag)
@@ -122,8 +131,9 @@ func ChecksumOption(flag bool) Option {
 
 // SizeOption sets the size of the original uncompressed data (default=0).
 func SizeOption(size uint64) Option {
-	return func(r *Reader, w *Writer) error {
-		if r != nil {
+	return func(a Applier) error {
+		w, ok := a.(*Writer)
+		if !ok {
 			return ErrOptionNotApplicable
 		}
 		w.frame.Descriptor.Flags.SizeSet(size > 0)
@@ -135,8 +145,9 @@ func SizeOption(size uint64) Option {
 // ConcurrencyOption sets the number of go routines used for compression.
 // If n<0, then the output of runtime.GOMAXPROCS(0) is used.
 func ConcurrencyOption(n int) Option {
-	return func(r *Reader, w *Writer) error {
-		if r != nil {
+	return func(a Applier) error {
+		w, ok := a.(*Writer)
+		if !ok {
 			return ErrOptionNotApplicable
 		}
 		switch n {
@@ -169,8 +180,9 @@ const (
 
 // CompressionLevelOption defines the compression level (default=Fast).
 func CompressionLevelOption(level CompressionLevel) Option {
-	return func(r *Reader, w *Writer) error {
-		if r != nil {
+	return func(a Applier) error {
+		w, ok := a.(*Writer)
+		if !ok {
 			return ErrOptionNotApplicable
 		}
 		switch level {
@@ -190,13 +202,15 @@ func OnBlockDoneOption(handler func(size int)) Option {
 	if handler == nil {
 		handler = onBlockDone
 	}
-	return func(r *Reader, w *Writer) error {
-		if r != nil {
+	return func(a Applier) error {
+		if r, ok := a.(*Reader); ok {
 			r.handler = handler
+			return nil
 		}
-		if w != nil {
+		if w, ok := a.(*Writer); ok {
 			w.handler = handler
+			return nil
 		}
-		return nil
+		return ErrOptionNotApplicable
 	}
 }

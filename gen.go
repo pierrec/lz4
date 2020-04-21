@@ -11,10 +11,6 @@ import (
 )
 
 type DescriptorFlags struct {
-	// BD
-	_              [4]int
-	BlockSizeIndex [3]lz4.BlockSizeIndex
-	_              [1]int
 	// FLG
 	_                 [2]int
 	ContentChecksum   [1]bool
@@ -22,6 +18,10 @@ type DescriptorFlags struct {
 	BlockChecksum     [1]bool
 	BlockIndependence [1]bool
 	Version           [2]uint16
+	// BD
+	_              [4]int
+	BlockSizeIndex [3]lz4.BlockSizeIndex
+	_              [1]int
 }
 
 type DataBlockSize struct {
@@ -36,7 +36,7 @@ func main() {
 	}
 	defer out.Close()
 
-	pkg := "v4"
+	pkg := "lz4"
 	for i, t := range []interface{}{
 		DescriptorFlags{}, DataBlockSize{},
 	} {

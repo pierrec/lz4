@@ -17,7 +17,7 @@ var readerStates = []aState{
 func NewReader(r io.Reader) *Reader {
 	zr := new(Reader)
 	zr.state.init(readerStates)
-	_ = defaultOnBlockDone(zr, nil)
+	_ = zr.Apply(defaultOnBlockDone)
 	return zr.Reset(r)
 }
 
@@ -31,6 +31,8 @@ type Reader struct {
 	handler func(int)
 }
 
+func (*Reader) private() {}
+
 func (r *Reader) Apply(options ...Option) (err error) {
 	defer r.state.check(&err)
 	switch r.state.state {
@@ -41,7 +43,7 @@ func (r *Reader) Apply(options ...Option) (err error) {
 		return ErrCannotApplyOptions
 	}
 	for _, o := range options {
-		if err = o(r, nil); err != nil {
+		if err = o(r); err != nil {
 			return
 		}
 	}
@@ -79,19 +81,12 @@ func (r *Reader) Read(buf []byte) (n int, err error) {
 		return
 	}
 
+	var bn int
 	if r.idx > 0 {
 		// Some left over data, use it.
-		bn := copy(buf, r.data[r.idx:])
-		n += bn
-		r.idx += bn
-		if r.idx == len(r.data) {
-			// All data read, get ready for the next Read.
-			r.idx = 0
-		}
-		return
+		goto fillbuf
 	}
 	// No uncompressed data yet.
-	var bn int
 	for len(buf) >= len(r.data) {
 		// Input buffer large enough and no pending data: uncompress directly into it.
 		switch bn, err = r.frame.Blocks.Block.uncompress(r, buf); err {
@@ -113,17 +108,26 @@ func (r *Reader) Read(buf []byte) (n int, err error) {
 	switch bn, err = r.frame.Blocks.Block.uncompress(r, r.data); err {
 	case nil:
 		r.handler(bn)
-		n += bn
+		goto fillbuf
 	case io.EOF:
-		goto close
+	default:
+		return
 	}
-	return
 close:
 	r.handler(bn)
 	n += bn
 	err = r.frame.closeR(r)
 	r.frame.Descriptor.Flags.BlockSizeIndex().put(r.data)
 	r.reset(nil)
+	return
+fillbuf:
+	bn = copy(buf, r.data[r.idx:])
+	n += bn
+	r.idx += bn
+	if r.idx == len(r.data) {
+		// All data read, get ready for the next Read.
+		r.idx = 0
+	}
 	return
 }
 

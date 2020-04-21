@@ -115,7 +115,7 @@ func (w *Writer) write() error {
 		c <- b.compress(w, data, nil)
 		// Wait for the compressed or uncompressed data to no longer be in use
 		// and free the allocated buffers
-		if !b.Size.compressed() {
+		if b.Size.uncompressed() {
 			zdata, data = data, zdata
 		}
 		size.put(data)

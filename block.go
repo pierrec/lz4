@@ -65,13 +65,6 @@ func CompressBlock(src, dst []byte, hashTable []int) (_ int, err error) {
 	// This significantly speeds up incompressible data and usually has very small impact on compression.
 	// bytes to skip =  1 + (bytes since last match >> adaptSkipLog)
 	const adaptSkipLog = 7
-	if cap(hashTable) < htSize {
-		hashTable = htPool.Get().([]int)
-		defer htPool.Put(hashTable)
-	} else {
-		hashTable = hashTable[:htSize]
-	}
-	_ = hashTable[htSize-1]
 
 	// si: Current position of the search.
 	// anchor: Position of the current literals.
@@ -80,6 +73,14 @@ func CompressBlock(src, dst []byte, hashTable []int) (_ int, err error) {
 	if sn <= 0 {
 		goto lastLiterals
 	}
+
+	if cap(hashTable) < htSize {
+		hashTable = htPool.Get().([]int)
+		defer htPool.Put(hashTable)
+	} else {
+		hashTable = hashTable[:htSize]
+	}
+	_ = hashTable[htSize-1]
 
 	// Fast scan strategy: the hash table only stores the last 4 bytes sequences.
 	for si < sn {
@@ -261,10 +262,15 @@ func CompressBlockHC(src, dst []byte, depth CompressionLevel, hashTable []int) (
 	// bytes to skip =  1 + (bytes since last match >> adaptSkipLog)
 	const adaptSkipLog = 7
 
+	var chainTable []int
 	var si, di, anchor int
-
 	// hashTable: stores the last position found for a given hash
 	// chainTable: stores previous positions for a given hash
+	sn := len(src) - mfLimit
+	if sn <= 0 {
+		goto lastLiterals
+	}
+
 	if cap(hashTable) < htSize {
 		hashTable = htPool.Get().([]int)
 		defer htPool.Put(hashTable)
@@ -272,7 +278,7 @@ func CompressBlockHC(src, dst []byte, depth CompressionLevel, hashTable []int) (
 		hashTable = hashTable[:htSize]
 	}
 	_ = hashTable[htSize-1]
-	chainTable := htPool.Get().([]int)
+	chainTable = htPool.Get().([]int)
 	defer htPool.Put(chainTable)
 	_ = chainTable[htSize-1]
 
@@ -280,10 +286,6 @@ func CompressBlockHC(src, dst []byte, depth CompressionLevel, hashTable []int) (
 		depth = winSize
 	}
 
-	sn := len(src) - mfLimit
-	if sn <= 0 {
-		goto lastLiterals
-	}
 
 	for si < sn {
 		// Hash the next 4 bytes (sequence).

@@ -73,6 +73,10 @@ func TestFrameDataBlock(t *testing.T) {
 		{"", Block64Kb},
 		{sample, Block64Kb},
 		{strings.Repeat(sample, 10), Block64Kb},
+		{strings.Repeat(sample, 5000), Block256Kb},
+		{strings.Repeat(sample, 5000), Block1Mb},
+		{strings.Repeat(sample, 23000), Block1Mb},
+		{strings.Repeat(sample, 93000), Block4Mb},
 	} {
 		label := fmt.Sprintf("%s (%d)", tc.data[:min(len(tc.data), 10)], len(tc.data))
 		t.Run(label, func(t *testing.T) {

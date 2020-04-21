@@ -25,8 +25,8 @@ type DescriptorFlags struct {
 }
 
 type DataBlockSize struct {
-	size       [31]int
-	compressed bool
+	size         [31]int
+	uncompressed bool
 }
 
 func main() {

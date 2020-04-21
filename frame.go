@@ -227,7 +227,7 @@ func (b *FrameDataBlock) closeW(w *Writer) {
 
 // Block compression errors are ignored since the buffer is sized appropriately.
 func (b *FrameDataBlock) compress(w *Writer, src []byte, ht []int) *FrameDataBlock {
-	dst := b.Data
+	dst := b.Data[:len(src)] // trigger the incompressible flag in CompressBlock
 	var n int
 	switch w.level {
 	case Fast:
@@ -236,10 +236,10 @@ func (b *FrameDataBlock) compress(w *Writer, src []byte, ht []int) *FrameDataBlo
 		n, _ = CompressBlockHC(src, dst, w.level, ht)
 	}
 	if n == 0 {
-		b.Size.compressedSet(false)
+		b.Size.uncompressedSet(true)
 		dst = src
 	} else {
-		b.Size.compressedSet(true)
+		b.Size.uncompressedSet(false)
 		dst = dst[:n]
 	}
 	b.Data = dst
@@ -286,14 +286,16 @@ func (b *FrameDataBlock) uncompress(r *Reader, dst []byte) (int, error) {
 		return 0, io.EOF
 	}
 
-	isCompressed := b.Size.compressed()
+	isCompressed := !b.Size.uncompressed()
+	size := b.Size.size()
 	var data []byte
 	if isCompressed {
 		data = b.Data
 	} else {
 		data = dst
 	}
-	if _, err := io.ReadFull(r.src, data[:b.Size.size()]); err != nil {
+	data = data[:size]
+	if _, err := io.ReadFull(r.src, data); err != nil {
 		return 0, err
 	}
 	if isCompressed {

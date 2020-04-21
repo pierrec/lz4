@@ -11,12 +11,6 @@ import (
 	"github.com/pierrec/lz4"
 )
 
-const (
-	// Should match values in lz4.go
-	hashLog = 16
-	htSize  = 1 << hashLog
-)
-
 type testcase struct {
 	file         string
 	compressible bool
@@ -102,18 +96,16 @@ func TestCompressUncompressBlock(t *testing.T) {
 		t.Run("", func(t *testing.T) {
 			tc := tc
 			t.Run(tc.file, func(t *testing.T) {
-				// t.Parallel()
 				n = run(t, tc, func(src, dst []byte) (int, error) {
-					var ht [htSize]int
-					return lz4.CompressBlock(src, dst, ht[:])
+					return lz4.CompressBlock(src, dst, nil)
 				})
 			})
-			t.Run(fmt.Sprintf("%s HC", tc.file), func(t *testing.T) {
-				// t.Parallel()
-				nhc = run(t, tc, func(src, dst []byte) (int, error) {
-					return lz4.CompressBlockHC(src, dst, 16, nil)
-				})
-			})
+			//TODO
+			//t.Run(fmt.Sprintf("%s HC", tc.file), func(t *testing.T) {
+			//	nhc = run(t, tc, func(src, dst []byte) (int, error) {
+			//		return lz4.CompressBlockHC(src, dst, 16, nil)
+			//	})
+			//})
 		})
 		if !t.Failed() {
 			t.Logf("%-40s: %8d / %8d / %8d\n", tc.file, n, nhc, len(src))
@@ -146,8 +138,7 @@ func TestCompressCornerCase_CopyDstUpperBound(t *testing.T) {
 	t.Run(file, func(t *testing.T) {
 		t.Parallel()
 		run(src, func(src, dst []byte) (int, error) {
-			var ht [htSize]int
-			return lz4.CompressBlock(src, dst, ht[:])
+			return lz4.CompressBlock(src, dst, nil)
 		})
 	})
 	t.Run(fmt.Sprintf("%s HC", file), func(t *testing.T) {
@@ -162,13 +153,12 @@ func TestIssue23(t *testing.T) {
 	compressBuf := make([]byte, lz4.CompressBlockBound(1<<16))
 	for j := 1; j < 16; j++ {
 		var buf [1 << 16]byte
-		var ht [htSize]int
 
 		for i := 0; i < len(buf); i += j {
 			buf[i] = 1
 		}
 
-		n, _ := lz4.CompressBlock(buf[:], compressBuf, ht[:])
+		n, _ := lz4.CompressBlock(buf[:], compressBuf, nil)
 		if got, want := n, 300; got > want {
 			t.Fatalf("not able to compress repeated data: got %d; want %d", got, want)
 		}

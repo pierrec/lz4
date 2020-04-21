@@ -58,6 +58,7 @@ func (w *Writer) isNotConcurrent() bool {
 func (w *Writer) Write(buf []byte) (n int, err error) {
 	defer w.state.check(&err)
 	switch w.state.state {
+	case writeState:
 	case closedState, errorState:
 		return 0, w.state.err
 	case newState:

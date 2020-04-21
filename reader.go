@@ -6,11 +6,11 @@ import (
 
 var readerStates = []aState{
 	noState:     newState,
+	errorState:  newState,
 	newState:    headerState,
 	headerState: readState,
 	readState:   closedState,
 	closedState: newState,
-	errorState:  newState,
 }
 
 // NewReader returns a new LZ4 frame decoder.
@@ -64,6 +64,7 @@ func (r *Reader) Size() int {
 func (r *Reader) Read(buf []byte) (n int, err error) {
 	defer r.state.check(&err)
 	switch r.state.state {
+	case readState:
 	case closedState, errorState:
 		return 0, r.state.err
 	case newState:
@@ -72,7 +73,6 @@ func (r *Reader) Read(buf []byte) (n int, err error) {
 		if err = r.frame.initR(r); r.state.next(err) {
 			return
 		}
-		r.state.next(nil)
 		r.data = r.frame.Descriptor.Flags.BlockSizeIndex().get()
 	default:
 		return 0, r.state.fail()
@@ -87,6 +87,7 @@ func (r *Reader) Read(buf []byte) (n int, err error) {
 		goto fillbuf
 	}
 	// No uncompressed data yet.
+	r.data = r.data[:cap(r.data)]
 	for len(buf) >= len(r.data) {
 		// Input buffer large enough and no pending data: uncompress directly into it.
 		switch bn, err = r.frame.Blocks.Block.uncompress(r, buf); err {
@@ -108,6 +109,7 @@ func (r *Reader) Read(buf []byte) (n int, err error) {
 	switch bn, err = r.frame.Blocks.Block.uncompress(r, r.data); err {
 	case nil:
 		r.handler(bn)
+		r.data = r.data[:bn]
 		goto fillbuf
 	case io.EOF:
 	default:
@@ -116,7 +118,9 @@ func (r *Reader) Read(buf []byte) (n int, err error) {
 close:
 	r.handler(bn)
 	n += bn
-	err = r.frame.closeR(r)
+	if er := r.frame.closeR(r); er != nil {
+		err = er
+	}
 	r.frame.Descriptor.Flags.BlockSizeIndex().put(r.data)
 	r.reset(nil)
 	return

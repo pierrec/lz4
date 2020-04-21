@@ -195,13 +195,13 @@ func CompressBlock(src, dst []byte, hashTable []int) (_ int, err error) {
 		hashTable[h] = si - 2
 	}
 
+lastLiterals:
 	if isNotCompressible && anchor == 0 {
 		// Incompressible.
 		return 0, nil
 	}
 
 	// Last literals.
-lastLiterals:
 	lLen := len(src) - anchor
 	if lLen < 0xF {
 		dst[di] = byte(lLen << 4)

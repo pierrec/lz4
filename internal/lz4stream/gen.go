@@ -3,10 +3,15 @@
 package main
 
 import (
+	"bytes"
+	"fmt"
+	"io"
 	"log"
 	"os"
 
+	"github.com/pierrec/lz4/internal/lz4block"
 	"github.com/pierrec/packer"
+	"golang.org/x/tools/imports"
 )
 
 type DescriptorFlags struct {
@@ -29,22 +34,39 @@ type DataBlockSize struct {
 }
 
 func main() {
-	out, err := os.Create("frame_gen.go")
+	err := do()
 	if err != nil {
 		log.Fatal(err)
+	}
+}
+
+func do() error {
+	out, err := os.Create("frame_gen.go")
+	if err != nil {
+		return err
 	}
 	defer out.Close()
 
 	pkg := "lz4stream"
+	buf := new(bytes.Buffer)
 	for i, t := range []interface{}{
 		DescriptorFlags{}, DataBlockSize{},
 	} {
 		if i > 0 {
 			pkg = ""
 		}
-		err := packer.GenPackedStruct(out, &packer.Config{PkgName: pkg}, t)
+		err := packer.GenPackedStruct(buf, &packer.Config{PkgName: pkg}, t)
 		if err != nil {
-			log.Fatalf("%T: %v", t, err)
+			return fmt.Errorf("%T: %v", t, err)
 		}
 	}
+	// Resolve imports.
+	code, err := imports.Process("", buf.Bytes(), nil)
+	if err != nil {
+		// Output without imports.
+		_, _ = io.Copy(out, buf)
+		return err
+	}
+	_, err = io.Copy(out, bytes.NewReader(code))
+	return err
 }

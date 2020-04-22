@@ -2,6 +2,7 @@ package lz4
 
 import (
 	"github.com/pierrec/lz4/internal/lz4block"
+	"github.com/pierrec/lz4/internal/lz4errors"
 )
 
 func _() {
@@ -60,3 +61,29 @@ func CompressBlock(src, dst []byte, hashTable []int) (_ int, err error) {
 func CompressBlockHC(src, dst []byte, depth CompressionLevel, hashTable []int) (_ int, err error) {
 	return lz4block.CompressBlockHC(src, dst, lz4block.CompressionLevel(depth), hashTable)
 }
+
+const (
+	// ErrInvalidSourceShortBuffer is returned by UncompressBlock or CompressBLock when a compressed
+	// block is corrupted or the destination buffer is not large enough for the uncompressed data.
+	ErrInvalidSourceShortBuffer = lz4errors.ErrInvalidSourceShortBuffer
+	// ErrInvalidFrame is returned when reading an invalid LZ4 archive.
+	ErrInvalidFrame = lz4errors.ErrInvalidFrame
+	// ErrInternalUnhandledState is an internal error.
+	ErrInternalUnhandledState = lz4errors.ErrInternalUnhandledState
+	// ErrInvalidHeaderChecksum is returned when reading a frame.
+	ErrInvalidHeaderChecksum = lz4errors.ErrInvalidHeaderChecksum
+	// ErrInvalidBlockChecksum is returned when reading a frame.
+	ErrInvalidBlockChecksum = lz4errors.ErrInvalidBlockChecksum
+	// ErrInvalidFrameChecksum is returned when reading a frame.
+	ErrInvalidFrameChecksum = lz4errors.ErrInvalidFrameChecksum
+	// ErrOptionInvalidCompressionLevel is returned when the supplied compression level is invalid.
+	ErrOptionInvalidCompressionLevel = lz4errors.ErrOptionInvalidCompressionLevel
+	// ErrOptionClosedOrError is returned when an option is applied to a closed or in error object.
+	ErrOptionClosedOrError = lz4errors.ErrOptionClosedOrError
+	// ErrOptionInvalidBlockSize is returned when
+	ErrOptionInvalidBlockSize = lz4errors.ErrOptionInvalidBlockSize
+	// ErrOptionNotApplicable is returned when trying to apply an option to an object not supporting it.
+	ErrOptionNotApplicable = lz4errors.ErrOptionNotApplicable
+	// ErrWriterNotClosed is returned when attempting to reset an unclosed writer.
+	ErrWriterNotClosed = lz4errors.ErrWriterNotClosed
+)

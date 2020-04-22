@@ -129,7 +129,7 @@ func (fd *FrameDescriptor) initR(r *Reader) error {
 	fd.Flags = DescriptorFlags(descr)
 	if fd.Flags.Size() {
 		// Append the 8 missing bytes.
-		buf = buf[:11]
+		buf = buf[:3+8]
 		if _, err := io.ReadFull(r.src, buf[3:]); err != nil {
 			return err
 		}
@@ -139,6 +139,10 @@ func (fd *FrameDescriptor) initR(r *Reader) error {
 	buf = buf[:len(buf)-1]        // all descriptor fields except checksum
 	if c := descriptorChecksum(buf); fd.Checksum != c {
 		return fmt.Errorf("%w: got %x; expected %x", ErrInvalidHeaderChecksum, c, fd.Checksum)
+	}
+	// Validate the elements that can be.
+	if !fd.Flags.BlockSizeIndex().isValid() {
+		return ErrOptionInvalidBlockSize
 	}
 	return nil
 }

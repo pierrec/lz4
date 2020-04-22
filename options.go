@@ -67,6 +67,14 @@ func (b BlockSize) index() BlockSizeIndex {
 
 type BlockSizeIndex uint8
 
+func (b BlockSizeIndex) isValid() bool {
+	switch b {
+	case 4, 5, 6, 7:
+		return true
+	}
+	return false
+}
+
 func (b BlockSizeIndex) get() []byte {
 	var buf interface{}
 	switch b {

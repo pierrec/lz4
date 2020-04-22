@@ -1,4 +1,4 @@
-package lz4
+package lz4block
 
 import (
 	"bytes"

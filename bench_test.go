@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/pierrec/lz4"
+	"github.com/pierrec/lz4/internal/lz4block"
 )
 
 func BenchmarkCompress(b *testing.B) {
@@ -16,7 +17,7 @@ func BenchmarkCompress(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		_, _ = lz4.CompressBlock(pg1661, buf, nil)
+		_, _ = lz4block.CompressBlock(pg1661, buf, nil)
 	}
 }
 
@@ -28,7 +29,7 @@ func BenchmarkCompressRandom(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		_, _ = lz4.CompressBlock(random, buf, nil)
+		_, _ = lz4block.CompressBlock(random, buf, nil)
 	}
 }
 
@@ -39,7 +40,7 @@ func BenchmarkCompressHC(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		_, _ = lz4.CompressBlockHC(pg1661, buf, 16, nil)
+		_, _ = lz4block.CompressBlockHC(pg1661, buf, 16, nil)
 	}
 }
 
@@ -50,7 +51,7 @@ func BenchmarkUncompress(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		_, _ = lz4.UncompressBlock(pg1661LZ4, buf)
+		_, _ = lz4block.UncompressBlock(pg1661LZ4, buf)
 	}
 }
 

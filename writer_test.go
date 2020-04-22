@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/pierrec/lz4"
+	"github.com/pierrec/lz4/internal/lz4block"
 )
 
 func TestWriter(t *testing.T) {
@@ -129,14 +130,14 @@ func TestIssue51(t *testing.T) {
 
 	zbuf := make([]byte, 8192)
 
-	n, err := lz4.CompressBlock(data, zbuf, nil)
+	n, err := lz4block.CompressBlock(data, zbuf, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	zbuf = zbuf[:n]
 
 	buf := make([]byte, 8192)
-	n, err = lz4.UncompressBlock(zbuf, buf)
+	n, err = lz4block.UncompressBlock(zbuf, buf)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,11 +154,11 @@ func TestIssue71(t *testing.T) {
 	} {
 		t.Run(tc, func(t *testing.T) {
 			src := []byte(tc)
-			bound := lz4.CompressBlockBound(len(tc))
+			bound := lz4block.CompressBlockBound(len(tc))
 
 			// Small buffer.
 			zSmall := make([]byte, bound-1)
-			n, err := lz4.CompressBlock(src, zSmall, nil)
+			n, err := lz4block.CompressBlock(src, zSmall, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -167,7 +168,7 @@ func TestIssue71(t *testing.T) {
 
 			// Large enough buffer.
 			zLarge := make([]byte, bound)
-			n, err = lz4.CompressBlock(src, zLarge, nil)
+			n, err = lz4block.CompressBlock(src, zLarge, nil)
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -2,6 +2,9 @@ package lz4
 
 import (
 	"io"
+
+	"github.com/pierrec/lz4/internal/lz4errors"
+	"github.com/pierrec/lz4/internal/lz4stream"
 )
 
 var readerStates = []aState{
@@ -14,7 +17,7 @@ var readerStates = []aState{
 
 // NewReader returns a new LZ4 frame decoder.
 func NewReader(r io.Reader) *Reader {
-	zr := &Reader{frame: NewFrame()}
+	zr := &Reader{frame: lz4stream.NewFrame()}
 	zr.state.init(readerStates)
 	_ = zr.Apply(defaultOnBlockDone)
 	return zr.Reset(r)
@@ -22,10 +25,10 @@ func NewReader(r io.Reader) *Reader {
 
 type Reader struct {
 	state   _State
-	src     io.Reader // source reader
-	frame   *Frame    // frame being read
-	data    []byte    // pending data
-	idx     int       // size of pending data
+	src     io.Reader        // source reader
+	frame   *lz4stream.Frame // frame being read
+	data    []byte           // pending data
+	idx     int              // size of pending data
 	handler func(int)
 }
 
@@ -38,7 +41,7 @@ func (r *Reader) Apply(options ...Option) (err error) {
 	case errorState:
 		return r.state.err
 	default:
-		return ErrOptionClosedOrError
+		return lz4errors.ErrOptionClosedOrError
 	}
 	for _, o := range options {
 		if err = o(r); err != nil {
@@ -67,10 +70,10 @@ func (r *Reader) Read(buf []byte) (n int, err error) {
 		return 0, r.state.err
 	case newState:
 		// First initialization.
-		if err = r.frame.initR(r.src); r.state.next(err) {
+		if err = r.frame.InitR(r.src); r.state.next(err) {
 			return
 		}
-		r.data = r.frame.Descriptor.Flags.BlockSizeIndex().get()
+		r.data = r.frame.Descriptor.Flags.BlockSizeIndex().Get()
 	default:
 		return 0, r.state.fail()
 	}
@@ -87,7 +90,7 @@ func (r *Reader) Read(buf []byte) (n int, err error) {
 	r.data = r.data[:cap(r.data)]
 	for len(buf) >= len(r.data) {
 		// Input buffer large enough and no pending data: uncompress directly into it.
-		switch bn, err = r.frame.Blocks.Block.uncompress(r.frame, r.src, buf); err {
+		switch bn, err = r.frame.Blocks.Block.Uncompress(r.frame, r.src, buf); err {
 		case nil:
 			r.handler(bn)
 			n += bn
@@ -103,7 +106,7 @@ func (r *Reader) Read(buf []byte) (n int, err error) {
 		return
 	}
 	// Read the next block.
-	switch bn, err = r.frame.Blocks.Block.uncompress(r.frame, r.src, r.data); err {
+	switch bn, err = r.frame.Blocks.Block.Uncompress(r.frame, r.src, r.data); err {
 	case nil:
 		r.handler(bn)
 		r.data = r.data[:bn]
@@ -115,10 +118,10 @@ func (r *Reader) Read(buf []byte) (n int, err error) {
 close:
 	r.handler(bn)
 	n += bn
-	if er := r.frame.closeR(r.src); er != nil {
+	if er := r.frame.CloseR(r.src); er != nil {
 		err = er
 	}
-	r.frame.Descriptor.Flags.BlockSizeIndex().put(r.data)
+	r.frame.Descriptor.Flags.BlockSizeIndex().Put(r.data)
 	r.reset(nil)
 	return
 fillbuf:

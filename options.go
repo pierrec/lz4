@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"reflect"
 	"runtime"
-	"sync"
+
+	"github.com/pierrec/lz4/internal/lz4block"
+	"github.com/pierrec/lz4/internal/lz4errors"
 )
 
 //go:generate go run golang.org/x/tools/cmd/stringer -type=BlockSize,CompressionLevel -output options_gen.go
@@ -37,71 +39,8 @@ const (
 	Block4Mb
 )
 
-var (
-	blockPool64K  = sync.Pool{New: func() interface{} { return make([]byte, Block64Kb) }}
-	blockPool256K = sync.Pool{New: func() interface{} { return make([]byte, Block256Kb) }}
-	blockPool1M   = sync.Pool{New: func() interface{} { return make([]byte, Block1Mb) }}
-	blockPool4M   = sync.Pool{New: func() interface{} { return make([]byte, Block4Mb) }}
-)
-
 // BlockSizeIndex defines the size of the blocks to be compressed.
 type BlockSize uint32
-
-func (b BlockSize) isValid() bool {
-	return b.index() > 0
-}
-
-func (b BlockSize) index() BlockSizeIndex {
-	switch b {
-	case Block64Kb:
-		return 4
-	case Block256Kb:
-		return 5
-	case Block1Mb:
-		return 6
-	case Block4Mb:
-		return 7
-	}
-	return 0
-}
-
-type BlockSizeIndex uint8
-
-func (b BlockSizeIndex) isValid() bool {
-	switch b {
-	case 4, 5, 6, 7:
-		return true
-	}
-	return false
-}
-
-func (b BlockSizeIndex) get() []byte {
-	var buf interface{}
-	switch b {
-	case 4:
-		buf = blockPool64K.Get()
-	case 5:
-		buf = blockPool256K.Get()
-	case 6:
-		buf = blockPool1M.Get()
-	case 7:
-		buf = blockPool4M.Get()
-	}
-	return buf.([]byte)
-}
-
-func (b BlockSizeIndex) put(buf []byte) {
-	switch b {
-	case 4:
-		blockPool64K.Put(buf)
-	case 5:
-		blockPool256K.Put(buf)
-	case 6:
-		blockPool1M.Put(buf)
-	case 7:
-		blockPool4M.Put(buf)
-	}
-}
 
 // BlockSizeOption defines the maximum size of compressed blocks (default=Block4Mb).
 func BlockSizeOption(size BlockSize) Option {
@@ -109,15 +48,16 @@ func BlockSizeOption(size BlockSize) Option {
 		switch w := a.(type) {
 		case nil:
 			s := fmt.Sprintf("BlockSizeOption(%s)", size)
-			return _error(s)
+			return lz4errors.Error(s)
 		case *Writer:
-			if !size.isValid() {
-				return fmt.Errorf("%w: %d", ErrOptionInvalidBlockSize, size)
+			size := uint32(size)
+			if !lz4block.IsValid(size) {
+				return fmt.Errorf("%w: %d", lz4errors.ErrOptionInvalidBlockSize, size)
 			}
-			w.frame.Descriptor.Flags.BlockSizeIndexSet(size.index())
+			w.frame.Descriptor.Flags.BlockSizeIndexSet(lz4block.Index(size))
 			return nil
 		}
-		return ErrOptionNotApplicable
+		return lz4errors.ErrOptionNotApplicable
 	}
 }
 
@@ -127,12 +67,12 @@ func BlockChecksumOption(flag bool) Option {
 		switch w := a.(type) {
 		case nil:
 			s := fmt.Sprintf("BlockChecksumOption(%v)", flag)
-			return _error(s)
+			return lz4errors.Error(s)
 		case *Writer:
 			w.frame.Descriptor.Flags.BlockChecksumSet(flag)
 			return nil
 		}
-		return ErrOptionNotApplicable
+		return lz4errors.ErrOptionNotApplicable
 	}
 }
 
@@ -142,12 +82,12 @@ func ChecksumOption(flag bool) Option {
 		switch w := a.(type) {
 		case nil:
 			s := fmt.Sprintf("BlockChecksumOption(%v)", flag)
-			return _error(s)
+			return lz4errors.Error(s)
 		case *Writer:
 			w.frame.Descriptor.Flags.ContentChecksumSet(flag)
 			return nil
 		}
-		return ErrOptionNotApplicable
+		return lz4errors.ErrOptionNotApplicable
 	}
 }
 
@@ -157,13 +97,13 @@ func SizeOption(size uint64) Option {
 		switch w := a.(type) {
 		case nil:
 			s := fmt.Sprintf("SizeOption(%d)", size)
-			return _error(s)
+			return lz4errors.Error(s)
 		case *Writer:
 			w.frame.Descriptor.Flags.SizeSet(size > 0)
 			w.frame.Descriptor.ContentSize = size
 			return nil
 		}
-		return ErrOptionNotApplicable
+		return lz4errors.ErrOptionNotApplicable
 	}
 }
 
@@ -174,7 +114,7 @@ func ConcurrencyOption(n int) Option {
 		switch w := a.(type) {
 		case nil:
 			s := fmt.Sprintf("ConcurrencyOption(%d)", n)
-			return _error(s)
+			return lz4errors.Error(s)
 		case *Writer:
 			switch n {
 			case 0, 1:
@@ -186,7 +126,7 @@ func ConcurrencyOption(n int) Option {
 			w.num = n
 			return nil
 		}
-		return ErrOptionNotApplicable
+		return lz4errors.ErrOptionNotApplicable
 	}
 }
 
@@ -212,17 +152,17 @@ func CompressionLevelOption(level CompressionLevel) Option {
 		switch w := a.(type) {
 		case nil:
 			s := fmt.Sprintf("CompressionLevelOption(%s)", level)
-			return _error(s)
+			return lz4errors.Error(s)
 		case *Writer:
 			switch level {
 			case Fast, Level1, Level2, Level3, Level4, Level5, Level6, Level7, Level8, Level9:
 			default:
-				return fmt.Errorf("%w: %d", ErrOptionInvalidCompressionLevel, level)
+				return fmt.Errorf("%w: %d", lz4errors.ErrOptionInvalidCompressionLevel, level)
 			}
-			w.level = level
+			w.level = lz4block.CompressionLevel(level)
 			return nil
 		}
-		return ErrOptionNotApplicable
+		return lz4errors.ErrOptionNotApplicable
 	}
 }
 
@@ -237,7 +177,7 @@ func OnBlockDoneOption(handler func(size int)) Option {
 		switch rw := a.(type) {
 		case nil:
 			s := fmt.Sprintf("OnBlockDoneOption(%s)", reflect.TypeOf(handler).String())
-			return _error(s)
+			return lz4errors.Error(s)
 		case *Writer:
 			rw.handler = handler
 		case *Reader:

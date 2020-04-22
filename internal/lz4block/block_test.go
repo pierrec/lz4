@@ -1,6 +1,6 @@
 //+build go1.9
 
-package lz4_test
+package lz4block_test
 
 import (
 	"bytes"
@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/pierrec/lz4"
+	"github.com/pierrec/lz4/internal/lz4block"
 )
 
 type testcase struct {
@@ -37,7 +38,7 @@ func TestCompressUncompressBlock(t *testing.T) {
 		src := tc.src
 
 		// Compress the data.
-		zbuf := make([]byte, lz4.CompressBlockBound(len(src)))
+		zbuf := make([]byte, lz4block.CompressBlockBound(len(src)))
 		n, err := compress(src, zbuf)
 		if err != nil {
 			t.Error(err)
@@ -57,7 +58,7 @@ func TestCompressUncompressBlock(t *testing.T) {
 
 		// Uncompress the data.
 		buf := make([]byte, len(src))
-		n, err = lz4.UncompressBlock(zbuf, buf)
+		n, err = lz4block.UncompressBlock(zbuf, buf)
 		if err != nil {
 			t.Fatal(err)
 		} else if n < 0 || n > len(buf) {
@@ -97,7 +98,7 @@ func TestCompressUncompressBlock(t *testing.T) {
 			tc := tc
 			t.Run(tc.file, func(t *testing.T) {
 				n = run(t, tc, func(src, dst []byte) (int, error) {
-					return lz4.CompressBlock(src, dst, nil)
+					return lz4block.CompressBlock(src, dst, nil)
 				})
 			})
 			//TODO
@@ -138,19 +139,19 @@ func TestCompressCornerCase_CopyDstUpperBound(t *testing.T) {
 	t.Run(file, func(t *testing.T) {
 		t.Parallel()
 		run(src, func(src, dst []byte) (int, error) {
-			return lz4.CompressBlock(src, dst, nil)
+			return lz4block.CompressBlock(src, dst, nil)
 		})
 	})
 	t.Run(fmt.Sprintf("%s HC", file), func(t *testing.T) {
 		t.Parallel()
 		run(src, func(src, dst []byte) (int, error) {
-			return lz4.CompressBlockHC(src, dst, 16, nil)
+			return lz4block.CompressBlockHC(src, dst, 16, nil)
 		})
 	})
 }
 
 func TestIssue23(t *testing.T) {
-	compressBuf := make([]byte, lz4.CompressBlockBound(1<<16))
+	compressBuf := make([]byte, lz4block.CompressBlockBound(1<<16))
 	for j := 1; j < 16; j++ {
 		var buf [1 << 16]byte
 
@@ -158,7 +159,7 @@ func TestIssue23(t *testing.T) {
 			buf[i] = 1
 		}
 
-		n, _ := lz4.CompressBlock(buf[:], compressBuf, nil)
+		n, _ := lz4block.CompressBlock(buf[:], compressBuf, nil)
 		if got, want := n, 300; got > want {
 			t.Fatalf("not able to compress repeated data: got %d; want %d", got, want)
 		}

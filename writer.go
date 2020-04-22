@@ -1,6 +1,12 @@
 package lz4
 
-import "io"
+import (
+	"io"
+
+	"github.com/pierrec/lz4/internal/lz4block"
+	"github.com/pierrec/lz4/internal/lz4errors"
+	"github.com/pierrec/lz4/internal/lz4stream"
+)
 
 var writerStates = []aState{
 	noState:     newState,
@@ -12,7 +18,7 @@ var writerStates = []aState{
 
 // NewWriter returns a new LZ4 frame encoder.
 func NewWriter(w io.Writer) *Writer {
-	zw := &Writer{frame: NewFrame()}
+	zw := &Writer{frame: lz4stream.NewFrame()}
 	zw.state.init(writerStates)
 	_ = zw.Apply(DefaultBlockSizeOption, DefaultChecksumOption, DefaultConcurrency, defaultOnBlockDone)
 	return zw.Reset(w)
@@ -20,13 +26,13 @@ func NewWriter(w io.Writer) *Writer {
 
 type Writer struct {
 	state   _State
-	src     io.Writer        // destination writer
-	level   CompressionLevel // how hard to try
-	num     int              // concurrency level
-	frame   *Frame           // frame being built
-	ht      []int            // hash table (set if no concurrency)
-	data    []byte           // pending data
-	idx     int              // size of pending data
+	src     io.Writer                 // destination writer
+	level   lz4block.CompressionLevel // how hard to try
+	num     int                       // concurrency level
+	frame   *lz4stream.Frame          // frame being built
+	ht      []int                     // hash table (set if no concurrency)
+	data    []byte                    // pending data
+	idx     int                       // size of pending data
 	handler func(int)
 }
 
@@ -39,7 +45,7 @@ func (w *Writer) Apply(options ...Option) (err error) {
 	case errorState:
 		return w.state.err
 	default:
-		return ErrOptionClosedOrError
+		return lz4errors.ErrOptionClosedOrError
 	}
 	for _, o := range options {
 		if err = o(w); err != nil {
@@ -61,7 +67,7 @@ func (w *Writer) Write(buf []byte) (n int, err error) {
 	case closedState, errorState:
 		return 0, w.state.err
 	case newState:
-		if err = w.frame.Descriptor.write(w.frame, w.src); w.state.next(err) {
+		if err = w.frame.Descriptor.Write(w.frame, w.src); w.state.next(err) {
 			return
 		}
 	default:
@@ -103,28 +109,28 @@ func (w *Writer) write(data []byte, direct bool) error {
 	if w.isNotConcurrent() {
 		defer w.handler(len(data))
 		block := w.frame.Blocks.Block
-		return block.compress(w.frame, data, w.ht, w.level).write(w.frame, w.src)
+		return block.Compress(w.frame, data, w.ht, w.level).Write(w.frame, w.src)
 	}
 	size := w.frame.Descriptor.Flags.BlockSizeIndex()
-	c := make(chan *FrameDataBlock)
+	c := make(chan *lz4stream.FrameDataBlock)
 	w.frame.Blocks.Blocks <- c
-	go func(c chan *FrameDataBlock, data []byte, size BlockSizeIndex) {
+	go func(c chan *lz4stream.FrameDataBlock, data []byte, size lz4block.BlockSizeIndex) {
 		defer w.handler(len(data))
-		b := newFrameDataBlock(size)
+		b := lz4stream.NewFrameDataBlock(size)
 		zdata := b.Data
-		c <- b.compress(w.frame, data, nil, w.level)
+		c <- b.Compress(w.frame, data, nil, w.level)
 		// Wait for the compressed or uncompressed data to no longer be in use
 		// and free the allocated buffers
-		if b.Size.uncompressed() {
+		if b.Size.Uncompressed() {
 			zdata, data = data, zdata
 		}
-		size.put(data)
+		size.Put(data)
 		<-c
-		size.put(zdata)
+		size.Put(zdata)
 	}(c, data, size)
 
 	if direct {
-		w.data = size.get()
+		w.data = size.Get()
 	}
 
 	return nil
@@ -149,12 +155,12 @@ func (w *Writer) Close() (err error) {
 		w.idx = 0
 	}
 	if w.isNotConcurrent() {
-		htPool.Put(w.ht)
+		lz4block.HashTablePool.Put(w.ht)
 		size := w.frame.Descriptor.Flags.BlockSizeIndex()
-		size.put(w.data)
+		size.Put(w.data)
 		w.data = nil
 	}
-	return w.frame.closeW(w.src, w.num)
+	return w.frame.CloseW(w.src, w.num)
 }
 
 // Reset clears the state of the Writer w such that it is equivalent to its
@@ -167,17 +173,17 @@ func (w *Writer) Reset(writer io.Writer) *Writer {
 	switch w.state.state {
 	case newState, closedState, errorState:
 	default:
-		panic(ErrWriterNotClosed)
+		panic(lz4errors.ErrWriterNotClosed)
 	}
 	w.state.state = noState
 	w.state.next(nil)
 	w.src = writer
-	w.frame.initW(w.src, w.num)
+	w.frame.InitW(w.src, w.num)
 	size := w.frame.Descriptor.Flags.BlockSizeIndex()
-	w.data = size.get()
+	w.data = size.Get()
 	w.idx = 0
 	if w.isNotConcurrent() {
-		w.ht = htPool.Get().([]int)
+		w.ht = lz4block.HashTablePool.Get().([]int)
 	}
 	return w
 }

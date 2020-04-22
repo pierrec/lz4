@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+
+	"github.com/pierrec/lz4/internal/lz4errors"
 )
 
 //go:generate go run golang.org/x/tools/cmd/stringer -type=aState -output state_gen.go
@@ -58,6 +60,6 @@ func (s *_State) check(errp *error) {
 
 func (s *_State) fail() error {
 	s.state = errorState
-	s.err = fmt.Errorf("%w[%s]", ErrInternalUnhandledState, s.state)
+	s.err = fmt.Errorf("%w[%s]", lz4errors.ErrInternalUnhandledState, s.state)
 	return s.err
 }

@@ -1,4 +1,5 @@
-package lz4
+// Package lz4stream provides the types that support reading and writing LZ4 data streams.
+package lz4stream
 
 import (
 	"encoding/binary"
@@ -6,10 +7,17 @@ import (
 	"io"
 	"io/ioutil"
 
+	"github.com/pierrec/lz4/internal/lz4block"
+	"github.com/pierrec/lz4/internal/lz4errors"
 	"github.com/pierrec/lz4/internal/xxh32"
 )
 
 //go:generate go run gen.go
+
+const (
+	frameMagic     uint32 = 0x184D2204
+	frameSkipMagic uint32 = 0x184D2A50
+)
 
 func NewFrame() *Frame {
 	return &Frame{}
@@ -24,14 +32,14 @@ type Frame struct {
 	checksum   xxh32.XXHZero
 }
 
-func (f *Frame) initW(dst io.Writer, num int) {
+func (f *Frame) InitW(dst io.Writer, num int) {
 	f.Magic = frameMagic
 	f.Descriptor.initW()
 	f.Blocks.initW(f, dst, num)
 	f.checksum.Reset()
 }
 
-func (f *Frame) closeW(dst io.Writer, num int) error {
+func (f *Frame) CloseW(dst io.Writer, num int) error {
 	if err := f.Blocks.closeW(f, num); err != nil {
 		return err
 	}
@@ -45,7 +53,7 @@ func (f *Frame) closeW(dst io.Writer, num int) error {
 	return err
 }
 
-func (f *Frame) initR(src io.Reader) error {
+func (f *Frame) InitR(src io.Reader) error {
 	if f.Magic > 0 {
 		// Header already read.
 		return nil
@@ -67,7 +75,7 @@ newFrame:
 		}
 		goto newFrame
 	default:
-		return ErrInvalidFrame
+		return lz4errors.ErrInvalidFrame
 	}
 	if err := f.Descriptor.initR(f, src); err != nil {
 		return err
@@ -77,7 +85,7 @@ newFrame:
 	return nil
 }
 
-func (f *Frame) closeR(src io.Reader) error {
+func (f *Frame) CloseR(src io.Reader) error {
 	f.Magic = 0
 	if !f.Descriptor.Flags.ContentChecksum() {
 		return nil
@@ -86,7 +94,7 @@ func (f *Frame) closeR(src io.Reader) error {
 		return err
 	}
 	if c := f.checksum.Sum32(); c != f.Checksum {
-		return fmt.Errorf("%w: got %x; expected %x", ErrInvalidFrameChecksum, c, f.Checksum)
+		return fmt.Errorf("%w: got %x; expected %x", lz4errors.ErrInvalidFrameChecksum, c, f.Checksum)
 	}
 	return nil
 }
@@ -102,7 +110,7 @@ func (fd *FrameDescriptor) initW() {
 	fd.Flags.BlockIndependenceSet(true)
 }
 
-func (fd *FrameDescriptor) write(f *Frame, dst io.Writer) error {
+func (fd *FrameDescriptor) Write(f *Frame, dst io.Writer) error {
 	if fd.Checksum > 0 {
 		// Header already written.
 		return nil
@@ -143,11 +151,11 @@ func (fd *FrameDescriptor) initR(f *Frame, src io.Reader) error {
 	fd.Checksum = buf[len(buf)-1] // the checksum is the last byte
 	buf = buf[:len(buf)-1]        // all descriptor fields except checksum
 	if c := descriptorChecksum(buf); fd.Checksum != c {
-		return fmt.Errorf("%w: got %x; expected %x", ErrInvalidHeaderChecksum, c, fd.Checksum)
+		return fmt.Errorf("%w: got %x; expected %x", lz4errors.ErrInvalidHeaderChecksum, c, fd.Checksum)
 	}
 	// Validate the elements that can be.
-	if !fd.Flags.BlockSizeIndex().isValid() {
-		return ErrOptionInvalidBlockSize
+	if idx := fd.Flags.BlockSizeIndex(); !idx.IsValid() {
+		return lz4errors.ErrOptionInvalidBlockSize
 	}
 	return nil
 }
@@ -166,7 +174,7 @@ func (b *Blocks) initW(f *Frame, dst io.Writer, num int) {
 	size := f.Descriptor.Flags.BlockSizeIndex()
 	if num == 1 {
 		b.Blocks = nil
-		b.Block = newFrameDataBlock(size)
+		b.Block = NewFrameDataBlock(size)
 		return
 	}
 	if cap(b.Blocks) != num {
@@ -190,7 +198,7 @@ func (b *Blocks) initW(f *Frame, dst io.Writer, num int) {
 			// Do not attempt to write the block upon any previous failure.
 			if b.err == nil {
 				// Write the block.
-				if err := block.write(f, dst); err != nil && b.err == nil {
+				if err := block.Write(f, dst); err != nil && b.err == nil {
 					// Keep the first error.
 					b.err = err
 					// All pending compression goroutines need to shut down, so we need to keep going.
@@ -218,11 +226,11 @@ func (b *Blocks) closeW(f *Frame, num int) error {
 
 func (b *Blocks) initR(f *Frame) {
 	size := f.Descriptor.Flags.BlockSizeIndex()
-	b.Block = newFrameDataBlock(size)
+	b.Block = NewFrameDataBlock(size)
 }
 
-func newFrameDataBlock(size BlockSizeIndex) *FrameDataBlock {
-	return &FrameDataBlock{Data: size.get()}
+func NewFrameDataBlock(size lz4block.BlockSizeIndex) *FrameDataBlock {
+	return &FrameDataBlock{Data: size.Get()}
 }
 
 type FrameDataBlock struct {
@@ -233,24 +241,24 @@ type FrameDataBlock struct {
 
 func (b *FrameDataBlock) closeW(f *Frame) {
 	size := f.Descriptor.Flags.BlockSizeIndex()
-	size.put(b.Data)
+	size.Put(b.Data)
 }
 
 // Block compression errors are ignored since the buffer is sized appropriately.
-func (b *FrameDataBlock) compress(f *Frame, src []byte, ht []int, level CompressionLevel) *FrameDataBlock {
+func (b *FrameDataBlock) Compress(f *Frame, src []byte, ht []int, level lz4block.CompressionLevel) *FrameDataBlock {
 	data := b.Data[:len(src)] // trigger the incompressible flag in CompressBlock
 	var n int
 	switch level {
-	case Fast:
-		n, _ = CompressBlock(src, data, ht)
+	case lz4block.Fast:
+		n, _ = lz4block.CompressBlock(src, data, ht)
 	default:
-		n, _ = CompressBlockHC(src, data, level, ht)
+		n, _ = lz4block.CompressBlockHC(src, data, level, ht)
 	}
 	if n == 0 {
-		b.Size.uncompressedSet(true)
+		b.Size.UncompressedSet(true)
 		data = src
 	} else {
-		b.Size.uncompressedSet(false)
+		b.Size.UncompressedSet(false)
 		data = data[:n]
 	}
 	b.Data = data
@@ -265,7 +273,7 @@ func (b *FrameDataBlock) compress(f *Frame, src []byte, ht []int, level Compress
 	return b
 }
 
-func (b *FrameDataBlock) write(f *Frame, dst io.Writer) error {
+func (b *FrameDataBlock) Write(f *Frame, dst io.Writer) error {
 	buf := f.buf[:]
 	binary.LittleEndian.PutUint32(buf, uint32(b.Size))
 	if _, err := dst.Write(buf[:4]); err != nil {
@@ -284,7 +292,7 @@ func (b *FrameDataBlock) write(f *Frame, dst io.Writer) error {
 	return err
 }
 
-func (b *FrameDataBlock) uncompress(f *Frame, src io.Reader, dst []byte) (int, error) {
+func (b *FrameDataBlock) Uncompress(f *Frame, src io.Reader, dst []byte) (int, error) {
 	buf := f.buf[:]
 	var x uint32
 	if err := readUint32(src, buf, &x); err != nil {
@@ -296,7 +304,7 @@ func (b *FrameDataBlock) uncompress(f *Frame, src io.Reader, dst []byte) (int, e
 		return 0, io.EOF
 	}
 
-	isCompressed := !b.Size.uncompressed()
+	isCompressed := !b.Size.Uncompressed()
 	size := b.Size.size()
 	var data []byte
 	if isCompressed {
@@ -309,7 +317,7 @@ func (b *FrameDataBlock) uncompress(f *Frame, src io.Reader, dst []byte) (int, e
 		return 0, err
 	}
 	if isCompressed {
-		n, err := UncompressBlock(data, dst)
+		n, err := lz4block.UncompressBlock(data, dst)
 		if err != nil {
 			return 0, err
 		}
@@ -321,7 +329,7 @@ func (b *FrameDataBlock) uncompress(f *Frame, src io.Reader, dst []byte) (int, e
 			return 0, err
 		}
 		if c := xxh32.ChecksumZero(data); c != b.Checksum {
-			return 0, fmt.Errorf("%w: got %x; expected %x", ErrInvalidBlockChecksum, c, b.Checksum)
+			return 0, fmt.Errorf("%w: got %x; expected %x", lz4errors.ErrInvalidBlockChecksum, c, b.Checksum)
 		}
 	}
 	if f.Descriptor.Flags.ContentChecksum() {

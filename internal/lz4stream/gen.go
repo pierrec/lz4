@@ -6,7 +6,6 @@ import (
 	"log"
 	"os"
 
-	"github.com/pierrec/lz4"
 	"github.com/pierrec/packer"
 )
 
@@ -20,13 +19,13 @@ type DescriptorFlags struct {
 	Version           [2]uint16
 	// BD
 	_              [4]int
-	BlockSizeIndex [3]lz4.BlockSizeIndex
+	BlockSizeIndex [3]lz4block.BlockSizeIndex
 	_              [1]int
 }
 
 type DataBlockSize struct {
 	size         [31]int
-	uncompressed bool
+	Uncompressed bool
 }
 
 func main() {
@@ -36,7 +35,7 @@ func main() {
 	}
 	defer out.Close()
 
-	pkg := "lz4"
+	pkg := "lz4stream"
 	for i, t := range []interface{}{
 		DescriptorFlags{}, DataBlockSize{},
 	} {

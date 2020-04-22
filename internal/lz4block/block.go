@@ -239,7 +239,7 @@ func blockHashHC(x uint32) uint32 {
 	return x * hasher >> (32 - winSizeLog)
 }
 
-func CompressBlockHC(src, dst []byte, depth CompressionLevel, hashTable []int) (_ int, err error) {
+func CompressBlockHC(src, dst []byte, depth CompressionLevel) (_ int, err error) {
 	defer recoverBlock(&err)
 
 	// Return 0, nil only if the destination buffer size is < CompressBlockBound.
@@ -250,25 +250,15 @@ func CompressBlockHC(src, dst []byte, depth CompressionLevel, hashTable []int) (
 	// bytes to skip =  1 + (bytes since last match >> adaptSkipLog)
 	const adaptSkipLog = 7
 
-	var chainTable []int
 	var si, di, anchor int
 	// hashTable: stores the last position found for a given hash
 	// chainTable: stores previous positions for a given hash
+	var hashTable, chainTable [winSize]int
+
 	sn := len(src) - mfLimit
 	if sn <= 0 {
 		goto lastLiterals
 	}
-
-	if cap(hashTable) < htSize {
-		hashTable = HashTablePool.Get().([]int)
-		defer HashTablePool.Put(hashTable)
-	} else {
-		hashTable = hashTable[:htSize]
-	}
-	_ = hashTable[htSize-1]
-	chainTable = HashTablePool.Get().([]int)
-	defer HashTablePool.Put(chainTable)
-	_ = chainTable[htSize-1]
 
 	if depth <= 0 {
 		depth = winSize
@@ -282,7 +272,7 @@ func CompressBlockHC(src, dst []byte, depth CompressionLevel, hashTable []int) (
 		// Follow the chain until out of window and give the longest match.
 		mLen := 0
 		offset := 0
-		for next, try := hashTable[h], depth; try > 0 && next > 0 && si-next < winSize; next = chainTable[next&winMask] {
+		for next, try := hashTable[h], depth; try > 0 && next > 0 && si-next < winSize; next, try = chainTable[next&winMask], try-1 {
 			// The first (mLen==0) or next byte (mLen>=minMatch) at current match length
 			// must match to improve on the match length.
 			if src[next+mLen] != src[si+mLen] {
@@ -308,7 +298,6 @@ func CompressBlockHC(src, dst []byte, depth CompressionLevel, hashTable []int) (
 			mLen = ml
 			offset = si - next
 			// Try another previous position with the same hash.
-			try--
 		}
 		chainTable[si&winMask] = hashTable[h]
 		hashTable[h] = si

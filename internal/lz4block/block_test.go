@@ -20,14 +20,14 @@ type testcase struct {
 
 var rawFiles = []testcase{
 	// {"testdata/207326ba-36f8-11e7-954a-aca46ba8ca73.png", true, nil},
-	{"testdata/e.txt", false, nil},
-	{"testdata/gettysburg.txt", true, nil},
-	{"testdata/Mark.Twain-Tom.Sawyer.txt", true, nil},
-	{"testdata/pg1661.txt", true, nil},
-	{"testdata/pi.txt", false, nil},
-	{"testdata/random.data", false, nil},
-	{"testdata/repeat.txt", true, nil},
-	{"testdata/pg1661.txt", true, nil},
+	{"../../testdata/e.txt", false, nil},
+	{"../../testdata/gettysburg.txt", true, nil},
+	{"../../testdata/Mark.Twain-Tom.Sawyer.txt", true, nil},
+	{"../../testdata/pg1661.txt", true, nil},
+	{"../../testdata/pi.txt", false, nil},
+	{"../../testdata/random.data", false, nil},
+	{"../../testdata/repeat.txt", true, nil},
+	{"../../testdata/pg1661.txt", true, nil},
 }
 
 func TestCompressUncompressBlock(t *testing.T) {
@@ -101,12 +101,11 @@ func TestCompressUncompressBlock(t *testing.T) {
 					return lz4block.CompressBlock(src, dst, nil)
 				})
 			})
-			//TODO
-			//t.Run(fmt.Sprintf("%s HC", tc.file), func(t *testing.T) {
-			//	nhc = run(t, tc, func(src, dst []byte) (int, error) {
-			//		return lz4.CompressBlockHC(src, dst, 16, nil)
-			//	})
-			//})
+			t.Run(fmt.Sprintf("%s HC", tc.file), func(t *testing.T) {
+				nhc = run(t, tc, func(src, dst []byte) (int, error) {
+					return lz4.CompressBlockHC(src, dst, 10, nil)
+				})
+			})
 		})
 		if !t.Failed() {
 			t.Logf("%-40s: %8d / %8d / %8d\n", tc.file, n, nhc, len(src))
@@ -130,7 +129,7 @@ func TestCompressCornerCase_CopyDstUpperBound(t *testing.T) {
 		}
 	}
 
-	file := "testdata/upperbound.data"
+	file := "../../testdata/upperbound.data"
 	src, err := ioutil.ReadFile(file)
 	if err != nil {
 		t.Fatal(err)
@@ -145,7 +144,7 @@ func TestCompressCornerCase_CopyDstUpperBound(t *testing.T) {
 	t.Run(fmt.Sprintf("%s HC", file), func(t *testing.T) {
 		t.Parallel()
 		run(src, func(src, dst []byte) (int, error) {
-			return lz4block.CompressBlockHC(src, dst, 16, nil)
+			return lz4block.CompressBlockHC(src, dst, 16)
 		})
 	})
 }

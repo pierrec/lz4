@@ -59,7 +59,7 @@ func CompressBlock(src, dst []byte, hashTable []int) (_ int, err error) {
 //
 // An error is returned if the destination buffer is too small.
 func CompressBlockHC(src, dst []byte, depth CompressionLevel, hashTable []int) (_ int, err error) {
-	return lz4block.CompressBlockHC(src, dst, lz4block.CompressionLevel(depth), hashTable)
+	return lz4block.CompressBlockHC(src, dst, lz4block.CompressionLevel(depth))
 }
 
 const (

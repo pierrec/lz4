@@ -100,12 +100,16 @@ func (w *Writer) Write(buf []byte) (n int, err error) {
 		if err = w.write(w.data, true); err != nil {
 			return
 		}
+		if !w.isNotConcurrent() {
+			size := w.frame.Descriptor.Flags.BlockSizeIndex()
+			w.data = size.Get()
+		}
 		w.idx = 0
 	}
 	return
 }
 
-func (w *Writer) write(data []byte, direct bool) error {
+func (w *Writer) write(data []byte, safe bool) error {
 	if w.isNotConcurrent() {
 		defer w.handler(len(data))
 		block := w.frame.Blocks.Block
@@ -114,24 +118,17 @@ func (w *Writer) write(data []byte, direct bool) error {
 	size := w.frame.Descriptor.Flags.BlockSizeIndex()
 	c := make(chan *lz4stream.FrameDataBlock)
 	w.frame.Blocks.Blocks <- c
-	go func(c chan *lz4stream.FrameDataBlock, data []byte, size lz4block.BlockSizeIndex) {
-		defer w.handler(len(data))
+	go func(c chan *lz4stream.FrameDataBlock, data []byte, size lz4block.BlockSizeIndex, safe bool) {
 		b := lz4stream.NewFrameDataBlock(size)
-		zdata := b.Data
 		c <- b.Compress(w.frame, data, nil, w.level)
-		// Wait for the compressed or uncompressed data to no longer be in use
-		// and free the allocated buffers
-		if b.Size.Uncompressed() {
-			zdata, data = data, zdata
-		}
-		size.Put(data)
 		<-c
-		size.Put(zdata)
-	}(c, data, size)
-
-	if direct {
-		w.data = size.Get()
-	}
+		w.handler(len(data))
+		b.CloseW(w.frame)
+		if safe {
+			// safe to put it back as the last usage of it was FrameDataBlock.Write() called before c is closed
+			size.Put(data)
+		}
+	}(c, data, size, safe)
 
 	return nil
 }
@@ -148,19 +145,21 @@ func (w *Writer) Close() (err error) {
 	}
 	defer func() { w.state.next(err) }()
 	if w.idx > 0 {
-		// Flush pending data.
+		// Flush pending data, disable w.data freeing as it is done later on.
 		if err = w.write(w.data[:w.idx], false); err != nil {
 			return err
 		}
 		w.idx = 0
 	}
+	err = w.frame.CloseW(w.src, w.num)
 	if w.isNotConcurrent() {
 		lz4block.HashTablePool.Put(w.ht)
-		size := w.frame.Descriptor.Flags.BlockSizeIndex()
-		size.Put(w.data)
-		w.data = nil
 	}
-	return w.frame.CloseW(w.src, w.num)
+	// It is now safe to free the buffer.
+	size := w.frame.Descriptor.Flags.BlockSizeIndex()
+	size.Put(w.data)
+	w.data = nil
+	return
 }
 
 // Reset clears the state of the Writer w such that it is equivalent to its

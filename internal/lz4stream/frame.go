@@ -177,6 +177,7 @@ func (b *Blocks) initW(f *Frame, dst io.Writer, num int) {
 		b.Block = NewFrameDataBlock(size)
 		return
 	}
+	b.Block = nil
 	if cap(b.Blocks) != num {
 		b.Blocks = make(chan chan *FrameDataBlock, num)
 	}
@@ -211,8 +212,7 @@ func (b *Blocks) initW(f *Frame, dst io.Writer, num int) {
 
 func (b *Blocks) closeW(f *Frame, num int) error {
 	if num == 1 {
-		b.Block.closeW(f)
-		b.Block = nil
+		b.Block.CloseW(f)
 		return nil
 	}
 	c := make(chan *FrameDataBlock)
@@ -235,18 +235,24 @@ func NewFrameDataBlock(size lz4block.BlockSizeIndex) *FrameDataBlock {
 
 type FrameDataBlock struct {
 	Size     DataBlockSize
-	Data     []byte
+	Data     []byte // (un)compressed data
 	Checksum uint32
+	ref      []byte
+	src      []byte // uncompressed data
 }
 
-func (b *FrameDataBlock) closeW(f *Frame) {
+func (b *FrameDataBlock) CloseW(f *Frame) {
 	size := f.Descriptor.Flags.BlockSizeIndex()
-	size.Put(b.Data)
+	size.Put(b.ref)
+	b.Data = nil
+	b.ref = nil
+	b.src = nil
 }
 
 // Block compression errors are ignored since the buffer is sized appropriately.
 func (b *FrameDataBlock) Compress(f *Frame, src []byte, ht []int, level lz4block.CompressionLevel) *FrameDataBlock {
 	data := b.Data[:len(src)] // trigger the incompressible flag in CompressBlock
+	b.ref = data              // keep track of the allocated buffer so that it can be freed
 	var n int
 	switch level {
 	case lz4block.Fast:
@@ -256,24 +262,24 @@ func (b *FrameDataBlock) Compress(f *Frame, src []byte, ht []int, level lz4block
 	}
 	if n == 0 {
 		b.Size.UncompressedSet(true)
-		data = src
+		b.Data = src
 	} else {
 		b.Size.UncompressedSet(false)
-		data = data[:n]
+		b.Data = data[:n]
 	}
-	b.Data = data
-	b.Size.sizeSet(len(data))
+	b.Size.sizeSet(len(b.Data))
+	b.src = src // keep track of the source for content checksum
 
 	if f.Descriptor.Flags.BlockChecksum() {
 		b.Checksum = xxh32.ChecksumZero(src)
-	}
-	if f.Descriptor.Flags.ContentChecksum() {
-		_, _ = f.checksum.Write(src)
 	}
 	return b
 }
 
 func (b *FrameDataBlock) Write(f *Frame, dst io.Writer) error {
+	if f.Descriptor.Flags.ContentChecksum() {
+		_, _ = f.checksum.Write(b.src)
+	}
 	buf := f.buf[:]
 	binary.LittleEndian.PutUint32(buf, uint32(b.Size))
 	if _, err := dst.Write(buf[:4]); err != nil {

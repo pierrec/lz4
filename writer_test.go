@@ -31,7 +31,7 @@ func TestWriter(t *testing.T) {
 			lz4.ConcurrencyOption(1),
 			lz4.BlockChecksumOption(true),
 			lz4.SizeOption(123),
-			//lz4.ConcurrencyOption(2),
+			lz4.ConcurrencyOption(4),
 		} {
 			label := fmt.Sprintf("%s/%s", fname, option)
 			t.Run(label, func(t *testing.T) {

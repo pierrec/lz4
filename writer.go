@@ -14,7 +14,7 @@ var writerStates = []aState{
 func NewWriter(w io.Writer) *Writer {
 	zw := new(Writer)
 	zw.state.init(writerStates)
-	_ = zw.Apply(defaultBlockSizeOption, defaultChecksumOption, defaultConcurrency, defaultOnBlockDone)
+	_ = zw.Apply(DefaultBlockSizeOption, DefaultChecksumOption, DefaultConcurrency, defaultOnBlockDone)
 	return zw.Reset(w)
 }
 

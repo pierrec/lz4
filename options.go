@@ -10,24 +10,23 @@ import (
 //go:generate go run golang.org/x/tools/cmd/stringer -type=BlockSize,CompressionLevel -output options_gen.go
 
 type (
-	Applier interface {
+	applier interface {
 		Apply(...Option) error
 		private()
 	}
 	// Option defines the parameters to setup an LZ4 Writer or Reader.
-	Option func(Applier) error
+	Option func(applier) error
 )
 
 func (o Option) String() string {
-	//TODO proper naming of options
-	return reflect.TypeOf(o).String()
+	return o(nil).Error()
 }
 
 // Default options.
 var (
-	defaultBlockSizeOption = BlockSizeOption(Block4Mb)
-	defaultChecksumOption  = ChecksumOption(true)
-	defaultConcurrency     = ConcurrencyOption(1)
+	DefaultBlockSizeOption = BlockSizeOption(Block4Mb)
+	DefaultChecksumOption  = ChecksumOption(true)
+	DefaultConcurrency     = ConcurrencyOption(1)
 	defaultOnBlockDone     = OnBlockDoneOption(nil)
 )
 
@@ -98,73 +97,88 @@ func (b BlockSizeIndex) put(buf []byte) {
 
 // BlockSizeOption defines the maximum size of compressed blocks (default=Block4Mb).
 func BlockSizeOption(size BlockSize) Option {
-	return func(a Applier) error {
-		w, ok := a.(*Writer)
-		if !ok {
-			return ErrOptionNotApplicable
+	return func(a applier) error {
+		switch w := a.(type) {
+		case nil:
+			s := fmt.Sprintf("BlockSizeOption(%s)", size)
+			return _error(s)
+		case *Writer:
+			if !size.isValid() {
+				return fmt.Errorf("%w: %d", ErrOptionInvalidBlockSize, size)
+			}
+			w.frame.Descriptor.Flags.BlockSizeIndexSet(size.index())
+			return nil
 		}
-		if !size.isValid() {
-			return fmt.Errorf("%w: %d", ErrOptionInvalidBlockSize, size)
-		}
-		w.frame.Descriptor.Flags.BlockSizeIndexSet(size.index())
-		return nil
+		return ErrOptionNotApplicable
 	}
 }
 
 // BlockChecksumOption enables or disables block checksum (default=false).
 func BlockChecksumOption(flag bool) Option {
-	return func(a Applier) error {
-		w, ok := a.(*Writer)
-		if !ok {
-			return ErrOptionNotApplicable
+	return func(a applier) error {
+		switch w := a.(type) {
+		case nil:
+			s := fmt.Sprintf("BlockChecksumOption(%v)", flag)
+			return _error(s)
+		case *Writer:
+			w.frame.Descriptor.Flags.BlockChecksumSet(flag)
+			return nil
 		}
-		w.frame.Descriptor.Flags.BlockChecksumSet(flag)
-		return nil
+		return ErrOptionNotApplicable
 	}
 }
 
 // ChecksumOption enables/disables all blocks checksum (default=true).
 func ChecksumOption(flag bool) Option {
-	return func(a Applier) error {
-		w, ok := a.(*Writer)
-		if !ok {
-			return ErrOptionNotApplicable
+	return func(a applier) error {
+		switch w := a.(type) {
+		case nil:
+			s := fmt.Sprintf("BlockChecksumOption(%v)", flag)
+			return _error(s)
+		case *Writer:
+			w.frame.Descriptor.Flags.ContentChecksumSet(flag)
+			return nil
 		}
-		w.frame.Descriptor.Flags.ContentChecksumSet(flag)
-		return nil
+		return ErrOptionNotApplicable
 	}
 }
 
 // SizeOption sets the size of the original uncompressed data (default=0).
 func SizeOption(size uint64) Option {
-	return func(a Applier) error {
-		w, ok := a.(*Writer)
-		if !ok {
-			return ErrOptionNotApplicable
+	return func(a applier) error {
+		switch w := a.(type) {
+		case nil:
+			s := fmt.Sprintf("SizeOption(%d)", size)
+			return _error(s)
+		case *Writer:
+			w.frame.Descriptor.Flags.SizeSet(size > 0)
+			w.frame.Descriptor.ContentSize = size
+			return nil
 		}
-		w.frame.Descriptor.Flags.SizeSet(size > 0)
-		w.frame.Descriptor.ContentSize = size
-		return nil
+		return ErrOptionNotApplicable
 	}
 }
 
 // ConcurrencyOption sets the number of go routines used for compression.
 // If n<0, then the output of runtime.GOMAXPROCS(0) is used.
 func ConcurrencyOption(n int) Option {
-	return func(a Applier) error {
-		w, ok := a.(*Writer)
-		if !ok {
-			return ErrOptionNotApplicable
-		}
-		switch n {
-		case 0, 1:
-		default:
-			if n < 0 {
-				n = runtime.GOMAXPROCS(0)
+	return func(a applier) error {
+		switch w := a.(type) {
+		case nil:
+			s := fmt.Sprintf("ConcurrencyOption(%d)", n)
+			return _error(s)
+		case *Writer:
+			switch n {
+			case 0, 1:
+			default:
+				if n < 0 {
+					n = runtime.GOMAXPROCS(0)
+				}
 			}
+			w.num = n
+			return nil
 		}
-		w.num = n
-		return nil
+		return ErrOptionNotApplicable
 	}
 }
 
@@ -186,18 +200,21 @@ const (
 
 // CompressionLevelOption defines the compression level (default=Fast).
 func CompressionLevelOption(level CompressionLevel) Option {
-	return func(a Applier) error {
-		w, ok := a.(*Writer)
-		if !ok {
-			return ErrOptionNotApplicable
+	return func(a applier) error {
+		switch w := a.(type) {
+		case nil:
+			s := fmt.Sprintf("CompressionLevelOption(%s)", level)
+			return _error(s)
+		case *Writer:
+			switch level {
+			case Fast, Level1, Level2, Level3, Level4, Level5, Level6, Level7, Level8, Level9:
+			default:
+				return fmt.Errorf("%w: %d", ErrOptionInvalidCompressionLevel, level)
+			}
+			w.level = level
+			return nil
 		}
-		switch level {
-		case Fast, Level1, Level2, Level3, Level4, Level5, Level6, Level7, Level8, Level9:
-		default:
-			return fmt.Errorf("%w: %d", ErrOptionInvalidCompressionLevel, level)
-		}
-		w.level = level
-		return nil
+		return ErrOptionNotApplicable
 	}
 }
 
@@ -208,15 +225,16 @@ func OnBlockDoneOption(handler func(size int)) Option {
 	if handler == nil {
 		handler = onBlockDone
 	}
-	return func(a Applier) error {
-		if r, ok := a.(*Reader); ok {
-			r.handler = handler
-			return nil
+	return func(a applier) error {
+		switch rw := a.(type) {
+		case nil:
+			s := fmt.Sprintf("OnBlockDoneOption(%s)", reflect.TypeOf(handler).String())
+			return _error(s)
+		case *Writer:
+			rw.handler = handler
+		case *Reader:
+			rw.handler = handler
 		}
-		if w, ok := a.(*Writer); ok {
-			w.handler = handler
-			return nil
-		}
-		return ErrOptionNotApplicable
+		return nil
 	}
 }

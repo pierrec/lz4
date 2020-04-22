@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/pierrec/lz4"
@@ -28,8 +29,8 @@ func TestWriter(t *testing.T) {
 	for _, fname := range goldenFiles {
 		for _, option := range []lz4.Option{
 			lz4.ConcurrencyOption(1),
-			//lz4.BlockChecksumOption(true),
-			//lz4.SizeOption(123),
+			lz4.BlockChecksumOption(true),
+			lz4.SizeOption(123),
 			//lz4.ConcurrencyOption(2),
 		} {
 			label := fmt.Sprintf("%s/%s", fname, option)
@@ -73,6 +74,12 @@ func TestWriter(t *testing.T) {
 
 				if got, want := out.Bytes(), raw; !reflect.DeepEqual(got, want) {
 					t.Fatal("uncompressed data does not match original")
+				}
+
+				if strings.Contains(option.String(), "SizeOption") {
+					if got, want := zr.Size(), 123; got != want {
+						t.Errorf("invalid sizes: got %d; want %d", got, want)
+					}
 				}
 			})
 		}

@@ -4,8 +4,7 @@ import "io"
 
 var writerStates = []aState{
 	noState:     newState,
-	newState:    headerState,
-	headerState: writeState,
+	newState:    writeState,
 	writeState:  closedState,
 	closedState: newState,
 	errorState:  newState,
@@ -21,7 +20,7 @@ func NewWriter(w io.Writer) *Writer {
 
 type Writer struct {
 	state   _State
-	buf     [11]byte         // frame descriptor needs at most 4+8+1=11 bytes
+	buf     [15]byte         // frame descriptor needs at most 4(magic)+4+8+1=11 bytes
 	src     io.Writer        // destination writer
 	level   CompressionLevel // how hard to try
 	num     int              // concurrency level
@@ -41,7 +40,7 @@ func (w *Writer) Apply(options ...Option) (err error) {
 	case errorState:
 		return w.state.err
 	default:
-		return ErrCannotApplyOptions
+		return ErrOptionClosedOrError
 	}
 	for _, o := range options {
 		if err = o(w); err != nil {
@@ -62,7 +61,6 @@ func (w *Writer) Write(buf []byte) (n int, err error) {
 	case closedState, errorState:
 		return 0, w.state.err
 	case newState:
-		w.state.next(nil)
 		if err = w.frame.Descriptor.write(w); w.state.next(err) {
 			return
 		}
@@ -74,7 +72,7 @@ func (w *Writer) Write(buf []byte) (n int, err error) {
 	for len(buf) > 0 {
 		if w.idx == 0 && len(buf) >= zn {
 			// Avoid a copy as there is enough data for a block.
-			if err = w.write(); err != nil {
+			if err = w.write(buf[:zn], false); err != nil {
 				return
 			}
 			n += zn
@@ -93,7 +91,7 @@ func (w *Writer) Write(buf []byte) (n int, err error) {
 		}
 
 		// Buffer full.
-		if err = w.write(); err != nil {
+		if err = w.write(w.data, true); err != nil {
 			return
 		}
 		w.idx = 0
@@ -101,10 +99,11 @@ func (w *Writer) Write(buf []byte) (n int, err error) {
 	return
 }
 
-func (w *Writer) write() error {
+func (w *Writer) write(data []byte, direct bool) error {
 	if w.isNotConcurrent() {
-		defer w.handler(len(w.data))
-		return w.frame.Blocks.Block.compress(w, w.data, w.ht).write(w)
+		defer w.handler(len(data))
+		block := w.frame.Blocks.Block
+		return block.compress(w, data, w.ht).write(w)
 	}
 	size := w.frame.Descriptor.Flags.BlockSizeIndex()
 	c := make(chan *FrameDataBlock)
@@ -122,20 +121,18 @@ func (w *Writer) write() error {
 		size.put(data)
 		<-c
 		size.put(zdata)
-	}(c, w.data, size)
+	}(c, data, size)
 
-	if w.idx > 0 {
-		// Not closed.
+	if direct {
 		w.data = size.get()
 	}
-	w.idx = 0
 
 	return nil
 }
 
 // Close closes the Writer, flushing any unwritten data to the underlying io.Writer,
 // but does not close the underlying io.Writer.
-func (w *Writer) Close() error {
+func (w *Writer) Close() (err error) {
 	switch w.state.state {
 	case writeState:
 	case errorState:
@@ -143,21 +140,19 @@ func (w *Writer) Close() error {
 	default:
 		return nil
 	}
-	var err error
 	defer func() { w.state.next(err) }()
-	if idx := w.idx; idx > 0 {
+	if w.idx > 0 {
 		// Flush pending data.
-		w.data = w.data[:idx]
-		w.idx = 0
-		if err = w.write(); err != nil {
+		if err = w.write(w.data[:w.idx], false); err != nil {
 			return err
 		}
-		w.data = nil
+		w.idx = 0
 	}
 	if w.isNotConcurrent() {
 		htPool.Put(w.ht)
 		size := w.frame.Descriptor.Flags.BlockSizeIndex()
 		size.put(w.data)
+		w.data = nil
 	}
 	return w.frame.closeW(w)
 }

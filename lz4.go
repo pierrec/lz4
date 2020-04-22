@@ -28,28 +28,24 @@ const (
 	// ErrInvalidSourceShortBuffer is returned by UncompressBlock or CompressBLock when a compressed
 	// block is corrupted or the destination buffer is not large enough for the uncompressed data.
 	ErrInvalidSourceShortBuffer _error = "lz4: invalid source or destination buffer too short"
-	// ErrClosed is returned when calling Write/Read or Close on an already closed Writer/Reader.
-	ErrClosed _error = "lz4: closed Writer"
-	// ErrInvalid is returned when reading an invalid LZ4 archive.
-	ErrInvalid _error = "lz4: bad magic number"
-	// ErrBlockDependency is returned when attempting to decompress an archive created with block dependency.
-	ErrBlockDependency _error = "lz4: block dependency not supported"
+	// ErrInvalidFrame is returned when reading an invalid LZ4 archive.
+	ErrInvalidFrame _error = "lz4: bad magic number"
 	// ErrUnsupportedSeek is returned when attempting to Seek any way but forward from the current position.
 	ErrUnsupportedSeek _error = "lz4: can only seek forward from io.SeekCurrent"
 	// ErrInternalUnhandledState is an internal error.
 	ErrInternalUnhandledState _error = "lz4: unhandled state"
-	// ErrInvalidHeaderChecksum
+	// ErrInvalidHeaderChecksum is returned when reading a frame.
 	ErrInvalidHeaderChecksum _error = "lz4: invalid header checksum"
-	// ErrInvalidBlockChecksum
+	// ErrInvalidBlockChecksum is returned when reading a frame.
 	ErrInvalidBlockChecksum _error = "lz4: invalid block checksum"
-	// ErrInvalidFrameChecksum
+	// ErrInvalidFrameChecksum is returned when reading a frame.
 	ErrInvalidFrameChecksum _error = "lz4: invalid frame checksum"
-	// ErrInvalidCompressionLevel
-	ErrInvalidCompressionLevel _error = "lz4: invalid compression level"
-	// ErrCannotApplyOptions
-	ErrCannotApplyOptions _error = "lz4: cannot apply options"
-	// ErrInvalidBlockSize
-	ErrInvalidBlockSize _error = "lz4: invalid block size"
-	// ErrOptionNotApplicable
+	// ErrOptionInvalidCompressionLevel is returned when the supplied compression level is invalid.
+	ErrOptionInvalidCompressionLevel _error = "lz4: invalid compression level"
+	// ErrOptionClosedOrError is returned when an option is applied to a closed or in error object.
+	ErrOptionClosedOrError _error = "lz4: cannot apply options on closed or in error object"
+	// ErrOptionInvalidBlockSize is returned when
+	ErrOptionInvalidBlockSize _error = "lz4: invalid block size"
+	// ErrOptionNotApplicable is returned when trying to apply an option to an object not supporting it.
 	ErrOptionNotApplicable _error = "lz4: option not applicable"
 )

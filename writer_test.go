@@ -8,6 +8,8 @@ import (
 	"os"
 	"reflect"
 	"testing"
+
+	"github.com/pierrec/lz4"
 )
 
 func TestWriter(t *testing.T) {
@@ -23,72 +25,67 @@ func TestWriter(t *testing.T) {
 	}
 
 	for _, fname := range goldenFiles {
-		for _, size := range []int{0, 4} {
-			for _, header := range []Header{
-				{}, // Default header.
-				{BlockChecksum: true},
-				{NoChecksum: true},
-				{BlockMaxSize: 64 << 10}, // 64Kb
-				{CompressionLevel: 10},
-				{Size: 123},
-			} {
-				label := fmt.Sprintf("%s/%s", fname, header)
-				t.Run(label, func(t *testing.T) {
-					fname := fname
-					header := header
-					t.Parallel()
+		for _, option := range []lz4.Option{
+			lz4.ConcurrencyOption(1),
+			//lz4.BlockChecksumOption(true),
+			//lz4.SizeOption(123),
+			//lz4.ConcurrencyOption(2),
+		} {
+			label := fmt.Sprintf("%s/%s", fname, option)
+			t.Run(label, func(t *testing.T) {
+				fname := fname
+				t.Parallel()
 
-					raw, err := ioutil.ReadFile(fname)
-					if err != nil {
-						t.Fatal(err)
-					}
-					r := bytes.NewReader(raw)
+				raw, err := ioutil.ReadFile(fname)
+				if err != nil {
+					t.Fatal(err)
+				}
+				r := bytes.NewReader(raw)
 
-					// Compress.
-					var zout bytes.Buffer
-					zw := NewWriter(&zout)
-					zw.Header = header
-					zw.WithConcurrency(size)
-					_, err = io.Copy(zw, r)
-					if err != nil {
-						t.Fatal(err)
-					}
-					err = zw.Close()
-					if err != nil {
-						t.Fatal(err)
-					}
+				// Compress.
+				zout := new(bytes.Buffer)
+				zw := lz4.NewWriter(zout)
+				if err := zw.Apply(option); err != nil {
+					t.Fatal(err)
+				}
+				_, err = io.Copy(zw, r)
+				if err != nil {
+					t.Fatal(err)
+				}
+				err = zw.Close()
+				if err != nil {
+					t.Fatal(err)
+				}
 
-					// Uncompress.
-					var out bytes.Buffer
-					zr := NewReader(&zout)
-					n, err := io.Copy(&out, zr)
-					if err != nil {
-						t.Fatal(err)
-					}
+				// Uncompress.
+				out := new(bytes.Buffer)
+				zr := lz4.NewReader(zout)
+				n, err := io.Copy(out, zr)
+				if err != nil {
+					t.Fatal(err)
+				}
 
-					// The uncompressed data must be the same as the initial input.
-					if got, want := int(n), len(raw); got != want {
-						t.Errorf("invalid sizes: got %d; want %d", got, want)
-					}
+				// The uncompressed data must be the same as the initial input.
+				if got, want := int(n), len(raw); got != want {
+					t.Errorf("invalid sizes: got %d; want %d", got, want)
+				}
 
-					if got, want := out.Bytes(), raw; !reflect.DeepEqual(got, want) {
-						t.Fatal("uncompressed data does not match original")
-					}
-				})
-			}
+				if got, want := out.Bytes(), raw; !reflect.DeepEqual(got, want) {
+					t.Fatal("uncompressed data does not match original")
+				}
+			})
 		}
 	}
 }
 
 func TestIssue41(t *testing.T) {
 	r, w := io.Pipe()
-	zw := NewWriter(w)
-	zr := NewReader(r)
+	zw := lz4.NewWriter(w)
+	zr := lz4.NewReader(r)
 
 	data := "x"
 	go func() {
 		_, _ = fmt.Fprint(zw, data)
-		_ = zw.Flush()
 		_ = zw.Close()
 		_ = w.Close()
 	}()
@@ -110,7 +107,7 @@ func TestIssue43(t *testing.T) {
 		}
 		defer f.Close()
 
-		zw := NewWriter(w)
+		zw := lz4.NewWriter(w)
 		defer zw.Close()
 
 		_, err = io.Copy(zw, f)
@@ -118,7 +115,7 @@ func TestIssue43(t *testing.T) {
 			t.Fatal(err)
 		}
 	}()
-	_, err := io.Copy(ioutil.Discard, NewReader(r))
+	_, err := io.Copy(ioutil.Discard, lz4.NewReader(r))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,16 +128,15 @@ func TestIssue51(t *testing.T) {
 	}
 
 	zbuf := make([]byte, 8192)
-	ht := make([]int, htSize)
 
-	n, err := CompressBlock(data, zbuf, ht)
+	n, err := lz4.CompressBlock(data, zbuf, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	zbuf = zbuf[:n]
 
 	buf := make([]byte, 8192)
-	n, err = UncompressBlock(zbuf, buf)
+	n, err = lz4.UncompressBlock(zbuf, buf)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,11 +153,11 @@ func TestIssue71(t *testing.T) {
 	} {
 		t.Run(tc, func(t *testing.T) {
 			src := []byte(tc)
-			bound := CompressBlockBound(len(tc))
+			bound := lz4.CompressBlockBound(len(tc))
 
 			// Small buffer.
 			zSmall := make([]byte, bound-1)
-			n, err := CompressBlock(src, zSmall, nil)
+			n, err := lz4.CompressBlock(src, zSmall, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -171,7 +167,7 @@ func TestIssue71(t *testing.T) {
 
 			// Large enough buffer.
 			zLarge := make([]byte, bound)
-			n, err = CompressBlock(src, zLarge, nil)
+			n, err = lz4.CompressBlock(src, zLarge, nil)
 			if err != nil {
 				t.Fatal(err)
 			}

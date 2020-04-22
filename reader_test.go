@@ -42,9 +42,9 @@ func TestReader(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			var out bytes.Buffer
+			out := new(bytes.Buffer)
 			zr := lz4.NewReader(f)
-			n, err := io.Copy(&out, zr)
+			n, err := io.Copy(out, zr)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -69,7 +69,7 @@ func TestReader(t *testing.T) {
 
 			out.Reset()
 			zr = lz4.NewReader(f2)
-			_, err = io.CopyN(&out, zr, 10)
+			_, err = io.CopyN(out, zr, 10)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -78,6 +78,7 @@ func TestReader(t *testing.T) {
 			}
 			return
 
+			//TODO add Reader.Seek
 			pos, err := zr.Seek(-1, io.SeekCurrent)
 			if err == nil {
 				t.Fatal("expected error from invalid seek")
@@ -109,7 +110,7 @@ func TestReader(t *testing.T) {
 			}
 
 			out.Reset()
-			_, err = io.CopyN(&out, zr, 10)
+			_, err = io.CopyN(out, zr, 10)
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -2,6 +2,7 @@ package lz4
 
 import (
 	"fmt"
+	"reflect"
 	"runtime"
 	"sync"
 )
@@ -16,6 +17,11 @@ type (
 	// Option defines the parameters to setup an LZ4 Writer or Reader.
 	Option func(Applier) error
 )
+
+func (o Option) String() string {
+	//TODO proper naming of options
+	return reflect.TypeOf(o).String()
+}
 
 // Default options.
 var (
@@ -98,7 +104,7 @@ func BlockSizeOption(size BlockSize) Option {
 			return ErrOptionNotApplicable
 		}
 		if !size.isValid() {
-			return fmt.Errorf("%w: %d", ErrInvalidBlockSize, size)
+			return fmt.Errorf("%w: %d", ErrOptionInvalidBlockSize, size)
 		}
 		w.frame.Descriptor.Flags.BlockSizeIndexSet(size.index())
 		return nil
@@ -188,7 +194,7 @@ func CompressionLevelOption(level CompressionLevel) Option {
 		switch level {
 		case Fast, Level1, Level2, Level3, Level4, Level5, Level6, Level7, Level8, Level9:
 		default:
-			return fmt.Errorf("%w: %d", ErrInvalidCompressionLevel, level)
+			return fmt.Errorf("%w: %d", ErrOptionInvalidCompressionLevel, level)
 		}
 		w.level = level
 		return nil

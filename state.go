@@ -12,7 +12,6 @@ const (
 	noState     aState = iota // uninitialized reader
 	errorState                // unrecoverable error encountered
 	newState                  // instantiated object
-	headerState               // processing header
 	readState                 // reading data
 	writeState                // writing data
 	closedState               // all done

@@ -7,8 +7,7 @@ import (
 var readerStates = []aState{
 	noState:     newState,
 	errorState:  newState,
-	newState:    headerState,
-	headerState: readState,
+	newState:    readState,
 	readState:   closedState,
 	closedState: newState,
 }
@@ -40,7 +39,7 @@ func (r *Reader) Apply(options ...Option) (err error) {
 	case errorState:
 		return r.state.err
 	default:
-		return ErrCannotApplyOptions
+		return ErrOptionClosedOrError
 	}
 	for _, o := range options {
 		if err = o(r); err != nil {
@@ -69,7 +68,6 @@ func (r *Reader) Read(buf []byte) (n int, err error) {
 		return 0, r.state.err
 	case newState:
 		// First initialization.
-		r.state.next(nil)
 		if err = r.frame.initR(r); r.state.next(err) {
 			return
 		}

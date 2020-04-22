@@ -31,11 +31,11 @@ func (f *Frame) closeW(w *Writer) error {
 		return err
 	}
 	buf := w.buf[:0]
+	// End mark (data block size of uint32(0)).
+	buf = append(buf, 0, 0, 0, 0)
 	if f.Descriptor.Flags.ContentChecksum() {
 		buf = f.checksum.Sum(buf)
 	}
-	// End mark (data block size of uint32(0)).
-	buf = append(buf, 0, 0, 0, 0)
 	_, err := w.src.Write(buf)
 	return err
 }
@@ -62,7 +62,7 @@ newFrame:
 		}
 		goto newFrame
 	default:
-		return ErrInvalid
+		return ErrInvalidFrame
 	}
 	if err := f.Descriptor.initR(r); err != nil {
 		return err
@@ -103,14 +103,16 @@ func (fd *FrameDescriptor) write(w *Writer) error {
 		return nil
 	}
 
-	buf := w.buf[:2]
-	binary.LittleEndian.PutUint16(buf, uint16(fd.Flags))
+	buf := w.buf[:4+2]
+	// Write the magic number here even though it belongs to the Frame.
+	binary.LittleEndian.PutUint32(buf, w.frame.Magic)
+	binary.LittleEndian.PutUint16(buf[4:], uint16(fd.Flags))
 
 	if fd.Flags.Size() {
-		buf = buf[:10]
-		binary.LittleEndian.PutUint64(buf[2:], fd.ContentSize)
+		buf = buf[:4+2+8]
+		binary.LittleEndian.PutUint64(buf[4+2:], fd.ContentSize)
 	}
-	fd.Checksum = descriptorChecksum(buf)
+	fd.Checksum = descriptorChecksum(buf[4:])
 	buf = append(buf, fd.Checksum)
 
 	_, err := w.src.Write(buf)

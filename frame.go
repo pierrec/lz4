@@ -11,7 +11,12 @@ import (
 
 //go:generate go run gen.go
 
+func NewFrame() *Frame {
+	return &Frame{}
+}
+
 type Frame struct {
+	buf        [15]byte // frame descriptor needs at most 4(magic)+4+8+1=11 bytes
 	Magic      uint32
 	Descriptor FrameDescriptor
 	Blocks     Blocks
@@ -19,34 +24,34 @@ type Frame struct {
 	checksum   xxh32.XXHZero
 }
 
-func (f *Frame) initW(w *Writer) {
+func (f *Frame) initW(dst io.Writer, num int) {
 	f.Magic = frameMagic
-	f.Descriptor.initW(w)
-	f.Blocks.initW(w)
+	f.Descriptor.initW()
+	f.Blocks.initW(f, dst, num)
 	f.checksum.Reset()
 }
 
-func (f *Frame) closeW(w *Writer) error {
-	if err := f.Blocks.closeW(w); err != nil {
+func (f *Frame) closeW(dst io.Writer, num int) error {
+	if err := f.Blocks.closeW(f, num); err != nil {
 		return err
 	}
-	buf := w.buf[:0]
+	buf := f.buf[:0]
 	// End mark (data block size of uint32(0)).
 	buf = append(buf, 0, 0, 0, 0)
 	if f.Descriptor.Flags.ContentChecksum() {
 		buf = f.checksum.Sum(buf)
 	}
-	_, err := w.src.Write(buf)
+	_, err := dst.Write(buf)
 	return err
 }
 
-func (f *Frame) initR(r *Reader) error {
+func (f *Frame) initR(src io.Reader) error {
 	if f.Magic > 0 {
 		// Header already read.
 		return nil
 	}
 newFrame:
-	if err := readUint32(r.src, r.buf[:], &f.Magic); err != nil {
+	if err := readUint32(src, f.buf[:], &f.Magic); err != nil {
 		return err
 	}
 	switch m := f.Magic; {
@@ -54,30 +59,30 @@ newFrame:
 	// All 16 values of frameSkipMagic are valid.
 	case m>>8 == frameSkipMagic>>8:
 		var skip uint32
-		if err := binary.Read(r.src, binary.LittleEndian, &skip); err != nil {
+		if err := binary.Read(src, binary.LittleEndian, &skip); err != nil {
 			return err
 		}
-		if _, err := io.CopyN(ioutil.Discard, r.src, int64(skip)); err != nil {
+		if _, err := io.CopyN(ioutil.Discard, src, int64(skip)); err != nil {
 			return err
 		}
 		goto newFrame
 	default:
 		return ErrInvalidFrame
 	}
-	if err := f.Descriptor.initR(r); err != nil {
+	if err := f.Descriptor.initR(f, src); err != nil {
 		return err
 	}
-	f.Blocks.initR(r)
+	f.Blocks.initR(f)
 	f.checksum.Reset()
 	return nil
 }
 
-func (f *Frame) closeR(r *Reader) error {
+func (f *Frame) closeR(src io.Reader) error {
 	f.Magic = 0
 	if !f.Descriptor.Flags.ContentChecksum() {
 		return nil
 	}
-	if err := readUint32(r.src, r.buf[:], &f.Checksum); err != nil {
+	if err := readUint32(src, f.buf[:], &f.Checksum); err != nil {
 		return err
 	}
 	if c := f.checksum.Sum32(); c != f.Checksum {
@@ -92,20 +97,20 @@ type FrameDescriptor struct {
 	Checksum    uint8
 }
 
-func (fd *FrameDescriptor) initW(_ *Writer) {
+func (fd *FrameDescriptor) initW() {
 	fd.Flags.VersionSet(1)
 	fd.Flags.BlockIndependenceSet(true)
 }
 
-func (fd *FrameDescriptor) write(w *Writer) error {
+func (fd *FrameDescriptor) write(f *Frame, dst io.Writer) error {
 	if fd.Checksum > 0 {
 		// Header already written.
 		return nil
 	}
 
-	buf := w.buf[:4+2]
+	buf := f.buf[:4+2]
 	// Write the magic number here even though it belongs to the Frame.
-	binary.LittleEndian.PutUint32(buf, w.frame.Magic)
+	binary.LittleEndian.PutUint32(buf, f.Magic)
 	binary.LittleEndian.PutUint16(buf[4:], uint16(fd.Flags))
 
 	if fd.Flags.Size() {
@@ -115,14 +120,14 @@ func (fd *FrameDescriptor) write(w *Writer) error {
 	fd.Checksum = descriptorChecksum(buf[4:])
 	buf = append(buf, fd.Checksum)
 
-	_, err := w.src.Write(buf)
+	_, err := dst.Write(buf)
 	return err
 }
 
-func (fd *FrameDescriptor) initR(r *Reader) error {
+func (fd *FrameDescriptor) initR(f *Frame, src io.Reader) error {
 	// Read the flags and the checksum, hoping that there is not content size.
-	buf := r.buf[:3]
-	if _, err := io.ReadFull(r.src, buf); err != nil {
+	buf := f.buf[:3]
+	if _, err := io.ReadFull(src, buf); err != nil {
 		return err
 	}
 	descr := binary.LittleEndian.Uint16(buf)
@@ -130,7 +135,7 @@ func (fd *FrameDescriptor) initR(r *Reader) error {
 	if fd.Flags.Size() {
 		// Append the 8 missing bytes.
 		buf = buf[:3+8]
-		if _, err := io.ReadFull(r.src, buf[3:]); err != nil {
+		if _, err := io.ReadFull(src, buf[3:]); err != nil {
 			return err
 		}
 		fd.ContentSize = binary.LittleEndian.Uint64(buf[2:])
@@ -157,15 +162,15 @@ type Blocks struct {
 	err    error
 }
 
-func (b *Blocks) initW(w *Writer) {
-	size := w.frame.Descriptor.Flags.BlockSizeIndex()
-	if w.isNotConcurrent() {
+func (b *Blocks) initW(f *Frame, dst io.Writer, num int) {
+	size := f.Descriptor.Flags.BlockSizeIndex()
+	if num == 1 {
 		b.Blocks = nil
 		b.Block = newFrameDataBlock(size)
 		return
 	}
-	if cap(b.Blocks) != w.num {
-		b.Blocks = make(chan chan *FrameDataBlock, w.num)
+	if cap(b.Blocks) != num {
+		b.Blocks = make(chan chan *FrameDataBlock, num)
 	}
 	// goroutine managing concurrent block compression goroutines.
 	go func() {
@@ -185,7 +190,7 @@ func (b *Blocks) initW(w *Writer) {
 			// Do not attempt to write the block upon any previous failure.
 			if b.err == nil {
 				// Write the block.
-				if err := block.write(w); err != nil && b.err == nil {
+				if err := block.write(f, dst); err != nil && b.err == nil {
 					// Keep the first error.
 					b.err = err
 					// All pending compression goroutines need to shut down, so we need to keep going.
@@ -196,9 +201,9 @@ func (b *Blocks) initW(w *Writer) {
 	}()
 }
 
-func (b *Blocks) closeW(w *Writer) error {
-	if w.isNotConcurrent() {
-		b.Block.closeW(w)
+func (b *Blocks) closeW(f *Frame, num int) error {
+	if num == 1 {
+		b.Block.closeW(f)
 		b.Block = nil
 		return nil
 	}
@@ -211,8 +216,8 @@ func (b *Blocks) closeW(w *Writer) error {
 	return err
 }
 
-func (b *Blocks) initR(r *Reader) {
-	size := r.frame.Descriptor.Flags.BlockSizeIndex()
+func (b *Blocks) initR(f *Frame) {
+	size := f.Descriptor.Flags.BlockSizeIndex()
 	b.Block = newFrameDataBlock(size)
 }
 
@@ -226,50 +231,48 @@ type FrameDataBlock struct {
 	Checksum uint32
 }
 
-func (b *FrameDataBlock) closeW(w *Writer) {
-	size := w.frame.Descriptor.Flags.BlockSizeIndex()
+func (b *FrameDataBlock) closeW(f *Frame) {
+	size := f.Descriptor.Flags.BlockSizeIndex()
 	size.put(b.Data)
 }
 
 // Block compression errors are ignored since the buffer is sized appropriately.
-func (b *FrameDataBlock) compress(w *Writer, src []byte, ht []int) *FrameDataBlock {
-	dst := b.Data[:len(src)] // trigger the incompressible flag in CompressBlock
+func (b *FrameDataBlock) compress(f *Frame, src []byte, ht []int, level CompressionLevel) *FrameDataBlock {
+	data := b.Data[:len(src)] // trigger the incompressible flag in CompressBlock
 	var n int
-	switch w.level {
+	switch level {
 	case Fast:
-		n, _ = CompressBlock(src, dst, ht)
+		n, _ = CompressBlock(src, data, ht)
 	default:
-		n, _ = CompressBlockHC(src, dst, w.level, ht)
+		n, _ = CompressBlockHC(src, data, level, ht)
 	}
 	if n == 0 {
 		b.Size.uncompressedSet(true)
-		dst = src
+		data = src
 	} else {
 		b.Size.uncompressedSet(false)
-		dst = dst[:n]
+		data = data[:n]
 	}
-	b.Data = dst
-	b.Size.sizeSet(len(dst))
+	b.Data = data
+	b.Size.sizeSet(len(data))
 
-	if w.frame.Descriptor.Flags.BlockChecksum() {
+	if f.Descriptor.Flags.BlockChecksum() {
 		b.Checksum = xxh32.ChecksumZero(src)
 	}
-	if w.frame.Descriptor.Flags.ContentChecksum() {
-		_, _ = w.frame.checksum.Write(src)
+	if f.Descriptor.Flags.ContentChecksum() {
+		_, _ = f.checksum.Write(src)
 	}
 	return b
 }
 
-func (b *FrameDataBlock) write(w *Writer) error {
-	buf := w.buf[:]
-	out := w.src
-
+func (b *FrameDataBlock) write(f *Frame, dst io.Writer) error {
+	buf := f.buf[:]
 	binary.LittleEndian.PutUint32(buf, uint32(b.Size))
-	if _, err := out.Write(buf[:4]); err != nil {
+	if _, err := dst.Write(buf[:4]); err != nil {
 		return err
 	}
 
-	if _, err := out.Write(b.Data); err != nil {
+	if _, err := dst.Write(b.Data); err != nil {
 		return err
 	}
 
@@ -277,13 +280,14 @@ func (b *FrameDataBlock) write(w *Writer) error {
 		return nil
 	}
 	binary.LittleEndian.PutUint32(buf, b.Checksum)
-	_, err := out.Write(buf[:4])
+	_, err := dst.Write(buf[:4])
 	return err
 }
 
-func (b *FrameDataBlock) uncompress(r *Reader, dst []byte) (int, error) {
+func (b *FrameDataBlock) uncompress(f *Frame, src io.Reader, dst []byte) (int, error) {
+	buf := f.buf[:]
 	var x uint32
-	if err := readUint32(r.src, r.buf[:], &x); err != nil {
+	if err := readUint32(src, buf, &x); err != nil {
 		return 0, err
 	}
 	b.Size = DataBlockSize(x)
@@ -301,7 +305,7 @@ func (b *FrameDataBlock) uncompress(r *Reader, dst []byte) (int, error) {
 		data = dst
 	}
 	data = data[:size]
-	if _, err := io.ReadFull(r.src, data); err != nil {
+	if _, err := io.ReadFull(src, data); err != nil {
 		return 0, err
 	}
 	if isCompressed {
@@ -312,16 +316,16 @@ func (b *FrameDataBlock) uncompress(r *Reader, dst []byte) (int, error) {
 		data = dst[:n]
 	}
 
-	if r.frame.Descriptor.Flags.BlockChecksum() {
-		if err := readUint32(r.src, r.buf[:], &b.Checksum); err != nil {
+	if f.Descriptor.Flags.BlockChecksum() {
+		if err := readUint32(src, buf, &b.Checksum); err != nil {
 			return 0, err
 		}
 		if c := xxh32.ChecksumZero(data); c != b.Checksum {
 			return 0, fmt.Errorf("%w: got %x; expected %x", ErrInvalidBlockChecksum, c, b.Checksum)
 		}
 	}
-	if r.frame.Descriptor.Flags.ContentChecksum() {
-		_, _ = r.frame.checksum.Write(data)
+	if f.Descriptor.Flags.ContentChecksum() {
+		_, _ = f.checksum.Write(data)
 	}
 	return len(data), nil
 }

@@ -22,9 +22,10 @@ func TestFrameDescriptor(t *testing.T) {
 		s := tc.flags
 		label := fmt.Sprintf("%02x %02x %02x", s[0], s[1], s[2])
 		t.Run(label, func(t *testing.T) {
-			r := &Reader{src: strings.NewReader(tc.flags)}
+			r := strings.NewReader(tc.flags)
+			f := NewFrame()
 			var fd FrameDescriptor
-			if err := fd.initR(r); err != nil {
+			if err := fd.initR(f, r); err != nil {
 				t.Fatal(err)
 			}
 
@@ -46,9 +47,9 @@ func TestFrameDescriptor(t *testing.T) {
 
 			buf := new(bytes.Buffer)
 			w := &Writer{src: buf}
-			fd.initW(nil)
+			fd.initW()
 			fd.Checksum = 0
-			if err := fd.write(w); err != nil {
+			if err := fd.write(f, w); err != nil {
 				t.Fatal(err)
 			}
 			if got, want := buf.String(), tc.flags; got != want {
@@ -83,17 +84,16 @@ func TestFrameDataBlock(t *testing.T) {
 			data := tc.data
 			size := tc.size
 			zbuf := new(bytes.Buffer)
-			w := &Writer{src: zbuf, level: Fast}
+			f := NewFrame()
 
 			block := newFrameDataBlock(size.index())
-			block.compress(w, []byte(data), nil)
-			if err := block.write(w); err != nil {
+			block.compress(f, []byte(data), nil, Fast)
+			if err := block.write(f, zbuf); err != nil {
 				t.Fatal(err)
 			}
 
 			buf := make([]byte, size)
-			r := &Reader{src: zbuf}
-			n, err := block.uncompress(r, buf)
+			n, err := block.uncompress(f, zbuf, buf)
 			if err != nil {
 				t.Fatal(err)
 			}

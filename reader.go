@@ -14,7 +14,7 @@ var readerStates = []aState{
 
 // NewReader returns a new LZ4 frame decoder.
 func NewReader(r io.Reader) *Reader {
-	zr := new(Reader)
+	zr := &Reader{frame: NewFrame()}
 	zr.state.init(readerStates)
 	_ = zr.Apply(defaultOnBlockDone)
 	return zr.Reset(r)
@@ -22,9 +22,8 @@ func NewReader(r io.Reader) *Reader {
 
 type Reader struct {
 	state   _State
-	buf     [11]byte  // frame descriptor needs at most 2+8+1=11 bytes
 	src     io.Reader // source reader
-	frame   Frame     // frame being read
+	frame   *Frame    // frame being read
 	data    []byte    // pending data
 	idx     int       // size of pending data
 	handler func(int)
@@ -68,7 +67,7 @@ func (r *Reader) Read(buf []byte) (n int, err error) {
 		return 0, r.state.err
 	case newState:
 		// First initialization.
-		if err = r.frame.initR(r); r.state.next(err) {
+		if err = r.frame.initR(r.src); r.state.next(err) {
 			return
 		}
 		r.data = r.frame.Descriptor.Flags.BlockSizeIndex().get()
@@ -88,7 +87,7 @@ func (r *Reader) Read(buf []byte) (n int, err error) {
 	r.data = r.data[:cap(r.data)]
 	for len(buf) >= len(r.data) {
 		// Input buffer large enough and no pending data: uncompress directly into it.
-		switch bn, err = r.frame.Blocks.Block.uncompress(r, buf); err {
+		switch bn, err = r.frame.Blocks.Block.uncompress(r.frame, r.src, buf); err {
 		case nil:
 			r.handler(bn)
 			n += bn
@@ -104,7 +103,7 @@ func (r *Reader) Read(buf []byte) (n int, err error) {
 		return
 	}
 	// Read the next block.
-	switch bn, err = r.frame.Blocks.Block.uncompress(r, r.data); err {
+	switch bn, err = r.frame.Blocks.Block.uncompress(r.frame, r.src, r.data); err {
 	case nil:
 		r.handler(bn)
 		r.data = r.data[:bn]
@@ -116,7 +115,7 @@ func (r *Reader) Read(buf []byte) (n int, err error) {
 close:
 	r.handler(bn)
 	n += bn
-	if er := r.frame.closeR(r); er != nil {
+	if er := r.frame.closeR(r.src); er != nil {
 		err = er
 	}
 	r.frame.Descriptor.Flags.BlockSizeIndex().put(r.data)

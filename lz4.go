@@ -30,8 +30,6 @@ const (
 	ErrInvalidSourceShortBuffer _error = "lz4: invalid source or destination buffer too short"
 	// ErrInvalidFrame is returned when reading an invalid LZ4 archive.
 	ErrInvalidFrame _error = "lz4: bad magic number"
-	// ErrUnsupportedSeek is returned when attempting to Seek any way but forward from the current position.
-	ErrUnsupportedSeek _error = "lz4: can only seek forward from io.SeekCurrent"
 	// ErrInternalUnhandledState is an internal error.
 	ErrInternalUnhandledState _error = "lz4: unhandled state"
 	// ErrInvalidHeaderChecksum is returned when reading a frame.
@@ -48,4 +46,6 @@ const (
 	ErrOptionInvalidBlockSize _error = "lz4: invalid block size"
 	// ErrOptionNotApplicable is returned when trying to apply an option to an object not supporting it.
 	ErrOptionNotApplicable _error = "lz4: option not applicable"
+	// ErrWriterNotClosed is returned when attempting to reset an unclosed writer.
+	ErrWriterNotClosed _error = "lz4: writer not closed"
 )

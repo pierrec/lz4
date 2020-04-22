@@ -12,7 +12,7 @@ var writerStates = []aState{
 
 // NewWriter returns a new LZ4 frame encoder.
 func NewWriter(w io.Writer) *Writer {
-	zw := new(Writer)
+	zw := &Writer{frame: NewFrame()}
 	zw.state.init(writerStates)
 	_ = zw.Apply(DefaultBlockSizeOption, DefaultChecksumOption, DefaultConcurrency, defaultOnBlockDone)
 	return zw.Reset(w)
@@ -20,11 +20,10 @@ func NewWriter(w io.Writer) *Writer {
 
 type Writer struct {
 	state   _State
-	buf     [15]byte         // frame descriptor needs at most 4(magic)+4+8+1=11 bytes
 	src     io.Writer        // destination writer
 	level   CompressionLevel // how hard to try
 	num     int              // concurrency level
-	frame   Frame            // frame being built
+	frame   *Frame           // frame being built
 	ht      []int            // hash table (set if no concurrency)
 	data    []byte           // pending data
 	idx     int              // size of pending data
@@ -47,6 +46,7 @@ func (w *Writer) Apply(options ...Option) (err error) {
 			return
 		}
 	}
+	w.Reset(w.src)
 	return
 }
 
@@ -61,7 +61,7 @@ func (w *Writer) Write(buf []byte) (n int, err error) {
 	case closedState, errorState:
 		return 0, w.state.err
 	case newState:
-		if err = w.frame.Descriptor.write(w); w.state.next(err) {
+		if err = w.frame.Descriptor.write(w.frame, w.src); w.state.next(err) {
 			return
 		}
 	default:
@@ -103,7 +103,7 @@ func (w *Writer) write(data []byte, direct bool) error {
 	if w.isNotConcurrent() {
 		defer w.handler(len(data))
 		block := w.frame.Blocks.Block
-		return block.compress(w, data, w.ht).write(w)
+		return block.compress(w.frame, data, w.ht, w.level).write(w.frame, w.src)
 	}
 	size := w.frame.Descriptor.Flags.BlockSizeIndex()
 	c := make(chan *FrameDataBlock)
@@ -112,7 +112,7 @@ func (w *Writer) write(data []byte, direct bool) error {
 		defer w.handler(len(data))
 		b := newFrameDataBlock(size)
 		zdata := b.Data
-		c <- b.compress(w, data, nil)
+		c <- b.compress(w.frame, data, nil, w.level)
 		// Wait for the compressed or uncompressed data to no longer be in use
 		// and free the allocated buffers
 		if b.Size.uncompressed() {
@@ -154,7 +154,7 @@ func (w *Writer) Close() (err error) {
 		size.put(w.data)
 		w.data = nil
 	}
-	return w.frame.closeW(w)
+	return w.frame.closeW(w.src, w.num)
 }
 
 // Reset clears the state of the Writer w such that it is equivalent to its
@@ -162,12 +162,17 @@ func (w *Writer) Close() (err error) {
 // Reset keeps the previous options unless overwritten by the supplied ones.
 // No access to writer is performed.
 //
-// w.Close must be called before Reset.
+// w.Close must be called before Reset or it will panic.
 func (w *Writer) Reset(writer io.Writer) *Writer {
+	switch w.state.state {
+	case newState, closedState, errorState:
+	default:
+		panic(ErrWriterNotClosed)
+	}
 	w.state.state = noState
 	w.state.next(nil)
 	w.src = writer
-	w.frame.initW(w)
+	w.frame.initW(w.src, w.num)
 	size := w.frame.Descriptor.Flags.BlockSizeIndex()
 	w.data = size.get()
 	w.idx = 0

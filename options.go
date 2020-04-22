@@ -20,6 +20,7 @@ type (
 	Option func(applier) error
 )
 
+// String returns a string representation of the option with its parameter(s).
 func (o Option) String() string {
 	return o(nil).Error()
 }
@@ -76,7 +77,7 @@ func BlockChecksumOption(flag bool) Option {
 	}
 }
 
-// ChecksumOption enables/disables all blocks checksum (default=true).
+// ChecksumOption enables/disables all blocks or content checksum (default=true).
 func ChecksumOption(flag bool) Option {
 	return func(a applier) error {
 		switch w := a.(type) {
@@ -91,7 +92,8 @@ func ChecksumOption(flag bool) Option {
 	}
 }
 
-// SizeOption sets the size of the original uncompressed data (default=0).
+// SizeOption sets the size of the original uncompressed data (default=0). It is useful to know the size of the
+// whole uncompressed data stream.
 func SizeOption(size uint64) Option {
 	return func(a applier) error {
 		switch w := a.(type) {
@@ -168,7 +170,8 @@ func CompressionLevelOption(level CompressionLevel) Option {
 
 func onBlockDone(int) {}
 
-// OnBlockDoneOption is triggered
+// OnBlockDoneOption is triggered when a block has been processed. For a Writer, it is when is has been compressed,
+// for a Reader, it is when it has been uncompressed.
 func OnBlockDoneOption(handler func(size int)) Option {
 	if handler == nil {
 		handler = onBlockDone

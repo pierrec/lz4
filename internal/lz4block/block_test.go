@@ -103,7 +103,7 @@ func TestCompressUncompressBlock(t *testing.T) {
 			})
 			t.Run(fmt.Sprintf("%s HC", tc.file), func(t *testing.T) {
 				nhc = run(t, tc, func(src, dst []byte) (int, error) {
-					return lz4.CompressBlockHC(src, dst, 10, nil)
+					return lz4.CompressBlockHC(src, dst, 10)
 				})
 			})
 		})

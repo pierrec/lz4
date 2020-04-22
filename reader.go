@@ -23,6 +23,7 @@ func NewReader(r io.Reader) *Reader {
 	return zr.Reset(r)
 }
 
+// Reader allows reading an LZ4 stream.
 type Reader struct {
 	state   _State
 	src     io.Reader        // source reader

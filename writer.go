@@ -24,6 +24,7 @@ func NewWriter(w io.Writer) *Writer {
 	return zw.Reset(w)
 }
 
+// Writer allows writing an LZ4 stream.
 type Writer struct {
 	state   _State
 	src     io.Writer                 // destination writer
@@ -67,6 +68,13 @@ func (w *Writer) Write(buf []byte) (n int, err error) {
 	case closedState, errorState:
 		return 0, w.state.err
 	case newState:
+		w.frame.InitW(w.src, w.num)
+		size := w.frame.Descriptor.Flags.BlockSizeIndex()
+		w.data = size.Get()
+		w.idx = 0
+		if w.isNotConcurrent() {
+			w.ht = lz4block.HashTablePool.Get().([]int)
+		}
 		if err = w.frame.Descriptor.Write(w.frame, w.src); w.state.next(err) {
 			return
 		}
@@ -111,9 +119,10 @@ func (w *Writer) Write(buf []byte) (n int, err error) {
 
 func (w *Writer) write(data []byte, safe bool) error {
 	if w.isNotConcurrent() {
-		defer w.handler(len(data))
 		block := w.frame.Blocks.Block
-		return block.Compress(w.frame, data, w.ht, w.level).Write(w.frame, w.src)
+		err := block.Compress(w.frame, data, w.ht, w.level).Write(w.frame, w.src)
+		w.handler(len(block.Data))
+		return err
 	}
 	size := w.frame.Descriptor.Flags.BlockSizeIndex()
 	c := make(chan *lz4stream.FrameDataBlock)
@@ -122,7 +131,7 @@ func (w *Writer) write(data []byte, safe bool) error {
 		b := lz4stream.NewFrameDataBlock(size)
 		c <- b.Compress(w.frame, data, nil, w.level)
 		<-c
-		w.handler(len(data))
+		w.handler(len(b.Data))
 		b.CloseW(w.frame)
 		if safe {
 			// safe to put it back as the last usage of it was FrameDataBlock.Write() called before c is closed
@@ -154,6 +163,7 @@ func (w *Writer) Close() (err error) {
 	err = w.frame.CloseW(w.src, w.num)
 	if w.isNotConcurrent() {
 		lz4block.HashTablePool.Put(w.ht)
+		w.ht = nil
 	}
 	// It is now safe to free the buffer.
 	size := w.frame.Descriptor.Flags.BlockSizeIndex()
@@ -177,12 +187,5 @@ func (w *Writer) Reset(writer io.Writer) *Writer {
 	w.state.state = noState
 	w.state.next(nil)
 	w.src = writer
-	w.frame.InitW(w.src, w.num)
-	size := w.frame.Descriptor.Flags.BlockSizeIndex()
-	w.data = size.Get()
-	w.idx = 0
-	if w.isNotConcurrent() {
-		w.ht = lz4block.HashTablePool.Get().([]int)
-	}
 	return w
 }

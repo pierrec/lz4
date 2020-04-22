@@ -1,3 +1,13 @@
+// Package lz4 implements reading and writing lz4 compressed data (a frame),
+// as specified in http://fastcompression.blogspot.fr/2013/04/lz4-streaming-format-final.html.
+//
+// Although the block level compression and decompression functions are exposed and are fully compatible
+// with the lz4 block format definition, they are low level and should not be used directly.
+// For a complete description of an lz4 compressed block, see:
+// http://fastcompression.blogspot.fr/2011/05/lz4-explained.html
+//
+// See https://github.com/lz4/lz4 for the reference C implementation.
+//
 package lz4
 
 import (
@@ -43,7 +53,7 @@ func UncompressBlock(src, dst []byte) (int, error) {
 // the compressed size is 0 and no error, then the data is incompressible.
 //
 // An error is returned if the destination buffer is too small.
-func CompressBlock(src, dst []byte, hashTable []int) (_ int, err error) {
+func CompressBlock(src, dst []byte, hashTable []int) (int, error) {
 	return lz4block.CompressBlock(src, dst, hashTable)
 }
 
@@ -58,7 +68,7 @@ func CompressBlock(src, dst []byte, hashTable []int) (_ int, err error) {
 // the compressed size is 0 and no error, then the data is incompressible.
 //
 // An error is returned if the destination buffer is too small.
-func CompressBlockHC(src, dst []byte, depth CompressionLevel, hashTable []int) (_ int, err error) {
+func CompressBlockHC(src, dst []byte, depth CompressionLevel) (int, error) {
 	return lz4block.CompressBlockHC(src, dst, lz4block.CompressionLevel(depth))
 }
 

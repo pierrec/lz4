@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 
 	"code.cloudfoundry.org/bytefmt"
-	"github.com/schollz/progressbar"
+	"github.com/schollz/progressbar/v3"
 
 	"github.com/pierrec/cmdflag"
 	"github.com/pierrec/lz4"
@@ -34,13 +34,16 @@ func Compress(fs *flag.FlagSet) cmdflag.Handler {
 		}
 
 		zw := lz4.NewWriter(nil)
-		zw.Header = lz4.Header{
-			BlockChecksum:    blockChecksum,
-			BlockMaxSize:     int(sz),
-			NoChecksum:       streamChecksum,
-			CompressionLevel: level,
+		options := []lz4.Option{
+			lz4.BlockChecksumOption(blockChecksum),
+			lz4.BlockSizeOption(lz4.BlockSize(sz)),
+			lz4.ChecksumOption(streamChecksum),
+			lz4.CompressionLevelOption(lz4.CompressionLevel(level)),
+			lz4.ConcurrencyOption(concurrency),
 		}
-		zw.WithConcurrency(concurrency)
+		if err := zw.Apply(options...); err != nil {
+			return 0, err
+		}
 
 		// Use stdin/stdout if no file provided.
 		if len(args) == 0 {
@@ -71,7 +74,7 @@ func Compress(fs *flag.FlagSet) cmdflag.Handler {
 			)
 			if size > 0 {
 				// Progress bar setup.
-				numBlocks := int(size) / zw.Header.BlockMaxSize
+				numBlocks := int(size) / int(sz)
 				bar := progressbar.NewOptions(numBlocks,
 					// File transfers are usually slow, make sure we display the bar at 0%.
 					progressbar.OptionSetRenderBlankState(true),
@@ -79,9 +82,14 @@ func Compress(fs *flag.FlagSet) cmdflag.Handler {
 					progressbar.OptionSetDescription(filename),
 					progressbar.OptionClearOnFinish(),
 				)
-				zw.OnBlockDone = func(n int) {
-					_ = bar.Add(1)
-					atomic.AddInt64(&zsize, int64(n))
+				err = zw.Apply(
+					lz4.OnBlockDoneOption(func(n int) {
+						_ = bar.Add(1)
+						atomic.AddInt64(&zsize, int64(n))
+					}),
+				)
+				if err != nil {
+					return 0, err
 				}
 			}
 

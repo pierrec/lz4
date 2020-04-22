@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/schollz/progressbar"
+	"github.com/schollz/progressbar/v3"
 
 	"github.com/pierrec/cmdflag"
 	"github.com/pierrec/lz4"
@@ -64,9 +64,11 @@ func Uncompress(_ *flag.FlagSet) cmdflag.Handler {
 					progressbar.OptionClearOnFinish(),
 				)
 				out = io.MultiWriter(out, bar)
-				zr.OnBlockDone = func(n int) {
-					size += n
-				}
+				_ = zr.Apply(
+					lz4.OnBlockDoneOption(func(n int) {
+						size += n
+					}),
+				)
 			}
 
 			// Uncompress.

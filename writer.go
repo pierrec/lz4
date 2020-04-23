@@ -214,8 +214,12 @@ func (w *Writer) ReadFrom(r io.Reader) (n int64, err error) {
 	size := w.frame.Descriptor.Flags.BlockSizeIndex()
 	var done bool
 	var rn int
+	data := size.Get()
+	if w.isNotConcurrent() {
+		// Keep the same buffer for the whole process.
+		defer size.Put(data)
+	}
 	for !done {
-		data := size.Get()
 		rn, err = io.ReadFull(r, data)
 		switch err {
 		case nil:
@@ -230,6 +234,11 @@ func (w *Writer) ReadFrom(r io.Reader) (n int64, err error) {
 			return
 		}
 		w.handler(rn)
+		if !done && !w.isNotConcurrent() {
+			// The buffer will be returned automatically by go routines (safe=true)
+			// so get a new one fo the next round.
+			data = size.Get()
+		}
 	}
 	err = w.Close()
 	return

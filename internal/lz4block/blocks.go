@@ -61,8 +61,6 @@ func (b BlockSizeIndex) Get() []byte {
 }
 
 func (b BlockSizeIndex) Put(buf []byte) {
-	//TODO disabled as releasing buffers introduces a bug in Reader.WriteTo and Writer.ReadFrom
-	return
 	switch b {
 	case 4:
 		BlockPool64K.Put(buf)

@@ -230,29 +230,29 @@ func (b *Blocks) initR(f *Frame) {
 }
 
 func NewFrameDataBlock(size lz4block.BlockSizeIndex) *FrameDataBlock {
-	return &FrameDataBlock{Data: size.Get()}
+	buf := size.Get()
+	return &FrameDataBlock{Data: buf, data: buf}
 }
 
 type FrameDataBlock struct {
 	Size     DataBlockSize
-	Data     []byte // (un)compressed data
+	Data     []byte // compressed or uncompressed data (.data or .src)
 	Checksum uint32
-	ref      []byte
+	data     []byte // buffer for compressed data
 	src      []byte // uncompressed data
 }
 
 func (b *FrameDataBlock) CloseW(f *Frame) {
 	size := f.Descriptor.Flags.BlockSizeIndex()
-	size.Put(b.ref)
+	size.Put(b.data)
 	b.Data = nil
-	b.ref = nil
+	b.data = nil
 	b.src = nil
 }
 
 // Block compression errors are ignored since the buffer is sized appropriately.
 func (b *FrameDataBlock) Compress(f *Frame, src []byte, ht []int, level lz4block.CompressionLevel) *FrameDataBlock {
-	data := b.Data[:len(src)] // trigger the incompressible flag in CompressBlock
-	b.ref = data              // keep track of the allocated buffer so that it can be freed
+	data := b.data[:len(src)] // trigger the incompressible flag in CompressBlock
 	var n int
 	switch level {
 	case lz4block.Fast:
@@ -314,8 +314,10 @@ func (b *FrameDataBlock) Uncompress(f *Frame, src io.Reader, dst []byte) (int, e
 	size := b.Size.size()
 	var data []byte
 	if isCompressed {
+		// Data is first copied into b.Data and then it will get uncompressed into dst.
 		data = b.Data
 	} else {
+		// Data is directly copied into dst as it is not compressed.
 		data = dst
 	}
 	data = data[:size]

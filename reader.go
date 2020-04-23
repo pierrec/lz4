@@ -175,7 +175,7 @@ func (r *Reader) WriteTo(w io.Writer) (n int64, err error) {
 	block := r.frame.Blocks.Block
 	size := r.frame.Descriptor.Flags.BlockSizeIndex()
 	data := size.Get()
-	defer size.Put(r.data)
+	defer size.Put(data)
 	for {
 		switch bn, err = block.Uncompress(r.frame, r.src, data); err {
 		case nil:

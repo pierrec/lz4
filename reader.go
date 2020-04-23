@@ -20,7 +20,8 @@ func NewReader(r io.Reader) *Reader {
 	zr := &Reader{frame: lz4stream.NewFrame()}
 	zr.state.init(readerStates)
 	_ = zr.Apply(defaultOnBlockDone)
-	return zr.Reset(r)
+	zr.Reset(r)
+	return zr
 }
 
 // Reader allows reading an LZ4 stream.
@@ -147,9 +148,8 @@ func (r *Reader) reset(reader io.Reader) {
 // No access to reader is performed.
 //
 // w.Close must be called before Reset.
-func (r *Reader) Reset(reader io.Reader) *Reader {
+func (r *Reader) Reset(reader io.Reader) {
 	r.reset(reader)
 	r.state.state = noState
 	r.state.next(nil)
-	return r
 }

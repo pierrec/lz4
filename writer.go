@@ -21,7 +21,8 @@ func NewWriter(w io.Writer) *Writer {
 	zw := &Writer{frame: lz4stream.NewFrame()}
 	zw.state.init(writerStates)
 	_ = zw.Apply(DefaultBlockSizeOption, DefaultChecksumOption, DefaultConcurrency, defaultOnBlockDone)
-	return zw.Reset(w)
+	zw.Reset(w)
+	return zw
 }
 
 // Writer allows writing an LZ4 stream.
@@ -178,7 +179,7 @@ func (w *Writer) Close() (err error) {
 // No access to writer is performed.
 //
 // w.Close must be called before Reset or it will panic.
-func (w *Writer) Reset(writer io.Writer) *Writer {
+func (w *Writer) Reset(writer io.Writer) {
 	switch w.state.state {
 	case newState, closedState, errorState:
 	default:
@@ -187,5 +188,4 @@ func (w *Writer) Reset(writer io.Writer) *Writer {
 	w.state.state = noState
 	w.state.next(nil)
 	w.src = writer
-	return w
 }

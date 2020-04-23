@@ -62,6 +62,18 @@ func (w *Writer) isNotConcurrent() bool {
 	return w.num == 1
 }
 
+// init sets up the Writer when in newState. It does not change the Writer state.
+func (w *Writer) init() error {
+	w.frame.InitW(w.src, w.num)
+	size := w.frame.Descriptor.Flags.BlockSizeIndex()
+	w.data = size.Get()
+	w.idx = 0
+	if w.isNotConcurrent() {
+		w.ht = lz4block.HashTablePool.Get().([]int)
+	}
+	return w.frame.Descriptor.Write(w.frame, w.src)
+}
+
 func (w *Writer) Write(buf []byte) (n int, err error) {
 	defer w.state.check(&err)
 	switch w.state.state {
@@ -69,14 +81,7 @@ func (w *Writer) Write(buf []byte) (n int, err error) {
 	case closedState, errorState:
 		return 0, w.state.err
 	case newState:
-		w.frame.InitW(w.src, w.num)
-		size := w.frame.Descriptor.Flags.BlockSizeIndex()
-		w.data = size.Get()
-		w.idx = 0
-		if w.isNotConcurrent() {
-			w.ht = lz4block.HashTablePool.Get().([]int)
-		}
-		if err = w.frame.Descriptor.Write(w.frame, w.src); w.state.next(err) {
+		if err = w.init(); w.state.next(err) {
 			return
 		}
 	default:
@@ -153,7 +158,7 @@ func (w *Writer) Close() (err error) {
 	default:
 		return nil
 	}
-	defer func() { w.state.next(err) }()
+	defer w.state.nextd(&err)
 	if w.idx > 0 {
 		// Flush pending data, disable w.data freeing as it is done later on.
 		if err = w.write(w.data[:w.idx], false); err != nil {
@@ -167,9 +172,11 @@ func (w *Writer) Close() (err error) {
 		w.ht = nil
 	}
 	// It is now safe to free the buffer.
-	size := w.frame.Descriptor.Flags.BlockSizeIndex()
-	size.Put(w.data)
-	w.data = nil
+	if w.data != nil {
+		size := w.frame.Descriptor.Flags.BlockSizeIndex()
+		size.Put(w.data)
+		w.data = nil
+	}
 	return
 }
 
@@ -188,4 +195,42 @@ func (w *Writer) Reset(writer io.Writer) {
 	w.state.state = noState
 	w.state.next(nil)
 	w.src = writer
+}
+
+// ReadFrom efficiently reads from r and compressed into the Writer destination.
+func (w *Writer) ReadFrom(r io.Reader) (n int64, err error) {
+	switch w.state.state {
+	case closedState, errorState:
+		return 0, w.state.err
+	case newState:
+		if err = w.init(); w.state.next(err) {
+			return
+		}
+	default:
+		return 0, w.state.fail()
+	}
+	defer w.state.check(&err)
+
+	size := w.frame.Descriptor.Flags.BlockSizeIndex()
+	var done bool
+	var rn int
+	for !done {
+		data := size.Get()
+		rn, err = io.ReadFull(r, data)
+		switch err {
+		case nil:
+		case io.EOF:
+			done = true
+		default:
+			return
+		}
+		n += int64(rn)
+		err = w.write(data[:rn], true)
+		if err != nil {
+			return
+		}
+		w.handler(rn)
+	}
+	err = w.Close()
+	return
 }

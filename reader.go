@@ -64,6 +64,10 @@ func (r *Reader) Size() int {
 	return 0
 }
 
+func (r *Reader) init() error {
+	return r.frame.InitR(r.src)
+}
+
 func (r *Reader) Read(buf []byte) (n int, err error) {
 	defer r.state.check(&err)
 	switch r.state.state {
@@ -72,10 +76,11 @@ func (r *Reader) Read(buf []byte) (n int, err error) {
 		return 0, r.state.err
 	case newState:
 		// First initialization.
-		if err = r.frame.InitR(r.src); r.state.next(err) {
+		if err = r.init(); r.state.next(err) {
 			return
 		}
-		r.data = r.frame.Descriptor.Flags.BlockSizeIndex().Get()
+		size := r.frame.Descriptor.Flags.BlockSizeIndex()
+		r.data = size.Get()
 	default:
 		return 0, r.state.fail()
 	}
@@ -118,8 +123,6 @@ func (r *Reader) Read(buf []byte) (n int, err error) {
 		return
 	}
 close:
-	r.handler(bn)
-	n += bn
 	if er := r.frame.CloseR(r.src); er != nil {
 		err = er
 	}
@@ -152,4 +155,41 @@ func (r *Reader) Reset(reader io.Reader) {
 	r.reset(reader)
 	r.state.state = noState
 	r.state.next(nil)
+}
+
+// WriteTo efficiently uncompresses the data from the Reader underlying source to w.
+func (r *Reader) WriteTo(w io.Writer) (n int64, err error) {
+	switch r.state.state {
+	case closedState, errorState:
+		return 0, r.state.err
+	case newState:
+		if err = r.init(); r.state.next(err) {
+			return
+		}
+	default:
+		return 0, r.state.fail()
+	}
+	defer r.state.nextd(&err)
+
+	var bn int
+	block := r.frame.Blocks.Block
+	size := r.frame.Descriptor.Flags.BlockSizeIndex()
+	data := size.Get()
+	defer size.Put(r.data)
+	for {
+		switch bn, err = block.Uncompress(r.frame, r.src, data); err {
+		case nil:
+		case io.EOF:
+			err = r.frame.CloseR(r.src)
+			return
+		default:
+			return
+		}
+		r.handler(bn)
+		n += int64(bn)
+		_, err = w.Write(data[:bn])
+		if err != nil {
+			return
+		}
+	}
 }

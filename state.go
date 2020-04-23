@@ -45,6 +45,10 @@ func (s *_State) next(err error) bool {
 	return false
 }
 
+func (s *_State) nextd(errp *error) bool {
+	return s.next(*errp)
+}
+
 // check sets s in error if not already in error and if the error is not nil or io.EOF,
 func (s *_State) check(errp *error) {
 	if s.state == errorState || errp == nil {

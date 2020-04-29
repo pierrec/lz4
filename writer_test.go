@@ -86,6 +86,34 @@ func TestWriter(t *testing.T) {
 	}
 }
 
+func TestWriter_Reset(t *testing.T) {
+	data := pg1661
+	buf := new(bytes.Buffer)
+	src := bytes.NewReader(data)
+	zw := lz4.NewWriter(buf)
+
+	// Partial write.
+	_, _ = io.CopyN(zw, src, int64(len(data))/2)
+
+	buf.Reset()
+	src.Reset(data)
+	zw.Reset(buf)
+	if _, err := io.Copy(zw, src); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// Cannot compare compressed outputs directly, so compare the uncompressed output.
+	out := new(bytes.Buffer)
+	if _, err := io.Copy(out, lz4.NewReader(buf)); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(out.Bytes(), data) {
+		t.Fatal("result does not match original")
+	}
+}
+
 func TestIssue41(t *testing.T) {
 	r, w := io.Pipe()
 	zw := lz4.NewWriter(w)

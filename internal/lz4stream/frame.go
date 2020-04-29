@@ -32,6 +32,16 @@ type Frame struct {
 	checksum   xxh32.XXHZero
 }
 
+// Reset allows reusing the Frame.
+// The Descriptor configuration is not modified.
+func (f *Frame) Reset(num int) {
+	f.Magic = 0
+	f.Descriptor.Checksum = 0
+	f.Descriptor.ContentSize = 0
+	_ = f.Blocks.closeW(f, num)
+	f.Checksum = 0
+}
+
 func (f *Frame) InitW(dst io.Writer, num int) {
 	f.Magic = frameMagic
 	f.Descriptor.initW()
@@ -86,7 +96,6 @@ newFrame:
 }
 
 func (f *Frame) CloseR(src io.Reader) error {
-	f.Magic = 0
 	if !f.Descriptor.Flags.ContentChecksum() {
 		return nil
 	}
@@ -212,7 +221,15 @@ func (b *Blocks) initW(f *Frame, dst io.Writer, num int) {
 
 func (b *Blocks) closeW(f *Frame, num int) error {
 	if num == 1 {
+		if b.Block == nil {
+			// Not initialized yet.
+			return nil
+		}
 		b.Block.CloseW(f)
+		return nil
+	}
+	if b.Blocks == nil {
+		// Not initialized yet.
 		return nil
 	}
 	c := make(chan *FrameDataBlock)

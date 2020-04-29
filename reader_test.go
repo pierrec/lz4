@@ -79,3 +79,23 @@ func TestReader(t *testing.T) {
 		})
 	}
 }
+
+func TestReader_Reset(t *testing.T) {
+	data := pg1661LZ4
+	buf := new(bytes.Buffer)
+	src := bytes.NewReader(data)
+	zr := lz4.NewReader(src)
+
+	// Partial read.
+	_, _ = io.CopyN(buf, zr, int64(len(data))/2)
+
+	buf.Reset()
+	src.Reset(data)
+	zr.Reset(src)
+	if _, err := io.Copy(buf, zr); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(buf.Bytes(), pg1661) {
+		t.Fatal("result does not match original")
+	}
+}

@@ -177,15 +177,10 @@ func (w *Writer) Close() (err error) {
 // Reset keeps the previous options unless overwritten by the supplied ones.
 // No access to writer is performed.
 //
-// w.Close must be called before Reset or it will panic.
+// w.Close must be called before Reset or pending data may be dropped.
 func (w *Writer) Reset(writer io.Writer) {
-	switch w.state.state {
-	case newState, closedState, errorState:
-	default:
-		panic(lz4errors.ErrWriterNotClosed)
-	}
-	w.state.state = noState
-	w.state.next(nil)
+	w.frame.Reset(w.num)
+	w.state.reset()
 	w.src = writer
 }
 

@@ -33,6 +33,11 @@ func (s *_State) init(states []aState) {
 	s.state = states[0]
 }
 
+func (s *_State) reset() {
+	s.state = s.states[0]
+	s.err = nil
+}
+
 // next sets the state to the next one unless it is passed a non nil error.
 // It returns whether or not it is in error.
 func (s *_State) next(err error) bool {

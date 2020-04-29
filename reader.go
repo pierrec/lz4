@@ -127,7 +127,7 @@ close:
 		err = er
 	}
 	r.frame.Descriptor.Flags.BlockSizeIndex().Put(r.data)
-	r.reset(nil)
+	r.Reset(nil)
 	return
 fillbuf:
 	bn = copy(buf, r.data[r.idx:])
@@ -140,21 +140,17 @@ fillbuf:
 	return
 }
 
-func (r *Reader) reset(reader io.Reader) {
-	r.src = reader
-	r.data = nil
-	r.idx = 0
-}
-
 // Reset clears the state of the Reader r such that it is equivalent to its
 // initial state from NewReader, but instead writing to writer.
 // No access to reader is performed.
 //
 // w.Close must be called before Reset.
 func (r *Reader) Reset(reader io.Reader) {
-	r.reset(reader)
-	r.state.state = noState
-	r.state.next(nil)
+	r.frame.Reset(1)
+	r.src = reader
+	r.data = nil
+	r.idx = 0
+	r.state.reset()
 }
 
 // WriteTo efficiently uncompresses the data from the Reader underlying source to w.

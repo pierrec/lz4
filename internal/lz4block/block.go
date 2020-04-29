@@ -74,7 +74,7 @@ func CompressBlock(src, dst []byte, hashTable []int) (_ int, err error) {
 	}
 
 	if cap(hashTable) < htSize {
-		hashTable = HashTablePool.Get()
+		hashTable = HashTablePool.Get().([]int)
 		defer HashTablePool.Put(hashTable)
 	} else {
 		hashTable = hashTable[:htSize]
@@ -259,14 +259,14 @@ func CompressBlockHC(src, dst []byte, depth CompressionLevel, hashTable, chainTa
 	// hashTable: stores the last position found for a given hash
 	// chainTable: stores previous positions for a given hash
 	if cap(hashTable) < htSize {
-		hashTable = HashTablePool.Get()
+		hashTable = HashTablePool.Get().([]int)
 		defer HashTablePool.Put(hashTable)
 	} else {
 		hashTable = hashTable[:htSize]
 	}
 	_ = hashTable[htSize-1]
 	if cap(chainTable) < htSize {
-		chainTable = HashTablePool.Get()
+		chainTable = HashTablePool.Get().([]int)
 		defer HashTablePool.Put(chainTable)
 	} else {
 		chainTable = chainTable[:htSize]

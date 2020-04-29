@@ -26,7 +26,23 @@ const (
 )
 
 // Pool of hash tables for CompressBlock.
-var HashTablePool = sync.Pool{New: func() interface{} { return make([]int, htSize) }}
+var HashTablePool = hashTablePool{sync.Pool{New: func() interface{} { return make([]int, htSize) }}}
+
+type hashTablePool struct {
+	sync.Pool
+}
+
+func (p *hashTablePool) Get() []int {
+	return p.Pool.Get().([]int)
+}
+
+// Zero out the table to avoid non-deterministic outputs (see issue#65).
+func (p *hashTablePool) Put(t []int) {
+	for i := range t {
+		t[i] = 0
+	}
+	p.Pool.Put(t)
+}
 
 func recoverBlock(e *error) {
 	if r := recover(); r != nil && *e == nil {
@@ -273,7 +289,7 @@ func CompressBlockHC(src, dst []byte, depth CompressionLevel, hashTable, chainTa
 	}
 	_ = chainTable[htSize-1]
 
-	if depth <= 0 {
+	if depth == 0 {
 		depth = winSize
 	}
 

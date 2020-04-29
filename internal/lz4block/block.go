@@ -273,7 +273,7 @@ func CompressBlockHC(src, dst []byte, depth CompressionLevel, hashTable, chainTa
 	}
 	_ = chainTable[htSize-1]
 
-	if depth <= 0 {
+	if depth = 0 {
 		depth = winSize
 	}
 

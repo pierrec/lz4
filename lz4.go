@@ -68,8 +68,8 @@ func CompressBlock(src, dst []byte, hashTable []int) (int, error) {
 // the compressed size is 0 and no error, then the data is incompressible.
 //
 // An error is returned if the destination buffer is too small.
-func CompressBlockHC(src, dst []byte, depth CompressionLevel) (int, error) {
-	return lz4block.CompressBlockHC(src, dst, lz4block.CompressionLevel(depth))
+func CompressBlockHC(src, dst []byte, depth CompressionLevel, hashTable, chainTable []int) (int, error) {
+	return lz4block.CompressBlockHC(src, dst, lz4block.CompressionLevel(depth), hashTable, chainTable)
 }
 
 const (

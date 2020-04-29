@@ -251,14 +251,14 @@ func (b *FrameDataBlock) CloseW(f *Frame) {
 }
 
 // Block compression errors are ignored since the buffer is sized appropriately.
-func (b *FrameDataBlock) Compress(f *Frame, src []byte, ht []int, level lz4block.CompressionLevel) *FrameDataBlock {
+func (b *FrameDataBlock) Compress(f *Frame, src []byte, level lz4block.CompressionLevel) *FrameDataBlock {
 	data := b.data[:len(src)] // trigger the incompressible flag in CompressBlock
 	var n int
 	switch level {
 	case lz4block.Fast:
-		n, _ = lz4block.CompressBlock(src, data, ht)
+		n, _ = lz4block.CompressBlock(src, data, nil)
 	default:
-		n, _ = lz4block.CompressBlockHC(src, data, level)
+		n, _ = lz4block.CompressBlockHC(src, data, level, nil, nil)
 	}
 	if n == 0 {
 		b.Size.UncompressedSet(true)

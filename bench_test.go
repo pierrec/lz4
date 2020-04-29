@@ -40,7 +40,7 @@ func BenchmarkCompressHC(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		_, _ = lz4block.CompressBlockHC(pg1661, buf, 16)
+		_, _ = lz4block.CompressBlockHC(pg1661, buf, 16, nil, nil)
 	}
 }
 

@@ -74,7 +74,7 @@ func CompressBlock(src, dst []byte, hashTable []int) (_ int, err error) {
 	}
 
 	if cap(hashTable) < htSize {
-		hashTable = HashTablePool.Get().([]int)
+		hashTable = HashTablePool.Get()
 		defer HashTablePool.Put(hashTable)
 	} else {
 		hashTable = hashTable[:htSize]
@@ -239,7 +239,7 @@ func blockHashHC(x uint32) uint32 {
 	return x * hasher >> (32 - winSizeLog)
 }
 
-func CompressBlockHC(src, dst []byte, depth CompressionLevel) (_ int, err error) {
+func CompressBlockHC(src, dst []byte, depth CompressionLevel, hashTable, chainTable []int) (_ int, err error) {
 	defer recoverBlock(&err)
 
 	// Return 0, nil only if the destination buffer size is < CompressBlockBound.
@@ -251,14 +251,27 @@ func CompressBlockHC(src, dst []byte, depth CompressionLevel) (_ int, err error)
 	const adaptSkipLog = 7
 
 	var si, di, anchor int
-	// hashTable: stores the last position found for a given hash
-	// chainTable: stores previous positions for a given hash
-	var hashTable, chainTable [winSize]int
-
 	sn := len(src) - mfLimit
 	if sn <= 0 {
 		goto lastLiterals
 	}
+
+	// hashTable: stores the last position found for a given hash
+	// chainTable: stores previous positions for a given hash
+	if cap(hashTable) < htSize {
+		hashTable = HashTablePool.Get()
+		defer HashTablePool.Put(hashTable)
+	} else {
+		hashTable = hashTable[:htSize]
+	}
+	_ = hashTable[htSize-1]
+	if cap(chainTable) < htSize {
+		chainTable = HashTablePool.Get()
+		defer HashTablePool.Put(chainTable)
+	} else {
+		chainTable = chainTable[:htSize]
+	}
+	_ = chainTable[htSize-1]
 
 	if depth <= 0 {
 		depth = winSize

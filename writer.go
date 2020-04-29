@@ -32,7 +32,6 @@ type Writer struct {
 	level   lz4block.CompressionLevel // how hard to try
 	num     int                       // concurrency level
 	frame   *lz4stream.Frame          // frame being built
-	ht      []int                     // hash table (set if no concurrency)
 	data    []byte                    // pending data
 	idx     int                       // size of pending data
 	handler func(int)
@@ -68,9 +67,6 @@ func (w *Writer) init() error {
 	size := w.frame.Descriptor.Flags.BlockSizeIndex()
 	w.data = size.Get()
 	w.idx = 0
-	if w.isNotConcurrent() {
-		w.ht = lz4block.HashTablePool.Get().([]int)
-	}
 	return w.frame.Descriptor.Write(w.frame, w.src)
 }
 
@@ -126,7 +122,7 @@ func (w *Writer) Write(buf []byte) (n int, err error) {
 func (w *Writer) write(data []byte, safe bool) error {
 	if w.isNotConcurrent() {
 		block := w.frame.Blocks.Block
-		err := block.Compress(w.frame, data, w.ht, w.level).Write(w.frame, w.src)
+		err := block.Compress(w.frame, data, w.level).Write(w.frame, w.src)
 		w.handler(len(block.Data))
 		return err
 	}
@@ -135,7 +131,7 @@ func (w *Writer) write(data []byte, safe bool) error {
 	w.frame.Blocks.Blocks <- c
 	go func(c chan *lz4stream.FrameDataBlock, data []byte, size lz4block.BlockSizeIndex, safe bool) {
 		b := lz4stream.NewFrameDataBlock(size)
-		c <- b.Compress(w.frame, data, nil, w.level)
+		c <- b.Compress(w.frame, data, w.level)
 		<-c
 		w.handler(len(b.Data))
 		b.CloseW(w.frame)
@@ -167,10 +163,6 @@ func (w *Writer) Close() (err error) {
 		w.idx = 0
 	}
 	err = w.frame.CloseW(w.src, w.num)
-	if w.isNotConcurrent() {
-		lz4block.HashTablePool.Put(w.ht)
-		w.ht = nil
-	}
 	// It is now safe to free the buffer.
 	if w.data != nil {
 		size := w.frame.Descriptor.Flags.BlockSizeIndex()

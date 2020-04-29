@@ -152,7 +152,7 @@ func (r *Reader) reset(reader io.Reader) {
 //
 // w.Close must be called before Reset.
 func (r *Reader) Reset(reader io.Reader) {
-	r.frame.Magic = 0
+	_ = r.frame.CloseR(reader)
 	r.reset(reader)
 	r.state.state = noState
 	r.state.next(nil)

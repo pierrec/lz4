@@ -98,6 +98,8 @@ func TestWriter_Reset(t *testing.T) {
 	buf.Reset()
 	src.Reset(data)
 	zw.Reset(buf)
+	zw.Reset(buf)
+	// Another time to maybe trigger some edge case.
 	if _, err := io.Copy(zw, src); err != nil {
 		t.Fatal(err)
 	}

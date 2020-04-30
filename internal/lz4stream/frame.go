@@ -260,11 +260,14 @@ type FrameDataBlock struct {
 }
 
 func (b *FrameDataBlock) CloseW(f *Frame) {
-	size := f.Descriptor.Flags.BlockSizeIndex()
-	size.Put(b.data)
-	b.Data = nil
-	b.data = nil
-	b.src = nil
+	if b.data != nil {
+		// Block was not already closed.
+		size := f.Descriptor.Flags.BlockSizeIndex()
+		size.Put(b.data)
+		b.Data = nil
+		b.data = nil
+		b.src = nil
+	}
 }
 
 // Block compression errors are ignored since the buffer is sized appropriately.

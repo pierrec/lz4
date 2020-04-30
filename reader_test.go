@@ -91,6 +91,8 @@ func TestReader_Reset(t *testing.T) {
 
 	buf.Reset()
 	src.Reset(data)
+	// Another time to maybe trigger some edge case.
+	src.Reset(data)
 	zr.Reset(src)
 	if _, err := io.Copy(buf, zr); err != nil {
 		t.Fatal(err)

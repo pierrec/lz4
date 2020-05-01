@@ -6,7 +6,6 @@ import (
 	"hash/fnv"
 	"testing"
 
-	qt "github.com/frankban/quicktest"
 	"github.com/pierrec/lz4/internal/xxh32"
 )
 
@@ -47,19 +46,21 @@ func TestZeroSize(t *testing.T) {
 }
 
 func TestZeroData(t *testing.T) {
-	c := qt.New(t)
 	for _, td := range testdata {
 		var xxh xxh32.XXHZero
 		data := []byte(td.data)
 		_, _ = xxh.Write(data)
 
-		c.Assert(xxh.Sum32(), qt.Equals, td.sum)
-		c.Assert(xxh32.ChecksumZero(data), qt.Equals, td.sum)
+		if got, want := xxh.Sum32(), td.sum; got != want {
+			t.Fatalf("got %d; want %d", got, want)
+		}
+		if got, want := xxh32.ChecksumZero(data), td.sum; got != want {
+			t.Fatalf("got %d; want %d", got, want)
+		}
 	}
 }
 
 func TestZeroSplitData(t *testing.T) {
-	c := qt.New(t)
 	for _, td := range testdata {
 		var xxh xxh32.XXHZero
 		data := []byte(td.data)
@@ -67,38 +68,43 @@ func TestZeroSplitData(t *testing.T) {
 		_, _ = xxh.Write(data[0:l])
 		_, _ = xxh.Write(data[l:])
 
-		c.Assert(xxh.Sum32(), qt.Equals, td.sum)
+		if got, want := xxh.Sum32(), td.sum; got != want {
+			t.Fatalf("got %d; want %d", got, want)
+		}
 	}
 }
 
 func TestZeroSum(t *testing.T) {
-	c := qt.New(t)
 	for _, td := range testdata {
 		var xxh xxh32.XXHZero
 		data := []byte(td.data)
 		_, _ = xxh.Write(data)
 		b := xxh.Sum(data)
 		h := binary.LittleEndian.Uint32(b[len(data):])
-		c.Assert(h, qt.Equals, td.sum)
+		if got, want := h, td.sum; got != want {
+			t.Fatalf("got %d; want %d", got, want)
+		}
 	}
 }
 
 func TestZeroChecksum(t *testing.T) {
-	c := qt.New(t)
 	for _, td := range testdata {
 		data := []byte(td.data)
 		h := xxh32.ChecksumZero(data)
-		c.Assert(h, qt.Equals, td.sum)
+		if got, want := h, td.sum; got != want {
+			t.Fatalf("got %d; want %d", got, want)
+		}
 	}
 }
 
 func TestZeroReset(t *testing.T) {
-	c := qt.New(t)
 	var xxh xxh32.XXHZero
 	for _, td := range testdata {
 		_, _ = xxh.Write([]byte(td.data))
 		h := xxh.Sum32()
-		c.Assert(h, qt.Equals, td.sum)
+		if got, want := h, td.sum; got != want {
+			t.Fatalf("got %d; want %d", got, want)
+		}
 		xxh.Reset()
 	}
 }

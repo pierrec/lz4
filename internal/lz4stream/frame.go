@@ -7,9 +7,9 @@ import (
 	"io"
 	"io/ioutil"
 
-	"github.com/pierrec/lz4/internal/lz4block"
-	"github.com/pierrec/lz4/internal/lz4errors"
-	"github.com/pierrec/lz4/internal/xxh32"
+	"github.com/pierrec/lz4/v4/internal/lz4block"
+	"github.com/pierrec/lz4/v4/internal/lz4errors"
+	"github.com/pierrec/lz4/v4/internal/xxh32"
 )
 
 //go:generate go run gen.go

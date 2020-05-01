@@ -6,8 +6,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/pierrec/lz4"
-	"github.com/pierrec/lz4/internal/lz4block"
+	"github.com/pierrec/lz4/v4"
+	"github.com/pierrec/lz4/v4/internal/lz4block"
 )
 
 func Example() {

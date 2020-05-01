@@ -2,7 +2,7 @@
 
 package lz4stream
 
-import "github.com/pierrec/lz4/internal/lz4block"
+import "github.com/pierrec/lz4/v4/internal/lz4block"
 
 // DescriptorFlags is defined as follow:
 //   field              bits

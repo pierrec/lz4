@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/pierrec/lz4/internal/lz4block"
+	"github.com/pierrec/lz4/v4/internal/lz4block"
 )
 
 func TestFrameDescriptor(t *testing.T) {

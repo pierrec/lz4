@@ -9,7 +9,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/pierrec/lz4/internal/lz4block"
+	"github.com/pierrec/lz4/v4/internal/lz4block"
 	"github.com/pierrec/packer"
 	"golang.org/x/tools/imports"
 )

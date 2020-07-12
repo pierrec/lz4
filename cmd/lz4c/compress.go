@@ -11,7 +11,7 @@ import (
 	"github.com/schollz/progressbar/v3"
 
 	"github.com/pierrec/cmdflag"
-	"github.com/pierrec/lz4"
+	"github.com/pierrec/lz4/v4"
 )
 
 // Compress compresses a set of files or from stdin to stdout.

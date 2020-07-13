@@ -110,7 +110,7 @@ func SizeOption(size uint64) Option {
 }
 
 // ConcurrencyOption sets the number of go routines used for compression.
-// If n<0, then the output of runtime.GOMAXPROCS(0) is used.
+// If n <= 0, then the output of runtime.GOMAXPROCS(0) is used.
 func ConcurrencyOption(n int) Option {
 	return func(a applier) error {
 		switch w := a.(type) {
@@ -118,12 +118,8 @@ func ConcurrencyOption(n int) Option {
 			s := fmt.Sprintf("ConcurrencyOption(%d)", n)
 			return lz4errors.Error(s)
 		case *Writer:
-			switch n {
-			case 0, 1:
-			default:
-				if n < 0 {
-					n = runtime.GOMAXPROCS(0)
-				}
+			if n <= 0 {
+				n = runtime.GOMAXPROCS(0)
 			}
 			w.num = n
 			return nil

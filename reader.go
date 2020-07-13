@@ -126,7 +126,6 @@ close:
 	if er := r.frame.CloseR(r.src); er != nil {
 		err = er
 	}
-	r.frame.Descriptor.Flags.BlockSizeIndex().Put(r.data)
 	r.Reset(nil)
 	return
 fillbuf:
@@ -146,6 +145,8 @@ fillbuf:
 //
 // w.Close must be called before Reset.
 func (r *Reader) Reset(reader io.Reader) {
+	size := r.frame.Descriptor.Flags.BlockSizeIndex()
+	size.Put(r.data)
 	r.frame.Reset(1)
 	r.src = reader
 	r.data = nil

@@ -68,8 +68,10 @@ func (f *Frame) InitR(src io.Reader) error {
 		// Header already read.
 		return nil
 	}
+
 newFrame:
-	if err := readUint32(src, f.buf[:], &f.Magic); err != nil {
+	var err error
+	if f.Magic, err = f.readUint32(src); err != nil {
 		return err
 	}
 	switch m := f.Magic; {
@@ -95,11 +97,11 @@ newFrame:
 	return nil
 }
 
-func (f *Frame) CloseR(src io.Reader) error {
+func (f *Frame) CloseR(src io.Reader) (err error) {
 	if !f.Descriptor.Flags.ContentChecksum() {
 		return nil
 	}
-	if err := readUint32(src, f.buf[:], &f.Checksum); err != nil {
+	if f.Checksum, err = f.readUint32(src); err != nil {
 		return err
 	}
 	if c := f.checksum.Sum32(); c != f.Checksum {
@@ -319,9 +321,8 @@ func (b *FrameDataBlock) Write(f *Frame, dst io.Writer) error {
 }
 
 func (b *FrameDataBlock) Uncompress(f *Frame, src io.Reader, dst []byte) (int, error) {
-	buf := f.buf[:]
-	var x uint32
-	if err := readUint32(src, buf, &x); err != nil {
+	x, err := f.readUint32(src)
+	if err != nil {
 		return 0, err
 	}
 	b.Size = DataBlockSize(x)
@@ -353,7 +354,8 @@ func (b *FrameDataBlock) Uncompress(f *Frame, src io.Reader, dst []byte) (int, e
 	}
 
 	if f.Descriptor.Flags.BlockChecksum() {
-		if err := readUint32(src, buf, &b.Checksum); err != nil {
+		var err error
+		if b.Checksum, err = f.readUint32(src); err != nil {
 			return 0, err
 		}
 		if c := xxh32.ChecksumZero(data); c != b.Checksum {
@@ -366,10 +368,10 @@ func (b *FrameDataBlock) Uncompress(f *Frame, src io.Reader, dst []byte) (int, e
 	return len(data), nil
 }
 
-func readUint32(r io.Reader, buf []byte, x *uint32) error {
-	if _, err := io.ReadFull(r, buf[:4]); err != nil {
-		return err
+func (f *Frame) readUint32(r io.Reader) (x uint32, err error) {
+	if _, err = io.ReadFull(r, f.buf[:4]); err != nil {
+		return
 	}
-	*x = binary.LittleEndian.Uint32(buf)
-	return nil
+	x = binary.LittleEndian.Uint32(f.buf[:4])
+	return
 }

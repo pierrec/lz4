@@ -182,8 +182,8 @@ func (r *Reader) WriteTo(w io.Writer) (n int64, err error) {
 			return
 		}
 		r.handler(bn)
+		bn, err = w.Write(data[:bn])
 		n += int64(bn)
-		_, err = w.Write(data[:bn])
 		if err != nil {
 			return
 		}

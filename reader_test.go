@@ -2,6 +2,7 @@ package lz4_test
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"io/ioutil"
 	"os"
@@ -99,5 +100,35 @@ func TestReader_Reset(t *testing.T) {
 	}
 	if !reflect.DeepEqual(buf.Bytes(), pg1661) {
 		t.Fatal("result does not match original")
+	}
+}
+
+type brokenWriter int
+
+func (w *brokenWriter) Write(p []byte) (n int, err error) {
+	n = len(p)
+	if n > int(*w) {
+		n = int(*w)
+		err = errors.New("broken")
+	}
+	*w -= brokenWriter(n)
+	return
+}
+
+// WriteTo should report the number of bytes successfully written,
+// not the number successfully decompressed.
+func TestWriteToBrokenWriter(t *testing.T) {
+	const capacity = 10
+	w := brokenWriter(capacity)
+	r := lz4.NewReader(bytes.NewReader(pg1661LZ4))
+
+	n, err := r.WriteTo(&w)
+	switch {
+	case n > capacity:
+		t.Errorf("reported number of bytes written %d too big", n)
+	case err == nil:
+		t.Error("no error from broken Writer")
+	case err.Error() != "broken":
+		t.Errorf("unexpected error %q", err.Error())
 	}
 }

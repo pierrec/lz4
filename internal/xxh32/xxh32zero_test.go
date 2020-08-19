@@ -52,10 +52,10 @@ func TestZeroData(t *testing.T) {
 		_, _ = xxh.Write(data)
 
 		if got, want := xxh.Sum32(), td.sum; got != want {
-			t.Fatalf("got %d; want %d", got, want)
+			t.Fatalf("got %x; want %x", got, want)
 		}
 		if got, want := xxh32.ChecksumZero(data), td.sum; got != want {
-			t.Fatalf("got %d; want %d", got, want)
+			t.Fatalf("got %x; want %x", got, want)
 		}
 	}
 }
@@ -69,7 +69,7 @@ func TestZeroSplitData(t *testing.T) {
 		_, _ = xxh.Write(data[l:])
 
 		if got, want := xxh.Sum32(), td.sum; got != want {
-			t.Fatalf("got %d; want %d", got, want)
+			t.Fatalf("got %x; want %x", got, want)
 		}
 	}
 }
@@ -82,7 +82,7 @@ func TestZeroSum(t *testing.T) {
 		b := xxh.Sum(data)
 		h := binary.LittleEndian.Uint32(b[len(data):])
 		if got, want := h, td.sum; got != want {
-			t.Fatalf("got %d; want %d", got, want)
+			t.Fatalf("got %x; want %x", got, want)
 		}
 	}
 }
@@ -92,7 +92,7 @@ func TestZeroChecksum(t *testing.T) {
 		data := []byte(td.data)
 		h := xxh32.ChecksumZero(data)
 		if got, want := h, td.sum; got != want {
-			t.Fatalf("got %d; want %d", got, want)
+			t.Fatalf("got %x; want %x", got, want)
 		}
 	}
 }
@@ -103,7 +103,7 @@ func TestZeroReset(t *testing.T) {
 		_, _ = xxh.Write([]byte(td.data))
 		h := xxh.Sum32()
 		if got, want := h, td.sum; got != want {
-			t.Fatalf("got %d; want %d", got, want)
+			t.Fatalf("got %x; want %x", got, want)
 		}
 		xxh.Reset()
 	}

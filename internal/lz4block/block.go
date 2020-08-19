@@ -26,21 +26,19 @@ const (
 )
 
 // Pool of hash tables for CompressBlock.
-var HashTablePool = hashTablePool{sync.Pool{New: func() interface{} { return make([]int, htSize) }}}
+var HashTablePool = hashTablePool{sync.Pool{New: func() interface{} { return new([htSize]int) }}}
 
 type hashTablePool struct {
 	sync.Pool
 }
 
-func (p *hashTablePool) Get() []int {
-	return p.Pool.Get().([]int)
+func (p *hashTablePool) Get() *[htSize]int {
+	return p.Pool.Get().(*[htSize]int)
 }
 
 // Zero out the table to avoid non-deterministic outputs (see issue#65).
-func (p *hashTablePool) Put(t []int) {
-	for i := range t {
-		t[i] = 0
-	}
+func (p *hashTablePool) Put(t *[htSize]int) {
+	*t = [htSize]int{}
 	p.Pool.Put(t)
 }
 
@@ -90,8 +88,9 @@ func CompressBlock(src, dst []byte, hashTable []int) (_ int, err error) {
 	}
 
 	if cap(hashTable) < htSize {
-		hashTable = HashTablePool.Get()
-		defer HashTablePool.Put(hashTable)
+		poolTable := HashTablePool.Get()
+		defer HashTablePool.Put(poolTable)
+		hashTable = poolTable[:]
 	} else {
 		hashTable = hashTable[:htSize]
 	}
@@ -275,15 +274,17 @@ func CompressBlockHC(src, dst []byte, depth CompressionLevel, hashTable, chainTa
 	// hashTable: stores the last position found for a given hash
 	// chainTable: stores previous positions for a given hash
 	if cap(hashTable) < htSize {
-		hashTable = HashTablePool.Get()
-		defer HashTablePool.Put(hashTable)
+		poolTable := HashTablePool.Get()
+		defer HashTablePool.Put(poolTable)
+		hashTable = poolTable[:]
 	} else {
 		hashTable = hashTable[:htSize]
 	}
 	_ = hashTable[htSize-1]
 	if cap(chainTable) < htSize {
-		chainTable = HashTablePool.Get()
-		defer HashTablePool.Put(chainTable)
+		poolTable := HashTablePool.Get()
+		defer HashTablePool.Put(poolTable)
+		chainTable = poolTable[:]
 	} else {
 		chainTable = chainTable[:htSize]
 	}

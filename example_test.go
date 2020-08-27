@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/pierrec/lz4/v4"
-	"github.com/pierrec/lz4/v4/internal/lz4block"
 )
 
 func Example() {
@@ -38,7 +37,7 @@ func ExampleCompressBlock() {
 	data := []byte(strings.Repeat(s, 100))
 	buf := make([]byte, len(data))
 
-	n, err := lz4block.CompressBlock(data, buf, nil)
+	n, err := lz4.CompressBlock(data, buf, nil)
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -49,7 +48,7 @@ func ExampleCompressBlock() {
 
 	// Allocated a very large buffer for decompression.
 	out := make([]byte, 10*len(data))
-	n, err = lz4block.UncompressBlock(buf, out)
+	n, err = lz4.UncompressBlock(buf, out)
 	if err != nil {
 		fmt.Println(err)
 	}

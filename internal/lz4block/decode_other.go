@@ -60,8 +60,10 @@ func decodeBlock(dst, src []byte) (ret int) {
 				di += lLen
 			}
 		}
-		if si >= uint(len(src)) {
+		if si == uint(len(src)) {
 			return int(di)
+		} else if si > uint(len(src)) {
+			return hasError
 		}
 
 		offset := uint(src[si]) | uint(src[si+1])<<8

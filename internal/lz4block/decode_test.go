@@ -85,6 +85,11 @@ func TestBlockDecode(t *testing.T) {
 		exp  []byte
 	}{
 		{
+			"empty_input",
+			[]byte{0},
+			[]byte{},
+		},
+		{
 			"literal_only_short",
 			emitSeq("hello", 0, 0),
 			[]byte("hello"),
@@ -133,5 +138,30 @@ func TestBlockDecode(t *testing.T) {
 				t.Fatalf("expected %q got %q", test.exp, buf)
 			}
 		})
+	}
+}
+
+func TestDecodeBlockInvalid(t *testing.T) {
+	t.Parallel()
+
+	dst := make([]byte, 100)
+
+	for _, test := range []struct {
+		name string
+		src  string
+	}{
+		{
+			"empty_input",
+			"",
+		},
+		{
+			"final_lit_too_short",
+			"\x20a", // litlen = 2 but only a single-byte literal
+		},
+	} {
+		r := decodeBlock(dst, []byte(test.src))
+		if r >= 0 {
+			t.Errorf("no error for %s", test.name)
+		}
 	}
 }

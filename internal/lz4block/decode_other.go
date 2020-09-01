@@ -1,4 +1,4 @@
-// +build !amd64 appengine !gc noasm
+// +build !amd64,!arm appengine !gc noasm
 
 package lz4block
 

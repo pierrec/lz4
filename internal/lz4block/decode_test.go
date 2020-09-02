@@ -2,18 +2,9 @@ package lz4block
 
 import (
 	"bytes"
-	"encoding/base64"
 	"strings"
 	"testing"
 )
-
-func unbase64(in string) []byte {
-	p, err := base64.StdEncoding.DecodeString(in)
-	if err != nil {
-		panic(err)
-	}
-	return p
-}
 
 func TestBlockDecode(t *testing.T) {
 	appendLen := func(p []byte, size int) []byte {

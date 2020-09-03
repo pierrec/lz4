@@ -76,7 +76,9 @@ readLitlenDone:
 
 	TST        $2, src
 	MOVHU.NE.P 2(src), tmp2
-	MOVH.NE.P  tmp2, 2(dst)
+	MOVB.NE.P  tmp2, 1(dst)
+	MOVW.NE    tmp2 >> 8, tmp1
+	MOVB.NE.P  tmp1, 1(dst)
 	SUB.NE     $2, len
 
 	CMP $4, len
@@ -84,7 +86,7 @@ readLitlenDone:
 
 copyLiteralLoop:
 	// Aligned load, unaligned write.
-	SUB   $4, len
+	SUB    $4, len
 	MOVW.P 4(src), tmp1
 	MOVW   tmp1 >>  8, tmp2
 	MOVB   tmp2, 1(dst)
@@ -100,10 +102,12 @@ copyLiteralFinish:
 	// Copy remaining 0-3 bytes.
 	TST        $2, len
 	MOVHU.NE.P 2(src), tmp2
-	MOVHU.NE.P tmp2, 2(dst)
+	MOVB.NE.P  tmp2, 1(dst)
+	MOVW.NE    tmp2 >> 8, tmp1
+	MOVB.NE.P  tmp1, 1(dst)
 	TST        $1, len
 	MOVBU.NE.P 1(src), tmp1
-	MOVBU.NE.P tmp1, 1(dst)
+	MOVB.NE.P  tmp1, 1(dst)
 
 copyLiteralDone:
 	CMP src, srcend
@@ -113,7 +117,9 @@ copyLiteralDone:
 	ADD   $2, src
 	CMP   srcend, src
 	BHI   shortSrc
-	MOVHU -2(src), offset
+	MOVBU -2(src), offset
+	MOVBU -1(src), tmp1
+	ORR   tmp1 << 8, offset
 	CMP   $0, offset
 	BEQ   corrupt
 

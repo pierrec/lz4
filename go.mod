@@ -7,4 +7,5 @@ require (
 	github.com/onsi/ginkgo v1.14.0 // indirect
 	github.com/pierrec/cmdflag v0.0.2
 	github.com/schollz/progressbar/v3 v3.3.4
+	golang.org/x/sys v0.0.0-20200908134130-d2e65c121b96
 )

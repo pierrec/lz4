@@ -55,7 +55,7 @@ func TestZeroData(t *testing.T) {
 			t.Fatalf("got %x; want %x", got, want)
 		}
 		if got, want := xxh32.ChecksumZero(data), td.sum; got != want {
-			t.Fatalf("got %x; want %x", got, want)
+			t.Errorf("got %x; want %x", got, want)
 		}
 	}
 }
@@ -92,7 +92,7 @@ func TestZeroChecksum(t *testing.T) {
 		data := []byte(td.data)
 		h := xxh32.ChecksumZero(data)
 		if got, want := h, td.sum; got != want {
-			t.Fatalf("got %x; want %x", got, want)
+			t.Errorf("got %x; want %x", got, want)
 		}
 	}
 }
@@ -103,9 +103,34 @@ func TestZeroReset(t *testing.T) {
 		_, _ = xxh.Write([]byte(td.data))
 		h := xxh.Sum32()
 		if got, want := h, td.sum; got != want {
-			t.Fatalf("got %x; want %x", got, want)
+			t.Errorf("got %x; want %x", got, want)
 		}
 		xxh.Reset()
+	}
+}
+
+func TestNil(t *testing.T) {
+	want := xxh32.ChecksumZero([]byte(""))
+
+	var xxh xxh32.XXHZero
+	xxh.Write(nil)
+	got := xxh.Sum32()
+	if got != want {
+		t.Errorf("got %x; want %x", got, want)
+	}
+
+	got = xxh32.ChecksumZero(nil)
+	if got != want {
+		t.Errorf("got %x; want %x", got, want)
+	}
+}
+
+func TestUnaligned(t *testing.T) {
+	zeros := make([]byte, 100)
+	ha := xxh32.ChecksumZero(zeros[:99])
+	hu := xxh32.ChecksumZero(zeros[1:])
+	if ha != hu {
+		t.Errorf("mismatch: %x != %x", ha, hu)
 	}
 }
 

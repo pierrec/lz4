@@ -68,9 +68,7 @@ func UncompressBlock(src, dst []byte) (int, error) {
 	return 0, lz4errors.ErrInvalidSourceShortBuffer
 }
 
-func CompressBlock(src, dst []byte, hashTable []int) (_ int, err error) {
-	defer recoverBlock(&err)
-
+func CompressBlock(src, dst []byte, hashTable []int) (int, error) {
 	// Return 0, nil only if the destination buffer size is < CompressBlockBound.
 	isNotCompressible := len(dst) < CompressBlockBound(len(src))
 
@@ -192,19 +190,27 @@ func CompressBlock(src, dst []byte, hashTable []int) (_ int, err error) {
 		di++
 
 		// Literals.
+		if di+lLen > len(dst) {
+			return 0, lz4errors.ErrInvalidSourceShortBuffer
+		}
 		copy(dst[di:di+lLen], src[anchor:anchor+lLen])
 		di += lLen + 2
 		anchor = si
 
 		// Encode offset.
-		_ = dst[di] // Bound check elimination.
+		if di > len(dst) {
+			return 0, lz4errors.ErrInvalidSourceShortBuffer
+		}
 		dst[di-2], dst[di-1] = byte(offset), byte(offset>>8)
 
 		// Encode match length part 2.
 		if mLen >= 0xF {
-			for mLen -= 0xF; mLen >= 0xFF; mLen -= 0xFF {
+			for mLen -= 0xF; mLen >= 0xFF && di < len(dst); mLen -= 0xFF {
 				dst[di] = 0xFF
 				di++
+			}
+			if di >= len(dst) {
+				return 0, lz4errors.ErrInvalidSourceShortBuffer
 			}
 			dst[di] = byte(mLen)
 			di++
@@ -225,15 +231,21 @@ lastLiterals:
 	}
 
 	// Last literals.
+	if di >= len(dst) {
+		return 0, lz4errors.ErrInvalidSourceShortBuffer
+	}
 	lLen := len(src) - anchor
 	if lLen < 0xF {
 		dst[di] = byte(lLen << 4)
 	} else {
 		dst[di] = 0xF0
 		di++
-		for lLen -= 0xF; lLen >= 0xFF; lLen -= 0xFF {
+		for lLen -= 0xF; lLen >= 0xFF && di < len(dst); lLen -= 0xFF {
 			dst[di] = 0xFF
 			di++
+		}
+		if di >= len(dst) {
+			return 0, lz4errors.ErrInvalidSourceShortBuffer
 		}
 		dst[di] = byte(lLen)
 	}
@@ -243,6 +255,9 @@ lastLiterals:
 	if isNotCompressible && di >= anchor {
 		// Incompressible.
 		return 0, nil
+	}
+	if di+len(src)-anchor > len(dst) {
+		return 0, lz4errors.ErrInvalidSourceShortBuffer
 	}
 	di += copy(dst[di:di+len(src)-anchor], src[anchor:])
 	return di, nil

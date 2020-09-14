@@ -167,7 +167,7 @@ func TestIssue51(t *testing.T) {
 
 	zbuf := make([]byte, 8192)
 
-	n, err := lz4block.CompressBlock(data, zbuf, nil)
+	n, err := lz4block.CompressBlock(data, zbuf)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +195,7 @@ func TestIssue71(t *testing.T) {
 
 			// Small buffer.
 			zSmall := make([]byte, bound-1)
-			n, err := lz4block.CompressBlock(src, zSmall, nil)
+			n, err := lz4block.CompressBlock(src, zSmall)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -205,7 +205,7 @@ func TestIssue71(t *testing.T) {
 
 			// Large enough buffer.
 			zLarge := make([]byte, bound)
-			n, err = lz4block.CompressBlock(src, zLarge, nil)
+			n, err = lz4block.CompressBlock(src, zLarge)
 			if err != nil {
 				t.Fatal(err)
 			}

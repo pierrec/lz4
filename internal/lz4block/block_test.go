@@ -98,7 +98,7 @@ func TestCompressUncompressBlock(t *testing.T) {
 			tc := tc
 			t.Run(tc.file, func(t *testing.T) {
 				n = run(t, tc, func(src, dst []byte) (int, error) {
-					return lz4block.CompressBlock(src, dst, nil)
+					return lz4block.CompressBlock(src, dst)
 				})
 			})
 			t.Run(fmt.Sprintf("%s HC", tc.file), func(t *testing.T) {
@@ -138,13 +138,13 @@ func TestCompressCornerCase_CopyDstUpperBound(t *testing.T) {
 	t.Run(file, func(t *testing.T) {
 		t.Parallel()
 		run(src, func(src, dst []byte) (int, error) {
-			return lz4block.CompressBlock(src, dst, nil)
+			return lz4block.CompressBlock(src, dst)
 		})
 	})
 	t.Run(fmt.Sprintf("%s HC", file), func(t *testing.T) {
 		t.Parallel()
 		run(src, func(src, dst []byte) (int, error) {
-			return lz4block.CompressBlockHC(src, dst, 16, nil, nil)
+			return lz4block.CompressBlockHC(src, dst, 16)
 		})
 	})
 }
@@ -158,7 +158,7 @@ func TestIssue23(t *testing.T) {
 			buf[i] = 1
 		}
 
-		n, _ := lz4block.CompressBlock(buf[:], compressBuf, nil)
+		n, _ := lz4block.CompressBlock(buf[:], compressBuf)
 		if got, want := n, 300; got > want {
 			t.Fatalf("not able to compress repeated data: got %d; want %d", got, want)
 		}

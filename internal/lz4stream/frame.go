@@ -278,9 +278,9 @@ func (b *FrameDataBlock) Compress(f *Frame, src []byte, level lz4block.Compressi
 	var n int
 	switch level {
 	case lz4block.Fast:
-		n, _ = lz4block.CompressBlock(src, data, nil)
+		n, _ = lz4block.CompressBlock(src, data)
 	default:
-		n, _ = lz4block.CompressBlockHC(src, data, level, nil, nil)
+		n, _ = lz4block.CompressBlockHC(src, data, level)
 	}
 	if n == 0 {
 		b.Size.UncompressedSet(true)

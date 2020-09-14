@@ -12,22 +12,24 @@ import (
 
 func BenchmarkCompress(b *testing.B) {
 	buf := make([]byte, len(pg1661))
+	var c lz4.Compressor
 
-	n, _ := lz4block.CompressBlock(pg1661, buf, nil)
+	n, _ := c.CompressBlock(pg1661, buf)
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	b.ReportMetric(float64(n), "outbytes")
 
 	for i := 0; i < b.N; i++ {
-		_, _ = lz4block.CompressBlock(pg1661, buf, nil)
+		_, _ = c.CompressBlock(pg1661, buf)
 	}
 }
 
 func BenchmarkCompressRandom(b *testing.B) {
 	buf := make([]byte, len(randomLZ4))
+	var c lz4.Compressor
 
-	n, _ := lz4block.CompressBlock(pg1661, buf, nil)
+	n, _ := c.CompressBlock(pg1661, buf)
 
 	b.ReportAllocs()
 	b.SetBytes(int64(len(random)))
@@ -35,21 +37,22 @@ func BenchmarkCompressRandom(b *testing.B) {
 	b.ReportMetric(float64(n), "outbytes")
 
 	for i := 0; i < b.N; i++ {
-		_, _ = lz4block.CompressBlock(random, buf, nil)
+		_, _ = c.CompressBlock(random, buf)
 	}
 }
 
 func BenchmarkCompressHC(b *testing.B) {
 	buf := make([]byte, len(pg1661))
+	c := lz4.CompressorHC{Level: 16}
 
-	n, _ := lz4block.CompressBlockHC(pg1661, buf, 16, nil, nil)
+	n, _ := c.CompressBlock(pg1661, buf)
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	b.ReportMetric(float64(n), "outbytes")
 
 	for i := 0; i < b.N; i++ {
-		_, _ = lz4block.CompressBlockHC(pg1661, buf, 16, nil, nil)
+		_, _ = c.CompressBlock(pg1661, buf)
 	}
 }
 

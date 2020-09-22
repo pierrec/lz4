@@ -12,35 +12,47 @@ import (
 
 func BenchmarkCompress(b *testing.B) {
 	buf := make([]byte, len(pg1661))
+	var c lz4.Compressor
+
+	n, _ := c.CompressBlock(pg1661, buf)
 
 	b.ReportAllocs()
 	b.ResetTimer()
+	b.ReportMetric(float64(n), "outbytes")
 
 	for i := 0; i < b.N; i++ {
-		_, _ = lz4block.CompressBlock(pg1661, buf, nil)
+		_, _ = c.CompressBlock(pg1661, buf)
 	}
 }
 
 func BenchmarkCompressRandom(b *testing.B) {
 	buf := make([]byte, len(randomLZ4))
+	var c lz4.Compressor
+
+	n, _ := c.CompressBlock(pg1661, buf)
 
 	b.ReportAllocs()
 	b.SetBytes(int64(len(random)))
 	b.ResetTimer()
+	b.ReportMetric(float64(n), "outbytes")
 
 	for i := 0; i < b.N; i++ {
-		_, _ = lz4block.CompressBlock(random, buf, nil)
+		_, _ = c.CompressBlock(random, buf)
 	}
 }
 
 func BenchmarkCompressHC(b *testing.B) {
 	buf := make([]byte, len(pg1661))
+	c := lz4.CompressorHC{Level: 16}
+
+	n, _ := c.CompressBlock(pg1661, buf)
 
 	b.ReportAllocs()
 	b.ResetTimer()
+	b.ReportMetric(float64(n), "outbytes")
 
 	for i := 0; i < b.N; i++ {
-		_, _ = lz4block.CompressBlockHC(pg1661, buf, 16, nil, nil)
+		_, _ = c.CompressBlock(pg1661, buf)
 	}
 }
 
@@ -78,13 +90,13 @@ func benchmarkUncompress(b *testing.B, compressed []byte) {
 	r := bytes.NewReader(compressed)
 	zr := lz4.NewReader(r)
 
-	// Determine the uncompressed size of testfile.
-	uncompressedSize, err := io.Copy(ioutil.Discard, zr)
+	// Decompress once to determine the uncompressed size of testfile.
+	_, err := io.Copy(ioutil.Discard, zr)
 	if err != nil {
 		b.Fatal(err)
 	}
 
-	b.SetBytes(uncompressedSize)
+	b.SetBytes(int64(len(compressed)))
 	b.ReportAllocs()
 	b.ResetTimer()
 
@@ -105,8 +117,8 @@ func benchmarkCompress(b *testing.B, uncompressed []byte) {
 	zw := lz4.NewWriter(w)
 	r := bytes.NewReader(uncompressed)
 
-	// Determine the compressed size of testfile.
-	compressedSize, err := io.Copy(zw, r)
+	// Compress once to determine the compressed size of testfile.
+	_, err := io.Copy(zw, r)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -114,9 +126,10 @@ func benchmarkCompress(b *testing.B, uncompressed []byte) {
 		b.Fatal(err)
 	}
 
-	b.SetBytes(compressedSize)
+	b.SetBytes(int64(len(uncompressed)))
 	b.ReportAllocs()
 	b.ResetTimer()
+	b.ReportMetric(float64(w.Len()), "outbytes")
 
 	for i := 0; i < b.N; i++ {
 		r.Reset(uncompressed)

@@ -219,22 +219,22 @@ end:
 
 // func update(v *[4]uint64, buf *[16]byte, p []byte)
 TEXT ·update(SB), NOFRAME|NOSPLIT, $-4-20
-	MOVW    v_arg+0(FP), p
+	MOVW    v+0(FP), p
 	MOVM.IA (p), [v1, v2, v3, v4]
 
 	MOVW prime1, prime1r
 	MOVW prime2, prime2r
 
 	// Process buf, if not nil.
-	MOVW buf_arg+4(FP), p
+	MOVW buf+4(FP), p
 	CMP  $0, p
 	BEQ  noBuffered
 
 	round16aligned
 
 noBuffered:
-	MOVW input_ptr+ 8(FP), p
-	MOVW input_len+12(FP), n
+	MOVW input_base +8(FP), p
+	MOVW input_len +12(FP), n
 
 	SUB.S $16, n
 	BMI   end
@@ -254,6 +254,6 @@ loop16unaligned:
 	BPL loop16unaligned
 
 end:
-	MOVW    v_arg+0(FP), p
+	MOVW    v+0(FP), p
 	MOVM.IA [v1, v2, v3, v4], (p)
 	RET

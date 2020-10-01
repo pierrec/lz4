@@ -12,7 +12,7 @@
 #define match	R5	// Match address.
 #define token	R6
 #define len	R7	// Literal and match lengths.
-#define offset	R5	// Match offset; overlaps with match.
+#define offset	R6	// Match offset; overlaps with token.
 #define tmp1	R8
 #define tmp2	R9
 #define tmp3	R12
@@ -113,6 +113,10 @@ copyLiteralDone:
 	CMP src, srcend
 	BEQ end
 
+	// Initial part of match length.
+	// This frees up the token register for reuse as offset.
+	AND $15, token, len
+
 	// Read offset.
 	ADD   $2, src
 	CMP   srcend, src
@@ -123,8 +127,7 @@ copyLiteralDone:
 	CMP   $0, offset
 	BEQ   corrupt
 
-	// Read match length.
-	AND $15, token, len
+	// Read rest of match length.
 	CMP $15, len
 	BNE readMatchlenDone
 
@@ -147,6 +150,30 @@ readMatchlenDone:
 	CMP.LS match, dstorig
 	BHI    corrupt
 
+	// If the offset is at least four (len is, because of minMatch),
+	// do a four-way unrolled byte copy loop. Using MOVD instead of four
+	// byte loads is much faster, but to remain portable we'd have to
+	// align match first, which in turn is too expensive.
+	CMP $4, offset
+	BLO copyMatch
+
+	SUB $4, len
+copyMatch4:
+	MOVBU.P 4(match), tmp1
+	MOVB.P  tmp1, 4(dst)
+	MOVBU   -3(match), tmp2
+	MOVB    tmp2, -3(dst)
+	MOVBU   -2(match), tmp3
+	MOVB    tmp3, -2(dst)
+	MOVBU   -1(match), tmp1
+	MOVB    tmp1, -1(dst)
+	SUB.S   $4, len
+	BPL     copyMatch4
+
+	// Restore len, which is now negative.
+	ADD.S $4, len
+	BEQ   copyMatchDone
+
 copyMatch:
 	// Simple byte-at-a-time copy.
 	SUB.S   $1, len
@@ -154,6 +181,7 @@ copyMatch:
 	MOVB.P  tmp2, 1(dst)
 	BNE     copyMatch
 
+copyMatchDone:
 	CMP src, srcend
 	BNE loop
 

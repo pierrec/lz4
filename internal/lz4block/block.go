@@ -56,7 +56,7 @@ type Compressor struct {
 	// match positions: effectively, an offset from some 64kiB block boundary.
 	//
 	// When we retrieve such an offset, we interpret it as relative to the last
-	// block boundary si &^ 0xffff, or the one before, (si &^ 0xffff) - 0xffff,
+	// block boundary si &^ 0xffff, or the one before, (si &^ 0xffff) - 0x10000,
 	// depending on which of these is inside the current window. If a table
 	// entry was generated more than 64kiB back in the input, we find out by
 	// inspecting the input stream.

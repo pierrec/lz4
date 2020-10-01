@@ -46,7 +46,7 @@ func UncompressBlock(src, dst []byte) (int, error) {
 // Use a Writer to compress into the LZ4 stream format.
 type Compressor struct{ c lz4block.Compressor }
 
-// CompressBlockHC compresses the source buffer src into the destination dst.
+// CompressBlock compresses the source buffer src into the destination dst.
 //
 // If compression is successful, the first return value is the size of the
 // compressed data, which is always >0.
@@ -97,7 +97,7 @@ type CompressorHC struct {
 	c     lz4block.CompressorHC
 }
 
-// CompressBlockHC compresses the source buffer src into the destination dst.
+// CompressBlock compresses the source buffer src into the destination dst.
 //
 // If compression is successful, the first return value is the size of the
 // compressed data, which is always >0.

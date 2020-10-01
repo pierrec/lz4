@@ -35,9 +35,6 @@ TEXT ·decodeBlock(SB), NOFRAME|NOSPLIT, $-4-28
 	MOVW dst, dstorig
 
 loop:
-	CMP src, srcend
-	BEQ end
-
 	// Read token. Extract literal length.
 	MOVBU.P 1(src), token
 	MOVW    token >> 4, len
@@ -57,12 +54,12 @@ readLitlenDone:
 	BEQ copyLiteralDone
 
 	// Bounds check dst+len and src+len.
-	ADD dst, len, tmp1
-	ADD src, len, tmp2
-	CMP dstend, tmp1
-	BHI shortDst
-	CMP srcend, tmp2
-	BHI shortSrc
+	ADD    dst, len, tmp1
+	CMP    dstend, tmp1
+	//BHI  shortDst	// Uncomment for distinct error codes.
+	ADD    src, len, tmp2
+	CMP.LS srcend, tmp2
+	BHI    shortSrc
 
 	// Copy literal.
 	CMP $4, len
@@ -81,12 +78,10 @@ readLitlenDone:
 	MOVB.NE.P  tmp1, 1(dst)
 	SUB.NE     $2, len
 
-	CMP $4, len
-	BLO copyLiteralFinish
+	B copyLiteralLoopCond
 
 copyLiteralLoop:
 	// Aligned load, unaligned write.
-	SUB    $4, len
 	MOVW.P 4(src), tmp1
 	MOVW   tmp1 >>  8, tmp2
 	MOVB   tmp2, 1(dst)
@@ -95,8 +90,13 @@ copyLiteralLoop:
 	MOVW   tmp1 >> 24, tmp2
 	MOVB   tmp2, 3(dst)
 	MOVB.P tmp1, 4(dst)
-	CMP    $4, len
-	BHS    copyLiteralLoop
+copyLiteralLoopCond:
+	// Loop until len-4 < 0.
+	SUB.S  $4, len
+	BPL    copyLiteralLoop
+
+	// Restore len, which is now negative.
+	ADD $4, len
 
 copyLiteralFinish:
 	// Copy remaining 0-3 bytes.
@@ -139,13 +139,13 @@ readMatchlenLoop:
 readMatchlenDone:
 	ADD minMatch, len
 
-	ADD dst, len, tmp1
-	CMP dstend, tmp1
-	BHI shortDst
-
-	SUB offset, dst, match
-	CMP dstorig, match
-	BLO corrupt
+	// Bounds check dst+len and match = dst-offset.
+	ADD    dst, len, tmp1
+	CMP    dstend, tmp1
+	//BHI  shortDst	// Uncomment for distinct error codes.
+	SUB    offset, dst, match
+	CMP.LS match, dstorig
+	BHI    corrupt
 
 copyMatch:
 	// Simple byte-at-a-time copy.
@@ -154,7 +154,13 @@ copyMatch:
 	MOVB.P  tmp2, 1(dst)
 	BNE     copyMatch
 
-	B loop
+	CMP src, srcend
+	BNE loop
+
+end:
+	SUB  dstorig, dst, tmp1
+	MOVW tmp1, ret+24(FP)
+	RET
 
 	// The three error cases have distinct labels so we can put different
 	// return codes here when debugging, or if the error returns need to
@@ -163,10 +169,5 @@ shortDst:
 shortSrc:
 corrupt:
 	MOVW $-1, tmp1
-	MOVW tmp1, ret+24(FP)
-	RET
-
-end:
-	SUB  dstorig, dst, tmp1
 	MOVW tmp1, ret+24(FP)
 	RET

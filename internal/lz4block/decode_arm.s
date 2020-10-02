@@ -12,7 +12,7 @@
 #define match	R5	// Match address.
 #define token	R6
 #define len	R7	// Literal and match lengths.
-#define offset	R5	// Match offset; overlaps with match.
+#define offset	R6	// Match offset; overlaps with token.
 #define tmp1	R8
 #define tmp2	R9
 #define tmp3	R12
@@ -35,9 +35,6 @@ TEXT ·decodeBlock(SB), NOFRAME|NOSPLIT, $-4-28
 	MOVW dst, dstorig
 
 loop:
-	CMP src, srcend
-	BEQ end
-
 	// Read token. Extract literal length.
 	MOVBU.P 1(src), token
 	MOVW    token >> 4, len
@@ -57,12 +54,12 @@ readLitlenDone:
 	BEQ copyLiteralDone
 
 	// Bounds check dst+len and src+len.
-	ADD dst, len, tmp1
-	ADD src, len, tmp2
-	CMP dstend, tmp1
-	BHI shortDst
-	CMP srcend, tmp2
-	BHI shortSrc
+	ADD    dst, len, tmp1
+	CMP    dstend, tmp1
+	//BHI  shortDst	// Uncomment for distinct error codes.
+	ADD    src, len, tmp2
+	CMP.LS srcend, tmp2
+	BHI    shortSrc
 
 	// Copy literal.
 	CMP $4, len
@@ -81,12 +78,10 @@ readLitlenDone:
 	MOVB.NE.P  tmp1, 1(dst)
 	SUB.NE     $2, len
 
-	CMP $4, len
-	BLO copyLiteralFinish
+	B copyLiteralLoopCond
 
 copyLiteralLoop:
 	// Aligned load, unaligned write.
-	SUB    $4, len
 	MOVW.P 4(src), tmp1
 	MOVW   tmp1 >>  8, tmp2
 	MOVB   tmp2, 1(dst)
@@ -95,8 +90,13 @@ copyLiteralLoop:
 	MOVW   tmp1 >> 24, tmp2
 	MOVB   tmp2, 3(dst)
 	MOVB.P tmp1, 4(dst)
-	CMP    $4, len
-	BHS    copyLiteralLoop
+copyLiteralLoopCond:
+	// Loop until len-4 < 0.
+	SUB.S  $4, len
+	BPL    copyLiteralLoop
+
+	// Restore len, which is now negative.
+	ADD $4, len
 
 copyLiteralFinish:
 	// Copy remaining 0-3 bytes.
@@ -113,6 +113,10 @@ copyLiteralDone:
 	CMP src, srcend
 	BEQ end
 
+	// Initial part of match length.
+	// This frees up the token register for reuse as offset.
+	AND $15, token, len
+
 	// Read offset.
 	ADD   $2, src
 	CMP   srcend, src
@@ -123,8 +127,7 @@ copyLiteralDone:
 	CMP   $0, offset
 	BEQ   corrupt
 
-	// Read match length.
-	AND $15, token, len
+	// Read rest of match length.
 	CMP $15, len
 	BNE readMatchlenDone
 
@@ -139,13 +142,37 @@ readMatchlenLoop:
 readMatchlenDone:
 	ADD minMatch, len
 
-	ADD dst, len, tmp1
-	CMP dstend, tmp1
-	BHI shortDst
+	// Bounds check dst+len and match = dst-offset.
+	ADD    dst, len, tmp1
+	CMP    dstend, tmp1
+	//BHI  shortDst	// Uncomment for distinct error codes.
+	SUB    offset, dst, match
+	CMP.LS match, dstorig
+	BHI    corrupt
 
-	SUB offset, dst, match
-	CMP dstorig, match
-	BLO corrupt
+	// If the offset is at least four (len is, because of minMatch),
+	// do a four-way unrolled byte copy loop. Using MOVD instead of four
+	// byte loads is much faster, but to remain portable we'd have to
+	// align match first, which in turn is too expensive.
+	CMP $4, offset
+	BLO copyMatch
+
+	SUB $4, len
+copyMatch4:
+	MOVBU.P 4(match), tmp1
+	MOVB.P  tmp1, 4(dst)
+	MOVBU   -3(match), tmp2
+	MOVB    tmp2, -3(dst)
+	MOVBU   -2(match), tmp3
+	MOVB    tmp3, -2(dst)
+	MOVBU   -1(match), tmp1
+	MOVB    tmp1, -1(dst)
+	SUB.S   $4, len
+	BPL     copyMatch4
+
+	// Restore len, which is now negative.
+	ADD.S $4, len
+	BEQ   copyMatchDone
 
 copyMatch:
 	// Simple byte-at-a-time copy.
@@ -154,7 +181,14 @@ copyMatch:
 	MOVB.P  tmp2, 1(dst)
 	BNE     copyMatch
 
-	B loop
+copyMatchDone:
+	CMP src, srcend
+	BNE loop
+
+end:
+	SUB  dstorig, dst, tmp1
+	MOVW tmp1, ret+24(FP)
+	RET
 
 	// The three error cases have distinct labels so we can put different
 	// return codes here when debugging, or if the error returns need to
@@ -163,10 +197,5 @@ shortDst:
 shortSrc:
 corrupt:
 	MOVW $-1, tmp1
-	MOVW tmp1, ret+24(FP)
-	RET
-
-end:
-	SUB  dstorig, dst, tmp1
 	MOVW tmp1, ret+24(FP)
 	RET

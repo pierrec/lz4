@@ -16,6 +16,7 @@ import (
 func TestReaderLegacy(t *testing.T) {
 	goldenFiles := []string{
 		"testdata/vmlinux_LZ4_19377.lz4",
+		"testdata/bzImage_lz4_isolated.lz4",
 	}
 
 	for _, fname := range goldenFiles {
@@ -29,34 +30,30 @@ func TestReaderLegacy(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			/*
-				f, err := os.Open(fname)
-				if err != nil {
-					t.Fatal(err)
-				}
-				defer f.Close()
+			f, err := os.Open(fname)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer f.Close()
 
+			zr := lz4.NewReaderLegacy(f)
+			n, err := io.Copy(&out, zr)
+			if err != nil {
+				t.Fatal(err, n)
+			}
 
+			if got, want := int(n), len(raw); got != want {
+				t.Errorf("invalid sizes: got %d; want %d", got, want)
+			}
 
-				var out bytes.Buffer
-				zr := lz4.NewReaderLegacy(f)
-				n, err := io.Copy(&out, zr)
-				if err != nil {
-					t.Fatal(err)
-				}
+			if got, want := out.Bytes(), raw; !reflect.DeepEqual(got, want) {
+				t.Fatal("uncompressed data does not match original")
+			}
 
-				if got, want := int(n), len(raw); got != want {
-					t.Errorf("invalid sizes: got %d; want %d", got, want)
-				}
+			if len(raw) < 20 {
+				return
+			}
 
-				if got, want := out.Bytes(), raw; !reflect.DeepEqual(got, want) {
-					t.Fatal("uncompressed data does not match original")
-				}
-
-				if len(raw) < 20 {
-					return
-				}
-			*/
 			f2, err := os.Open(fname)
 			if err != nil {
 				t.Fatal(err)
@@ -64,7 +61,7 @@ func TestReaderLegacy(t *testing.T) {
 			defer f2.Close()
 
 			out.Reset()
-			zr := lz4.NewReaderLegacy(f2)
+			zr = lz4.NewReaderLegacy(f2)
 			_, err = io.CopyN(&out, zr, 10)
 			if err != nil {
 				t.Fatal(err)

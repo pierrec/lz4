@@ -16,15 +16,16 @@ type ReaderLegacy struct {
 	// It provides the number of bytes read.
 	OnBlockDone func(size int)
 
-	buf      [8]byte       // Scrap buffer.
-	pos      int64         // Current position in src.
-	src      io.Reader     // Source.
-	zdata    []byte        // Compressed data.
-	data     []byte        // Uncompressed data.
-	idx      int           // Index of unread bytes into data.
-	checksum xxh32.XXHZero // Frame hash.
-	skip     int64         // Bytes to skip before next read.
-	dpos     int64         // Position in dest
+	lastBlock bool
+	buf       [8]byte       // Scrap buffer.
+	pos       int64         // Current position in src.
+	src       io.Reader     // Source.
+	zdata     []byte        // Compressed data.
+	data      []byte        // Uncompressed data.
+	idx       int           // Index of unread bytes into data.
+	checksum  xxh32.XXHZero // Frame hash.
+	skip      int64         // Bytes to skip before next read.
+	dpos      int64         // Position in dest
 }
 
 // NewReaderLegacy returns a new LZ4Demo frame decoder.
@@ -38,6 +39,7 @@ func NewReaderLegacy(src io.Reader) *ReaderLegacy {
 // Skippable frames are supported even as a first frame although the LZ4
 // specifications recommends skippable frames not to be used as first frames.
 func (z *ReaderLegacy) readLegacyHeader() error {
+	z.lastBlock = false
 	magic, err := z.readUint32()
 	if err != nil {
 		z.pos += 4
@@ -81,8 +83,6 @@ func (z *ReaderLegacy) readLegacyHeader() error {
 // change between calls to Read(). If that is the case, no data is actually read from
 // the underlying io.Reader, to allow for potential input buffer resizing.
 func (z *ReaderLegacy) Read(buf []byte) (int, error) {
-	lastBlock := false
-
 	if debugFlag {
 		debug("Read buf len=%d", len(buf))
 	}
@@ -151,7 +151,7 @@ func (z *ReaderLegacy) Read(buf []byte) (int, error) {
 
 		// Legacy blocks are fixed to 8MB, if we see a block smaller than this it means we've reached the end...
 		if n < blockSize4M*2 {
-			lastBlock = true
+			z.lastBlock = true
 		}
 	}
 
@@ -159,9 +159,9 @@ func (z *ReaderLegacy) Read(buf []byte) (int, error) {
 	z.idx += n
 	z.dpos += int64(n)
 	if debugFlag {
-		debug("copied %d bytes to input", n)
+		debug("%v] copied %d bytes to input (%d:%d)", z.lastBlock, n, z.idx, len(z.data))
 	}
-	if lastBlock {
+	if z.lastBlock && len(z.data) == z.idx {
 		return n, io.EOF
 	}
 	return n, nil

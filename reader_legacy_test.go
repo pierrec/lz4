@@ -2,6 +2,7 @@ package lz4_test
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -12,55 +13,50 @@ import (
 	"github.com/caesurus/lz4"
 )
 
-func TestReader(t *testing.T) {
+func TestReaderLegacy(t *testing.T) {
 	goldenFiles := []string{
-		"testdata/e.txt.lz4",
-		"testdata/gettysburg.txt.lz4",
-		"testdata/Mark.Twain-Tom.Sawyer.txt.lz4",
-		"testdata/Mark.Twain-Tom.Sawyer_long.txt.lz4",
-		"testdata/pg1661.txt.lz4",
-		"testdata/pi.txt.lz4",
-		"testdata/random.data.lz4",
-		"testdata/repeat.txt.lz4",
-		"testdata/pg_control.tar.lz4",
+		"testdata/vmlinux_LZ4_19377.lz4",
 	}
 
 	for _, fname := range goldenFiles {
 		t.Run(fname, func(t *testing.T) {
 			fname := fname
-			t.Parallel()
-
-			f, err := os.Open(fname)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer f.Close()
-
+			//t.Parallel()
+			var out bytes.Buffer
 			rawfile := strings.TrimSuffix(fname, ".lz4")
 			raw, err := ioutil.ReadFile(rawfile)
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			var out bytes.Buffer
-			zr := lz4.NewReader(f)
-			n, err := io.Copy(&out, zr)
-			if err != nil {
-				t.Fatal(err)
-			}
+			/*
+				f, err := os.Open(fname)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer f.Close()
 
-			if got, want := int(n), len(raw); got != want {
-				t.Errorf("invalid sizes: got %d; want %d", got, want)
-			}
 
-			if got, want := out.Bytes(), raw; !reflect.DeepEqual(got, want) {
-				t.Fatal("uncompressed data does not match original")
-			}
 
-			if len(raw) < 20 {
-				return
-			}
+				var out bytes.Buffer
+				zr := lz4.NewReaderLegacy(f)
+				n, err := io.Copy(&out, zr)
+				if err != nil {
+					t.Fatal(err)
+				}
 
+				if got, want := int(n), len(raw); got != want {
+					t.Errorf("invalid sizes: got %d; want %d", got, want)
+				}
+
+				if got, want := out.Bytes(), raw; !reflect.DeepEqual(got, want) {
+					t.Fatal("uncompressed data does not match original")
+				}
+
+				if len(raw) < 20 {
+					return
+				}
+			*/
 			f2, err := os.Open(fname)
 			if err != nil {
 				t.Fatal(err)
@@ -68,13 +64,17 @@ func TestReader(t *testing.T) {
 			defer f2.Close()
 
 			out.Reset()
-			zr = lz4.NewReader(f2)
+			zr := lz4.NewReaderLegacy(f2)
 			_, err = io.CopyN(&out, zr, 10)
 			if err != nil {
 				t.Fatal(err)
 			}
+			fmt.Println(out)
+
 			if !reflect.DeepEqual(out.Bytes(), raw[:10]) {
 				t.Fatal("partial read does not match original")
+			} else {
+				t.Log("partial read is ok")
 			}
 
 			pos, err := zr.Seek(-1, io.SeekCurrent)
@@ -112,6 +112,8 @@ func TestReader(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			fmt.Println(out)
+
 			if !reflect.DeepEqual(out.Bytes(), raw[len(raw)-10:]) {
 				t.Fatal("after seek, partial read does not match original")
 			}

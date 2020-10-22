@@ -4,8 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-
-	"github.com/caesurus/lz4/internal/xxh32"
 )
 
 // ReaderLegacy implements the LZ4Demo frame decoder.
@@ -17,15 +15,14 @@ type ReaderLegacy struct {
 	OnBlockDone func(size int)
 
 	lastBlock bool
-	buf       [8]byte       // Scrap buffer.
-	pos       int64         // Current position in src.
-	src       io.Reader     // Source.
-	zdata     []byte        // Compressed data.
-	data      []byte        // Uncompressed data.
-	idx       int           // Index of unread bytes into data.
-	checksum  xxh32.XXHZero // Frame hash.
-	skip      int64         // Bytes to skip before next read.
-	dpos      int64         // Position in dest
+	buf       [8]byte   // Scrap buffer.
+	pos       int64     // Current position in src.
+	src       io.Reader // Source.
+	zdata     []byte    // Compressed data.
+	data      []byte    // Uncompressed data.
+	idx       int       // Index of unread bytes into data.
+	skip      int64     // Bytes to skip before next read.
+	dpos      int64     // Position in dest
 }
 
 // NewReaderLegacy returns a new LZ4Demo frame decoder.
@@ -109,7 +106,6 @@ func (z *ReaderLegacy) Read(buf []byte) (int, error) {
 		// Reset uncompressed buffer
 		z.data = z.zdata[:cap(z.zdata)][len(z.zdata):]
 
-		// Block length: 0 = end of frame
 		bLen, err := z.readUint32()
 		if err != nil {
 			return 0, err
@@ -118,10 +114,6 @@ func (z *ReaderLegacy) Read(buf []byte) (int, error) {
 			debug("   bLen %d (0x%x) offset = %d (0x%x)", bLen, bLen, z.pos, z.pos)
 		}
 		z.pos += 4
-
-		if bLen == 0 {
-			return 0, nil
-		}
 
 		// Legacy blocks are always compressed, even when detrimental
 		if debugFlag {
@@ -149,11 +141,23 @@ func (z *ReaderLegacy) Read(buf []byte) (int, error) {
 
 		z.idx = 0
 
-		// Legacy blocks are fixed to 8MB, if we see a block smaller than this it means we've reached the end...
+		// Legacy blocks are fixed to 8MB, if we read a decompressed block smaller than this
+		// it means we've reached the end...
 		if n < blockSize4M*2 {
 			z.lastBlock = true
 		}
 	}
+
+	if z.skip > int64(len(z.data[z.idx:])) {
+		z.skip -= int64(len(z.data[z.idx:]))
+		z.dpos += int64(len(z.data[z.idx:]))
+		z.idx = len(z.data)
+		return 0, nil
+	}
+
+	z.idx += int(z.skip)
+	z.dpos += z.skip
+	z.skip = 0
 
 	n := copy(buf, z.data[z.idx:])
 	z.idx += n
@@ -191,7 +195,6 @@ func (z *ReaderLegacy) Reset(r io.Reader) {
 	z.zdata = z.zdata[:0]
 	z.data = z.data[:0]
 	z.idx = 0
-	z.checksum.Reset()
 }
 
 // readUint32 reads an uint32 into the supplied buffer.

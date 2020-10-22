@@ -2,7 +2,6 @@ package lz4_test
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -22,7 +21,8 @@ func TestReaderLegacy(t *testing.T) {
 	for _, fname := range goldenFiles {
 		t.Run(fname, func(t *testing.T) {
 			fname := fname
-			//t.Parallel()
+			t.Parallel()
+
 			var out bytes.Buffer
 			rawfile := strings.TrimSuffix(fname, ".lz4")
 			raw, err := ioutil.ReadFile(rawfile)
@@ -66,7 +66,6 @@ func TestReaderLegacy(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			fmt.Println(out)
 
 			if !reflect.DeepEqual(out.Bytes(), raw[:10]) {
 				t.Fatal("partial read does not match original")
@@ -109,7 +108,6 @@ func TestReaderLegacy(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			fmt.Println(out)
 
 			if !reflect.DeepEqual(out.Bytes(), raw[len(raw)-10:]) {
 				t.Fatal("after seek, partial read does not match original")

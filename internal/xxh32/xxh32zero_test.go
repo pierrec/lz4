@@ -6,7 +6,7 @@ import (
 	"hash/fnv"
 	"testing"
 
-	"github.com/caesurus/lz4/internal/xxh32"
+	"github.com/pierrec/lz4/internal/xxh32"
 	qt "github.com/frankban/quicktest"
 )
 

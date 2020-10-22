@@ -10,7 +10,7 @@ import (
 	"code.cloudfoundry.org/bytefmt"
 	"github.com/schollz/progressbar"
 
-	"github.com/caesurus/lz4"
+	"github.com/pierrec/lz4"
 	"github.com/pierrec/cmdflag"
 )
 

@@ -9,7 +9,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/caesurus/lz4"
+	"github.com/pierrec/lz4"
 )
 
 func TestWriter(t *testing.T) {

@@ -10,7 +10,7 @@ import (
 	"github.com/schollz/progressbar"
 
 	"github.com/pierrec/cmdflag"
-	"github.com/caesurus/lz4"
+	"github.com/pierrec/lz4"
 )
 
 // Uncompress uncompresses a set of files or from stdin to stdout.

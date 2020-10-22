@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/caesurus/lz4"
+	"github.com/pierrec/lz4"
 )
 
 func TestReaderLegacy(t *testing.T) {

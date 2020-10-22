@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"io"
 
-	"github.com/caesurus/lz4"
+	"github.com/pierrec/lz4"
 )
 
 // Fuzz function for the Reader and Writer.

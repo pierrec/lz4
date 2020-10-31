@@ -82,7 +82,7 @@ func ChecksumOption(flag bool) Option {
 	return func(a applier) error {
 		switch w := a.(type) {
 		case nil:
-			s := fmt.Sprintf("BlockChecksumOption(%v)", flag)
+			s := fmt.Sprintf("ChecksumOption(%v)", flag)
 			return lz4errors.Error(s)
 		case *Writer:
 			w.frame.Descriptor.Flags.ContentChecksumSet(flag)
@@ -182,6 +182,6 @@ func OnBlockDoneOption(handler func(size int)) Option {
 		case *Reader:
 			rw.handler = handler
 		}
-		return nil
+		return lz4errors.ErrOptionNotApplicable
 	}
 }

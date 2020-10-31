@@ -10,8 +10,8 @@ import (
 	"code.cloudfoundry.org/bytefmt"
 	"github.com/schollz/progressbar"
 
-	"github.com/pierrec/cmdflag"
 	"github.com/pierrec/lz4"
+	"github.com/pierrec/cmdflag"
 )
 
 // Compress compresses a set of files or from stdin to stdout.

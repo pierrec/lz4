@@ -6,8 +6,8 @@ import (
 	"hash/fnv"
 	"testing"
 
-	qt "github.com/frankban/quicktest"
 	"github.com/pierrec/lz4/internal/xxh32"
+	qt "github.com/frankban/quicktest"
 )
 
 type test struct {

@@ -43,9 +43,19 @@ func (f *Frame) Reset(num int) {
 	f.Checksum = 0
 }
 
-func (f *Frame) InitW(dst io.Writer, num int) {
-	f.Magic = frameMagic
-	f.Descriptor.initW()
+func (f *Frame) SetLegacy() {
+	f.Magic = frameMagicLegacy
+}
+
+func (f *Frame) InitW(dst io.Writer, num int, legacy bool) {
+	if legacy {
+		f.Magic = frameMagicLegacy
+		idx := lz4block.Index(lz4block.Block8Mb)
+		f.Descriptor.Flags.BlockSizeIndexSet(idx)
+	} else {
+		f.Magic = frameMagic
+		f.Descriptor.initW()
+	}
 	f.Blocks.initW(f, dst, num)
 	f.checksum.Reset()
 }
@@ -53,6 +63,9 @@ func (f *Frame) InitW(dst io.Writer, num int) {
 func (f *Frame) CloseW(dst io.Writer, num int) error {
 	if err := f.Blocks.closeW(f, num); err != nil {
 		return err
+	}
+	if f.isLegacy() {
+		return nil
 	}
 	buf := f.buf[:0]
 	// End mark (data block size of uint32(0)).
@@ -272,6 +285,7 @@ type FrameDataBlock struct {
 	Checksum uint32
 	data     []byte // buffer for compressed data
 	src      []byte // uncompressed data
+	done     bool   // for legacy support
 }
 
 func (b *FrameDataBlock) CloseW(f *Frame) {
@@ -338,11 +352,20 @@ func (b *FrameDataBlock) Uncompress(f *Frame, src io.Reader, dst []byte) (int, e
 	if err != nil {
 		return 0, err
 	}
-	b.Size = DataBlockSize(x)
-	if !f.isLegacy() && b.Size == 0 {
-		// End of frame reached.
+	switch leg := f.isLegacy(); {
+	case leg && x == frameMagicLegacy:
+		// Concatenated legacy frame.
+		return b.Uncompress(f, src, dst)
+	case leg && b.done:
+		// In legacy mode, all blocks are of size 8Mb.
+		// When a uncompressed block size is less than 8Mb,
+		// then it means the end of the stream is reached.
+		return 0, io.EOF
+	case !leg && x == 0:
+		// Marker for end of stream.
 		return 0, io.EOF
 	}
+	b.Size = DataBlockSize(x)
 
 	isCompressed := !b.Size.Uncompressed()
 	size := b.Size.size()
@@ -354,6 +377,9 @@ func (b *FrameDataBlock) Uncompress(f *Frame, src io.Reader, dst []byte) (int, e
 		// Data is directly copied into dst as it is not compressed.
 		data = dst
 	}
+	if size > cap(data) {
+		return 0, lz4errors.ErrOptionInvalidBlockSize
+	}
 	data = data[:size]
 	if _, err := io.ReadFull(src, data); err != nil {
 		return 0, err
@@ -364,6 +390,9 @@ func (b *FrameDataBlock) Uncompress(f *Frame, src io.Reader, dst []byte) (int, e
 			return 0, err
 		}
 		data = dst[:n]
+		if f.isLegacy() && uint32(n) < lz4block.Block8Mb {
+			b.done = true
+		}
 	}
 
 	if f.Descriptor.Flags.BlockChecksum() {

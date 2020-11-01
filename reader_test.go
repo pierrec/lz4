@@ -167,7 +167,7 @@ func TestReaderLegacy(t *testing.T) {
 				t.Errorf("invalid sizes: got %d; want %d", got, want)
 			}
 
-			if got, want := out.Bytes(), raw; !reflect.DeepEqual(got, want) {
+			if got, want := out.Bytes(), raw; !bytes.Equal(got, want) {
 				t.Fatal("uncompressed data does not match original")
 			}
 
@@ -188,10 +188,8 @@ func TestReaderLegacy(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if !reflect.DeepEqual(out.Bytes(), raw[:10]) {
+			if !bytes.Equal(out.Bytes(), raw[:10]) {
 				t.Fatal("partial read does not match original")
-			} else {
-				t.Log("partial read is ok")
 			}
 
 			out.Reset()
@@ -200,7 +198,7 @@ func TestReaderLegacy(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if !reflect.DeepEqual(out.Bytes(), raw[len(raw)-10:]) {
+			if !bytes.Equal(out.Bytes(), raw[10:20]) {
 				t.Fatal("after seek, partial read does not match original")
 			}
 		})

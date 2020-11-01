@@ -24,7 +24,7 @@ func TestWriter(t *testing.T) {
 		"testdata/pi.txt",
 		"testdata/random.data",
 		"testdata/repeat.txt",
-		"testdata/binary",
+		"testdata/issue102.data",
 	}
 
 	for _, fname := range goldenFiles {
@@ -48,7 +48,7 @@ func TestWriter(t *testing.T) {
 				// Compress.
 				zout := new(bytes.Buffer)
 				zw := lz4.NewWriter(zout)
-				if err := zw.Apply(option); err != nil {
+				if err := zw.Apply(option, lz4.CompressionLevelOption(lz4.Level1)); err != nil {
 					t.Fatal(err)
 				}
 				_, err = io.Copy(zw, r)
@@ -220,7 +220,7 @@ func TestIssue71(t *testing.T) {
 func TestWriterLegacy(t *testing.T) {
 	goldenFiles := []string{
 		"testdata/vmlinux_LZ4_19377",
-		//"testdata/bzImage_lz4_isolated",
+		"testdata/bzImage_lz4_isolated",
 	}
 
 	for _, fname := range goldenFiles {
@@ -235,7 +235,7 @@ func TestWriterLegacy(t *testing.T) {
 
 			out := new(bytes.Buffer)
 			zw := lz4.NewWriter(out)
-			if err := zw.Apply(lz4.LegacyOption(true)); err != nil {
+			if err := zw.Apply(lz4.LegacyOption(true), lz4.CompressionLevelOption(lz4.Fast)); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := io.Copy(zw, bytes.NewReader(src)); err != nil {

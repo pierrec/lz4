@@ -211,7 +211,7 @@ func (w *Writer) ReadFrom(r io.Reader) (n int64, err error) {
 		rn, err = io.ReadFull(r, data)
 		switch err {
 		case nil:
-		case io.EOF:
+		case io.EOF, io.ErrUnexpectedEOF: // read may be partial
 			done = true
 		default:
 			return

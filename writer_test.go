@@ -24,6 +24,7 @@ func TestWriter(t *testing.T) {
 		"testdata/pi.txt",
 		"testdata/random.data",
 		"testdata/repeat.txt",
+		"testdata/binary",
 	}
 
 	for _, fname := range goldenFiles {

@@ -317,7 +317,6 @@ func (b *FrameDataBlock) Compress(f *Frame, src []byte, level lz4block.Compressi
 	default:
 		n, _ = lz4block.CompressBlockHC(src, data, level)
 	}
-	fmt.Println("COMPRESS", len(data), n)
 	if n == 0 {
 		b.Size.UncompressedSet(true)
 		b.Data = src
@@ -361,7 +360,6 @@ func (b *FrameDataBlock) Uncompress(f *Frame, src io.Reader, dst []byte) (int, e
 	if err != nil {
 		return 0, err
 	}
-	fmt.Println("UNCOMPRESS", x)
 	switch leg := f.isLegacy(); {
 	case leg && x == frameMagicLegacy:
 		// Concatenated legacy frame.

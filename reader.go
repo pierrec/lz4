@@ -17,6 +17,10 @@ var readerStates = []aState{
 
 // NewReader returns a new LZ4 frame decoder.
 func NewReader(r io.Reader) *Reader {
+	return newReader(r, false)
+}
+
+func newReader(r io.Reader, legacy bool) *Reader {
 	zr := &Reader{frame: lz4stream.NewFrame()}
 	zr.state.init(readerStates)
 	_ = zr.Apply(defaultOnBlockDone)

@@ -15,8 +15,9 @@ import (
 //go:generate go run gen.go
 
 const (
-	frameMagic     uint32 = 0x184D2204
-	frameSkipMagic uint32 = 0x184D2A50
+	frameMagic       uint32 = 0x184D2204
+	frameSkipMagic   uint32 = 0x184D2A50
+	frameMagicLegacy uint32 = 0x184C2102
 )
 
 func NewFrame() *Frame {
@@ -63,6 +64,10 @@ func (f *Frame) CloseW(dst io.Writer, num int) error {
 	return err
 }
 
+func (f *Frame) isLegacy() bool {
+	return f.Magic == frameMagicLegacy
+}
+
 func (f *Frame) InitR(src io.Reader) error {
 	if f.Magic > 0 {
 		// Header already read.
@@ -75,7 +80,7 @@ newFrame:
 		return err
 	}
 	switch m := f.Magic; {
-	case m == frameMagic:
+	case m == frameMagic || m == frameMagicLegacy:
 	// All 16 values of frameSkipMagic are valid.
 	case m>>8 == frameSkipMagic>>8:
 		var skip uint32
@@ -98,6 +103,9 @@ newFrame:
 }
 
 func (f *Frame) CloseR(src io.Reader) (err error) {
+	if f.isLegacy() {
+		return nil
+	}
 	if !f.Descriptor.Flags.ContentChecksum() {
 		return nil
 	}
@@ -144,6 +152,11 @@ func (fd *FrameDescriptor) Write(f *Frame, dst io.Writer) error {
 }
 
 func (fd *FrameDescriptor) initR(f *Frame, src io.Reader) error {
+	if f.isLegacy() {
+		idx := lz4block.Index(lz4block.Block8Mb)
+		f.Descriptor.Flags.BlockSizeIndexSet(idx)
+		return nil
+	}
 	// Read the flags and the checksum, hoping that there is not content size.
 	buf := f.buf[:3]
 	if _, err := io.ReadFull(src, buf); err != nil {
@@ -326,7 +339,7 @@ func (b *FrameDataBlock) Uncompress(f *Frame, src io.Reader, dst []byte) (int, e
 		return 0, err
 	}
 	b.Size = DataBlockSize(x)
-	if b.Size == 0 {
+	if !f.isLegacy() && b.Size == 0 {
 		// End of frame reached.
 		return 0, io.EOF
 	}

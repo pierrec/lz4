@@ -215,3 +215,43 @@ func TestIssue71(t *testing.T) {
 		})
 	}
 }
+
+func TestWriterLegacy(t *testing.T) {
+	goldenFiles := []string{
+		"testdata/vmlinux_LZ4_19377",
+		//"testdata/bzImage_lz4_isolated",
+	}
+
+	for _, fname := range goldenFiles {
+		t.Run(fname, func(t *testing.T) {
+			fname := fname
+			t.Parallel()
+
+			src, err := ioutil.ReadFile(fname)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			out := new(bytes.Buffer)
+			zw := lz4.NewWriter(out)
+			if err := zw.Apply(lz4.LegacyOption(true)); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := io.Copy(zw, bytes.NewReader(src)); err != nil {
+				t.Fatal(err)
+			}
+			if err := zw.Close(); err != nil {
+				t.Fatal(err)
+			}
+
+			out2 := new(bytes.Buffer)
+			zr := lz4.NewReader(out)
+			if _, err := io.Copy(out2, zr); err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(out2.Bytes(), src) {
+				t.Fatal("uncompressed compressed output different from source")
+			}
+		})
+	}
+}

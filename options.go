@@ -179,8 +179,27 @@ func OnBlockDoneOption(handler func(size int)) Option {
 			return lz4errors.Error(s)
 		case *Writer:
 			rw.handler = handler
+			return nil
 		case *Reader:
 			rw.handler = handler
+			return nil
+		}
+		return lz4errors.ErrOptionNotApplicable
+	}
+}
+
+// LegacyOption provides support for writing LZ4 frames in the legacy format.
+//
+// See https://github.com/lz4/lz4/blob/dev/doc/lz4_Frame_format.md#legacy-frame.
+func LegacyOption(legacy bool) Option {
+	return func(a applier) error {
+		switch rw := a.(type) {
+		case nil:
+			s := fmt.Sprintf("LegacyOption(%v)", legacy)
+			return lz4errors.Error(s)
+		case *Writer:
+			rw.legacy = legacy
+			return nil
 		}
 		return lz4errors.ErrOptionNotApplicable
 	}

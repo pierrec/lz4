@@ -11,4 +11,4 @@ require (
 	github.com/schollz/progressbar/v3 v3.5.1
 )
 
-replace github.com/pierrec/lz4/v4 => ../..
+//replace github.com/pierrec/lz4/v4 => ../..

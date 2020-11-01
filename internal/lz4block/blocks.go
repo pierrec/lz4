@@ -8,17 +8,16 @@ const (
 	Block256Kb
 	Block1Mb
 	Block4Mb
-	Block8Mb = 2 * Block4Mb
+	Block8Mb        = 2 * Block4Mb
+	legacyBlockSize = Block8Mb + Block8Mb/255 + 16 // CompressBound(Block8Mb)
 )
-
-var legacyMaxBlock = uint32(CompressBlockBound(int(Block8Mb)))
 
 var (
 	BlockPool64K  = sync.Pool{New: func() interface{} { return make([]byte, Block64Kb) }}
 	BlockPool256K = sync.Pool{New: func() interface{} { return make([]byte, Block256Kb) }}
 	BlockPool1M   = sync.Pool{New: func() interface{} { return make([]byte, Block1Mb) }}
 	BlockPool4M   = sync.Pool{New: func() interface{} { return make([]byte, Block4Mb) }}
-	BlockPool8M   = sync.Pool{New: func() interface{} { return make([]byte, legacyMaxBlock) }}
+	BlockPool8M   = sync.Pool{New: func() interface{} { return make([]byte, legacyBlockSize) }}
 )
 
 func Index(b uint32) BlockSizeIndex {
@@ -88,7 +87,7 @@ func (b BlockSizeIndex) Put(buf []byte) {
 			BlockPool4M.Put(buf[:c])
 		}
 	case 3:
-		if c == legacyMaxBlock {
+		if c == legacyBlockSize {
 			BlockPool8M.Put(buf[:c])
 		}
 	}

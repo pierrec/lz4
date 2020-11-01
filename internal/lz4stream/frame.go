@@ -148,17 +148,20 @@ func (fd *FrameDescriptor) Write(f *Frame, dst io.Writer) error {
 		return nil
 	}
 
-	buf := f.buf[:4+2]
+	buf := f.buf[:4]
 	// Write the magic number here even though it belongs to the Frame.
 	binary.LittleEndian.PutUint32(buf, f.Magic)
-	binary.LittleEndian.PutUint16(buf[4:], uint16(fd.Flags))
+	if !f.isLegacy() {
+		buf = buf[:4+2]
+		binary.LittleEndian.PutUint16(buf[4:], uint16(fd.Flags))
 
-	if fd.Flags.Size() {
-		buf = buf[:4+2+8]
-		binary.LittleEndian.PutUint64(buf[4+2:], fd.ContentSize)
+		if fd.Flags.Size() {
+			buf = buf[:4+2+8]
+			binary.LittleEndian.PutUint64(buf[4+2:], fd.ContentSize)
+		}
+		fd.Checksum = descriptorChecksum(buf[4:])
+		buf = append(buf, fd.Checksum)
 	}
-	fd.Checksum = descriptorChecksum(buf[4:])
-	buf = append(buf, fd.Checksum)
 
 	_, err := dst.Write(buf)
 	return err
@@ -301,7 +304,12 @@ func (b *FrameDataBlock) CloseW(f *Frame) {
 
 // Block compression errors are ignored since the buffer is sized appropriately.
 func (b *FrameDataBlock) Compress(f *Frame, src []byte, level lz4block.CompressionLevel) *FrameDataBlock {
-	data := b.data[:len(src)] // trigger the incompressible flag in CompressBlock
+	data := b.data
+	if f.isLegacy() {
+		data = data[:cap(data)]
+	} else {
+		data = data[:len(src)] // trigger the incompressible flag in CompressBlock
+	}
 	var n int
 	switch level {
 	case lz4block.Fast:
@@ -309,6 +317,7 @@ func (b *FrameDataBlock) Compress(f *Frame, src []byte, level lz4block.Compressi
 	default:
 		n, _ = lz4block.CompressBlockHC(src, data, level)
 	}
+	fmt.Println("COMPRESS", len(data), n)
 	if n == 0 {
 		b.Size.UncompressedSet(true)
 		b.Data = src
@@ -352,6 +361,7 @@ func (b *FrameDataBlock) Uncompress(f *Frame, src io.Reader, dst []byte) (int, e
 	if err != nil {
 		return 0, err
 	}
+	fmt.Println("UNCOMPRESS", x)
 	switch leg := f.isLegacy(); {
 	case leg && x == frameMagicLegacy:
 		// Concatenated legacy frame.

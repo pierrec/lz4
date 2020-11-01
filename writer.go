@@ -35,6 +35,7 @@ type Writer struct {
 	data    []byte                    // pending data
 	idx     int                       // size of pending data
 	handler func(int)
+	legacy  bool
 }
 
 func (*Writer) private() {}
@@ -63,7 +64,7 @@ func (w *Writer) isNotConcurrent() bool {
 
 // init sets up the Writer when in newState. It does not change the Writer state.
 func (w *Writer) init() error {
-	w.frame.InitW(w.src, w.num)
+	w.frame.InitW(w.src, w.num, w.legacy)
 	size := w.frame.Descriptor.Flags.BlockSizeIndex()
 	w.data = size.Get()
 	w.idx = 0

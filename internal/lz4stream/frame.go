@@ -239,7 +239,7 @@ func (b *Blocks) initW(f *Frame, dst io.Writer, num int) {
 			// Do not attempt to write the block upon any previous failure.
 			if b.err == nil {
 				// Write the block.
-				if err := block.Write(f, dst); err != nil && b.err == nil {
+				if err := block.Write(f, dst); err != nil {
 					// Keep the first error.
 					b.err = err
 					// All pending compression goroutines need to shut down, so we need to keep going.

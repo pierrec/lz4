@@ -100,56 +100,70 @@ func (r *Reader) Read(buf []byte) (n int, err error) {
 	default:
 		return 0, r.state.fail()
 	}
-	if r.isNotConcurrent() {
-		block := r.frame.Blocks.Block
-		for len(buf) > 0 {
-			if r.idx == 0 {
-				err = block.Read(r.frame, r.src)
-				switch err {
-				case nil:
-				case io.EOF:
-					if er := r.frame.CloseR(r.src); er != nil {
-						err = er
-					}
-					size := r.frame.Descriptor.Flags.BlockSizeIndex()
-					size.Put(r.data)
-					r.data = nil
-					return
-				default:
-					return
-				}
-				var direct bool
-				dst := r.data[:cap(r.data)]
-				if len(buf) >= len(dst) {
-					// Uncompress directly into buf.
-					direct = true
-					dst = buf
-				}
-				dst, err = block.Uncompress(r.frame, dst)
-				if err != nil {
-					return
-				}
-				if direct {
-					buf = buf[len(dst):]
-					n += len(dst)
-					continue
-				}
-				r.data = dst
+	var bn int
+	for len(buf) > 0 {
+		if r.idx == 0 {
+			if !r.isNotConcurrent() {
+				r.data = <-r.reads
+				err = r.frame.Blocks.ErrorR()
+			} else {
+				bn, err = r.read(buf)
 			}
+			switch err {
+			case nil:
+			case io.EOF:
+				if er := r.frame.CloseR(r.src); er != nil {
+					err = er
+				}
+				size := r.frame.Descriptor.Flags.BlockSizeIndex()
+				size.Put(r.data)
+				r.data = nil
+				return
+			default:
+				return
+			}
+		}
+		if bn == 0 {
 			// Fill buf with buffered data.
-			bn := copy(buf, r.data[r.idx:])
-			buf = buf[bn:]
+			bn = copy(buf, r.data[r.idx:])
 			r.idx += bn
 			if r.idx == len(r.data) {
 				// All data read, get ready for the next Read.
 				r.idx = 0
 			}
-			n += bn
-			r.handler(bn)
 		}
-		return
+		buf = buf[bn:]
+		n += bn
+		r.handler(bn)
 	}
 	return
+}
+
+// read uncompresses the next block as follow:
+// - if buf has enough room, the block is uncompressed into it directly
+//   and the lenght of used space is returned
+// - else, the uncompress data is stored in r.data and 0 is returned
+func (r *Reader) read(buf []byte) (int, error) {
+	block := r.frame.Blocks.Block
+	if err := block.Read(r.frame, r.src); err != nil {
+		return 0, err
+	}
+	var direct bool
+	dst := r.data[:cap(r.data)]
+	if len(buf) >= len(dst) {
+		// Uncompress directly into buf.
+		direct = true
+		dst = buf
+	}
+	dst, err := block.Uncompress(r.frame, dst)
+	if err != nil {
+		return 0, err
+	}
+	if direct {
+		return len(dst), nil
+	}
+	r.data = dst
+	return 0, nil
 }
 
 // Reset clears the state of the Reader r such that it is equivalent to its

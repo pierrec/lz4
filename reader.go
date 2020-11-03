@@ -23,7 +23,7 @@ func NewReader(r io.Reader) *Reader {
 func newReader(r io.Reader, legacy bool) *Reader {
 	zr := &Reader{frame: lz4stream.NewFrame()}
 	zr.state.init(readerStates)
-	_ = zr.Apply(defaultOnBlockDone)
+	_ = zr.Apply(DefaultConcurrency, defaultOnBlockDone)
 	zr.Reset(r)
 	return zr
 }
@@ -32,8 +32,10 @@ func newReader(r io.Reader, legacy bool) *Reader {
 type Reader struct {
 	state   _State
 	src     io.Reader        // source reader
+	num     int              // concurrency level
 	frame   *lz4stream.Frame // frame being read
-	data    []byte           // pending data
+	data    []byte           // block buffer allocated in non concurrent mode
+	reads   chan []byte      // pending data
 	idx     int              // size of pending data
 	handler func(int)
 }
@@ -68,8 +70,20 @@ func (r *Reader) Size() int {
 	return 0
 }
 
+func (r *Reader) isNotConcurrent() bool {
+	return r.num == 1
+}
+
 func (r *Reader) init() error {
-	return r.frame.InitR(r.src)
+	data, err := r.frame.InitR(r.src, r.num)
+	if err != nil {
+		return err
+	}
+	r.reads = data
+	r.idx = 0
+	size := r.frame.Descriptor.Flags.BlockSizeIndex()
+	r.data = size.Get()
+	return nil
 }
 
 func (r *Reader) Read(buf []byte) (n int, err error) {
@@ -83,62 +97,57 @@ func (r *Reader) Read(buf []byte) (n int, err error) {
 		if err = r.init(); r.state.next(err) {
 			return
 		}
-		size := r.frame.Descriptor.Flags.BlockSizeIndex()
-		r.data = size.Get()
 	default:
 		return 0, r.state.fail()
 	}
-	if len(buf) == 0 {
-		return
-	}
-
-	var bn int
-	if r.idx > 0 {
-		// Some left over data, use it.
-		goto fillbuf
-	}
-	// No uncompressed data yet.
-	r.data = r.data[:cap(r.data)]
-	for len(buf) >= len(r.data) {
-		// Input buffer large enough and no pending data: uncompress directly into it.
-		switch bn, err = r.frame.Blocks.Block.Uncompress(r.frame, r.src, buf); err {
-		case nil:
-			r.handler(bn)
-			n += bn
+	if r.isNotConcurrent() {
+		block := r.frame.Blocks.Block
+		for len(buf) > 0 {
+			if r.idx == 0 {
+				err = block.Read(r.frame, r.src)
+				switch err {
+				case nil:
+				case io.EOF:
+					if er := r.frame.CloseR(r.src); er != nil {
+						err = er
+					}
+					size := r.frame.Descriptor.Flags.BlockSizeIndex()
+					size.Put(r.data)
+					r.data = nil
+					return
+				default:
+					return
+				}
+				var direct bool
+				dst := r.data[:cap(r.data)]
+				if len(buf) >= len(dst) {
+					// Uncompress directly into buf.
+					direct = true
+					dst = buf
+				}
+				dst, err = block.Uncompress(r.frame, dst)
+				if err != nil {
+					return
+				}
+				if direct {
+					buf = buf[len(dst):]
+					n += len(dst)
+					continue
+				}
+				r.data = dst
+			}
+			// Fill buf with buffered data.
+			bn := copy(buf, r.data[r.idx:])
 			buf = buf[bn:]
-		case io.EOF:
-			goto close
-		default:
-			return
+			r.idx += bn
+			if r.idx == len(r.data) {
+				// All data read, get ready for the next Read.
+				r.idx = 0
+			}
+			n += bn
+			r.handler(bn)
 		}
-	}
-	if n > 0 {
-		// Some data was read, done for now.
 		return
-	}
-	// Read the next block.
-	switch bn, err = r.frame.Blocks.Block.Uncompress(r.frame, r.src, r.data); err {
-	case nil:
-		r.handler(bn)
-		r.data = r.data[:bn]
-		goto fillbuf
-	case io.EOF:
-	default:
-		return
-	}
-close:
-	if er := r.frame.CloseR(r.src); er != nil {
-		err = er
-	}
-	r.Reset(nil)
-	return
-fillbuf:
-	bn = copy(buf, r.data[r.idx:])
-	n += bn
-	r.idx += bn
-	if r.idx == len(r.data) {
-		// All data read, get ready for the next Read.
-		r.idx = 0
 	}
 	return
 }
@@ -149,17 +158,19 @@ fillbuf:
 //
 // w.Close must be called before Reset.
 func (r *Reader) Reset(reader io.Reader) {
-	size := r.frame.Descriptor.Flags.BlockSizeIndex()
-	size.Put(r.data)
-	r.frame.Reset(1)
-	r.src = reader
-	r.data = nil
-	r.idx = 0
+	if r.data != nil {
+		size := r.frame.Descriptor.Flags.BlockSizeIndex()
+		size.Put(r.data)
+		r.data = nil
+	}
+	r.frame.Reset(r.num)
 	r.state.reset()
+	r.src = reader
+	r.reads = nil
 }
 
 // WriteTo efficiently uncompresses the data from the Reader underlying source to w.
-func (r *Reader) WriteTo(w io.Writer) (n int64, err error) {
+func (r *Reader) WriteTo_(w io.Writer) (n int64, err error) {
 	switch r.state.state {
 	case closedState, errorState:
 		return 0, r.state.err
@@ -172,13 +183,13 @@ func (r *Reader) WriteTo(w io.Writer) (n int64, err error) {
 	}
 	defer r.state.nextd(&err)
 
-	var bn int
+	//TODO concurrency
 	block := r.frame.Blocks.Block
 	size := r.frame.Descriptor.Flags.BlockSizeIndex()
 	data := size.Get()
-	defer size.Put(data)
 	for {
-		switch bn, err = block.Uncompress(r.frame, r.src, data); err {
+		err = block.Read(r.frame, r.src)
+		switch err {
 		case nil:
 		case io.EOF:
 			err = r.frame.CloseR(r.src)
@@ -186,8 +197,14 @@ func (r *Reader) WriteTo(w io.Writer) (n int64, err error) {
 		default:
 			return
 		}
+		dst := data
+		dst, err = block.Uncompress(r.frame, dst)
+		if err != nil {
+			return
+		}
+		bn := len(dst)
 		r.handler(bn)
-		bn, err = w.Write(data[:bn])
+		bn, err = w.Write(dst)
 		n += int64(bn)
 		if err != nil {
 			return

@@ -2,11 +2,10 @@ package lz4
 
 import (
 	"fmt"
-	"reflect"
-	"runtime"
-
 	"github.com/pierrec/lz4/v4/internal/lz4block"
 	"github.com/pierrec/lz4/v4/internal/lz4errors"
+	"reflect"
+	"runtime"
 )
 
 //go:generate go run golang.org/x/tools/cmd/stringer -type=BlockSize,CompressionLevel -output options_gen.go
@@ -112,16 +111,19 @@ func SizeOption(size uint64) Option {
 // ConcurrencyOption sets the number of go routines used for compression.
 // If n <= 0, then the output of runtime.GOMAXPROCS(0) is used.
 func ConcurrencyOption(n int) Option {
+	if n <= 0 {
+		n = runtime.GOMAXPROCS(0)
+	}
 	return func(a applier) error {
-		switch w := a.(type) {
+		switch rw := a.(type) {
 		case nil:
 			s := fmt.Sprintf("ConcurrencyOption(%d)", n)
 			return lz4errors.Error(s)
 		case *Writer:
-			if n <= 0 {
-				n = runtime.GOMAXPROCS(0)
-			}
-			w.num = n
+			rw.num = n
+			return nil
+		case *Reader:
+			rw.num = n
 			return nil
 		}
 		return lz4errors.ErrOptionNotApplicable

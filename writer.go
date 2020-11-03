@@ -65,8 +65,10 @@ func (w *Writer) isNotConcurrent() bool {
 // init sets up the Writer when in newState. It does not change the Writer state.
 func (w *Writer) init() error {
 	w.frame.InitW(w.src, w.num, w.legacy)
-	size := w.frame.Descriptor.Flags.BlockSizeIndex()
-	w.data = size.Get()
+	if true || !w.isNotConcurrent() {
+		size := w.frame.Descriptor.Flags.BlockSizeIndex()
+		w.data = size.Get()
+	}
 	w.idx = 0
 	return w.frame.Descriptor.Write(w.frame, w.src)
 }
@@ -135,7 +137,7 @@ func (w *Writer) write(data []byte, safe bool) error {
 		c <- b.Compress(w.frame, data, w.level)
 		<-c
 		w.handler(len(b.Data))
-		b.CloseW(w.frame)
+		b.Close(w.frame)
 		if safe {
 			// safe to put it back as the last usage of it was FrameDataBlock.Write() called before c is closed
 			size.Put(data)

@@ -191,7 +191,7 @@ func (r *Reader) Reset(reader io.Reader) {
 }
 
 // WriteTo efficiently uncompresses the data from the Reader underlying source to w.
-func (r *Reader) WriteTo_(w io.Writer) (n int64, err error) {
+func (r *Reader) WriteTo(w io.Writer) (n int64, err error) {
 	switch r.state.state {
 	case closedState, errorState:
 		return 0, r.state.err
@@ -204,12 +204,26 @@ func (r *Reader) WriteTo_(w io.Writer) (n int64, err error) {
 	}
 	defer r.state.nextd(&err)
 
-	//TODO concurrency
-	block := r.frame.Blocks.Block
-	size := r.frame.Descriptor.Flags.BlockSizeIndex()
-	data := size.Get()
+	var data []byte
+	if r.isNotConcurrent() {
+		size := r.frame.Descriptor.Flags.BlockSizeIndex()
+		data = size.Get()
+		defer size.Put(data)
+	}
 	for {
-		_, err = block.Read(r.frame, r.src, 0)
+		var bn int
+		var dst []byte
+		if r.isNotConcurrent() {
+			bn, err = r.read(data)
+			dst = data[:bn]
+		} else {
+			dst = <-r.reads
+			bn = len(dst)
+			if bn == 0 {
+				// No uncompressed data: something went wrong or we are done.
+				err = r.frame.Blocks.ErrorR()
+			}
+		}
 		switch err {
 		case nil:
 		case io.EOF:
@@ -218,12 +232,6 @@ func (r *Reader) WriteTo_(w io.Writer) (n int64, err error) {
 		default:
 			return
 		}
-		dst := data
-		dst, err = block.Uncompress(r.frame, dst, true)
-		if err != nil {
-			return
-		}
-		bn := len(dst)
 		r.handler(bn)
 		bn, err = w.Write(dst)
 		n += int64(bn)

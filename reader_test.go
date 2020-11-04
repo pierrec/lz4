@@ -136,7 +136,7 @@ func TestWriteToBrokenWriter(t *testing.T) {
 	w := brokenWriter(capacity)
 	r := lz4.NewReader(bytes.NewReader(pg1661LZ4))
 
-	n, err := r.WriteTo_(&w)
+	n, err := r.WriteTo(&w)
 	switch {
 	case n > capacity:
 		t.Errorf("reported number of bytes written %d too big", n)

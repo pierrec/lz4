@@ -112,7 +112,7 @@ func (b *Blocks) initR(f *Frame, num int, src io.Reader) (chan []byte, error) {
 		var err error
 		for b.ErrorR() == nil {
 			block := NewFrameDataBlock(f)
-			cumx, err = block.Read(f, src, cum)
+			cumx, err = block.Read(f, src, 0)
 			if err != nil {
 				break
 			}

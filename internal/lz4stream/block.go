@@ -3,11 +3,12 @@ package lz4stream
 import (
 	"encoding/binary"
 	"fmt"
+	"io"
+	"sync"
+
 	"github.com/pierrec/lz4/v4/internal/lz4block"
 	"github.com/pierrec/lz4/v4/internal/lz4errors"
 	"github.com/pierrec/lz4/v4/internal/xxh32"
-	"io"
-	"sync"
 )
 
 type Blocks struct {
@@ -85,11 +86,6 @@ func (b *Blocks) ErrorR() error {
 	return b.err
 }
 
-type BlockResult struct {
-	Data []byte
-	Err  error
-}
-
 // initR returns a channel that streams the uncompressed blocks if in concurrent
 // mode and no error. When the channel is closed, check for any error with b.ErrorR.
 //
@@ -165,7 +161,6 @@ func (b *Blocks) initR(f *Frame, num int, src io.Reader) (chan []byte, error) {
 				cum += uint32(len(buf))
 			}
 			data <- buf
-			//size.Put(buf)
 			close(c)
 		}
 	}(f.isLegacy())

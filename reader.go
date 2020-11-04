@@ -109,6 +109,7 @@ func (r *Reader) Read(buf []byte) (n int, err error) {
 			if r.isNotConcurrent() {
 				bn, err = r.read(buf)
 			} else {
+				lz4block.Put(r.data)
 				r.data = <-r.reads
 				if len(r.data) == 0 {
 					// No uncompressed data: something went wrong or we are done.
@@ -216,6 +217,7 @@ func (r *Reader) WriteTo(w io.Writer) (n int64, err error) {
 			bn, err = r.read(data)
 			dst = data[:bn]
 		} else {
+			lz4block.Put(dst)
 			dst = <-r.reads
 			bn = len(dst)
 			if bn == 0 {

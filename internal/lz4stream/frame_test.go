@@ -87,22 +87,26 @@ func TestFrameDataBlock(t *testing.T) {
 			size := tc.size
 			zbuf := new(bytes.Buffer)
 			f := NewFrame()
+			f.Descriptor.Flags.BlockSizeIndexSet(lz4block.Index(size))
 
-			block := NewFrameDataBlock(lz4block.Index(size))
+			block := NewFrameDataBlock(f)
 			block.Compress(f, []byte(data), lz4block.Fast)
 			if err := block.Write(f, zbuf); err != nil {
 				t.Fatal(err)
 			}
 
+			if _, err := block.Read(f, zbuf, 0); err != nil {
+				t.Fatal(err)
+			}
 			buf := make([]byte, size)
-			_, err := block.Uncompress(f, zbuf, buf)
+			buf, err := block.Uncompress(f, buf, false)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got, want := n, len(data); got != want {
+			if got, want := len(buf), len(data); got != want {
 				t.Fatalf("got %d; want %d", got, want)
 			}
-			if got, want := string(buf[:n]), data; got != want {
+			if got, want := string(buf), data; got != want {
 				t.Fatalf("got %q; want %q", got, want)
 			}
 		})

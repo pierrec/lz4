@@ -193,6 +193,11 @@ func OnBlockDoneOption(handler func(size int)) Option {
 // LegacyOption provides support for writing LZ4 frames in the legacy format.
 //
 // See https://github.com/lz4/lz4/blob/dev/doc/lz4_Frame_format.md#legacy-frame.
+//
+// NB. compressed Linux kernel images use a tweaked LZ4 legacy format where
+// the compressed stream is followed by the original (uncompressed) size of
+// the kernel (https://events.static.linuxfound.org/sites/events/files/lcjpcojp13_klee.pdf).
+// This is also supported as a special case.
 func LegacyOption(legacy bool) Option {
 	return func(a applier) error {
 		switch rw := a.(type) {

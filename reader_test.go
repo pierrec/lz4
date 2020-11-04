@@ -3,6 +3,7 @@ package lz4_test
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -12,6 +13,10 @@ import (
 
 	"github.com/pierrec/lz4/v4"
 )
+
+func _o(s ...lz4.Option) []lz4.Option {
+	return s
+}
 
 func TestReader(t *testing.T) {
 	goldenFiles := []string{
@@ -27,57 +32,66 @@ func TestReader(t *testing.T) {
 	}
 
 	for _, fname := range goldenFiles {
-		t.Run(fname, func(t *testing.T) {
-			fname := fname
-			t.Parallel()
+		for _, opts := range [][]lz4.Option{
+			nil,
+			_o(lz4.ConcurrencyOption(-1)),
+		} {
+			label := fmt.Sprintf("%s %v", fname, opts)
+			t.Run(label, func(t *testing.T) {
+				fname := fname
+				t.Parallel()
 
-			f, err := os.Open(fname)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer f.Close()
+				f, err := os.Open(fname)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer f.Close()
 
-			rawfile := strings.TrimSuffix(fname, ".lz4")
-			raw, err := ioutil.ReadFile(rawfile)
-			if err != nil {
-				t.Fatal(err)
-			}
+				rawfile := strings.TrimSuffix(fname, ".lz4")
+				raw, err := ioutil.ReadFile(rawfile)
+				if err != nil {
+					t.Fatal(err)
+				}
 
-			out := new(bytes.Buffer)
-			zr := lz4.NewReader(f)
-			n, err := io.Copy(out, zr)
-			if err != nil {
-				t.Fatal(err)
-			}
+				out := new(bytes.Buffer)
+				zr := lz4.NewReader(f)
+				if err := zr.Apply(opts...); err != nil {
+					t.Fatal(err)
+				}
+				n, err := io.Copy(out, zr)
+				if err != nil {
+					t.Error(err)
+				}
 
-			if got, want := int(n), len(raw); got != want {
-				t.Errorf("invalid size: got %d; want %d", got, want)
-			}
+				if got, want := int(n), len(raw); got != want {
+					t.Errorf("invalid size: got %d; want %d", got, want)
+				}
 
-			if got, want := out.Bytes(), raw; !reflect.DeepEqual(got, want) {
-				t.Fatal("uncompressed data does not match original")
-			}
+				if got, want := out.Bytes(), raw; !reflect.DeepEqual(got, want) {
+					t.Fatal("uncompressed data does not match original")
+				}
 
-			if len(raw) < 20 {
-				return
-			}
+				if len(raw) < 20 {
+					return
+				}
 
-			f2, err := os.Open(fname)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer f2.Close()
+				f2, err := os.Open(fname)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer f2.Close()
 
-			out.Reset()
-			zr = lz4.NewReader(f2)
-			_, err = io.CopyN(out, zr, 10)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !reflect.DeepEqual(out.Bytes(), raw[:10]) {
-				t.Fatal("partial read does not match original")
-			}
-		})
+				out.Reset()
+				zr = lz4.NewReader(f2)
+				_, err = io.CopyN(out, zr, 10)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !reflect.DeepEqual(out.Bytes(), raw[:10]) {
+					t.Fatal("partial read does not match original")
+				}
+			})
+		}
 	}
 }
 
@@ -135,72 +149,81 @@ func TestWriteToBrokenWriter(t *testing.T) {
 
 func TestReaderLegacy(t *testing.T) {
 	goldenFiles := []string{
-		//"testdata/vmlinux_LZ4_19377.lz4",
+		"testdata/vmlinux_LZ4_19377.lz4",
 		"testdata/bzImage_lz4_isolated.lz4",
 	}
 
 	for _, fname := range goldenFiles {
-		t.Run(fname, func(t *testing.T) {
-			fname := fname
-			t.Parallel()
+		for _, opts := range [][]lz4.Option{
+			nil,
+			_o(lz4.ConcurrencyOption(-1)),
+		} {
+			label := fmt.Sprintf("%s %v", fname, opts)
+			t.Run(label, func(t *testing.T) {
+				fname := fname
+				t.Parallel()
 
-			var out bytes.Buffer
-			rawfile := strings.TrimSuffix(fname, ".lz4")
-			raw, err := ioutil.ReadFile(rawfile)
-			if err != nil {
-				t.Fatal(err)
-			}
+				var out bytes.Buffer
+				rawfile := strings.TrimSuffix(fname, ".lz4")
+				raw, err := ioutil.ReadFile(rawfile)
+				if err != nil {
+					t.Fatal(err)
+				}
 
-			f, err := os.Open(fname)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer f.Close()
+				f, err := os.Open(fname)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer f.Close()
 
-			zr := lz4.NewReader(f)
-			n, err := io.Copy(&out, zr)
-			if err != nil {
-				t.Fatal(err, n)
-			}
+				zr := lz4.NewReader(f)
+				if err := zr.Apply(opts...); err != nil {
+					t.Fatal(err)
+				}
+				n, err := io.Copy(&out, zr)
+				if err != nil {
+					t.Fatal(err, n)
+				}
 
-			if got, want := int(n), len(raw); got != want {
-				t.Errorf("invalid sizes: got %d; want %d", got, want)
-			}
+				if got, want := int(n), len(raw); got != want {
+					t.Errorf("invalid sizes: got %d; want %d", got, want)
+				}
 
-			if got, want := out.Bytes(), raw; !bytes.Equal(got, want) {
-				t.Fatal("uncompressed data does not match original")
-			}
+				if got, want := out.Bytes(), raw; !bytes.Equal(got, want) {
+					t.Fatal("uncompressed data does not match original")
+				}
 
-			if len(raw) < 20 {
-				return
-			}
+				if len(raw) < 20 {
+					return
+				}
 
-			f2, err := os.Open(fname)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer f2.Close()
+				f2, err := os.Open(fname)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer f2.Close()
 
-			out.Reset()
-			zr = lz4.NewReader(f2)
-			_, err = io.CopyN(&out, zr, 10)
-			if err != nil {
-				t.Fatal(err)
-			}
+				out.Reset()
+				zr = lz4.NewReader(f2)
+				_, err = io.CopyN(&out, zr, 10)
+				if err != nil {
+					t.Fatal(err)
+				}
 
-			if !bytes.Equal(out.Bytes(), raw[:10]) {
-				t.Fatal("partial read does not match original")
-			}
+				if !bytes.Equal(out.Bytes(), raw[:10]) {
+					t.Fatal("partial read does not match original")
+				}
 
-			out.Reset()
-			_, err = io.CopyN(&out, zr, 10)
-			if err != nil {
-				t.Fatal(err)
-			}
+				out.Reset()
+				_, err = io.CopyN(&out, zr, 10)
+				if err != nil {
+					t.Fatal(err)
+				}
 
-			if !bytes.Equal(out.Bytes(), raw[10:20]) {
-				t.Fatal("after seek, partial read does not match original")
-			}
-		})
+				if !bytes.Equal(out.Bytes(), raw[10:20]) {
+					t.Fatal("after seek, partial read does not match original")
+				}
+			})
+		}
 	}
 }

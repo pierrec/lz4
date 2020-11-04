@@ -3,12 +3,11 @@ package lz4stream
 import (
 	"encoding/binary"
 	"fmt"
-	"io"
-	"sync"
-
 	"github.com/pierrec/lz4/v4/internal/lz4block"
 	"github.com/pierrec/lz4/v4/internal/lz4errors"
 	"github.com/pierrec/lz4/v4/internal/xxh32"
+	"io"
+	"sync"
 )
 
 type Blocks struct {
@@ -87,6 +86,11 @@ func (b *Blocks) ErrorR() error {
 	return b.err
 }
 
+type BlockResult struct {
+	Data []byte
+	Err  error
+}
+
 // initR returns a channel that streams the uncompressed blocks if in concurrent
 // mode and no error. When the channel is closed, check for any error with b.ErrorR.
 //
@@ -105,11 +109,16 @@ func (b *Blocks) initR(f *Frame, num int, src io.Reader) (chan []byte, error) {
 	data := make(chan []byte)
 	// Read blocks from the source sequentially
 	// and uncompress them concurrently.
+
+	// In legacy mode, accrue the uncompress sizes in cum.
+	var cum uint32
 	go func() {
+		var cumx uint32
+		var err error
 		for b.ErrorR() == nil {
 			block := NewFrameDataBlock(size)
-			if err := block.Read(f, src); err != nil {
-				b.closeR(err)
+			cumx, err = block.Read(f, src, cum)
+			if err != nil {
 				break
 			}
 			// Recheck for an error as reading may be slow and uncompressing is expensive.
@@ -119,7 +128,7 @@ func (b *Blocks) initR(f *Frame, num int, src io.Reader) (chan []byte, error) {
 			c := make(chan []byte)
 			blocks <- c
 			go func() {
-				data, err := block.Uncompress(f, size.Get())
+				data, err := block.Uncompress(f, size.Get(), false)
 				if err != nil {
 					b.closeR(err)
 				} else {
@@ -132,11 +141,15 @@ func (b *Blocks) initR(f *Frame, num int, src io.Reader) (chan []byte, error) {
 		blocks <- c
 		c <- nil // signal the collection loop that we are done
 		<-c      // wait for the collect loop to complete
+		if f.isLegacy() && cum == cumx {
+			err = io.EOF
+		}
+		b.closeR(err)
 		close(data)
 	}()
 	// Collect the uncompressed blocks and make them available
 	// on the returned channel.
-	go func() {
+	go func(leg bool) {
 		defer close(blocks)
 		for c := range blocks {
 			buf := <-c
@@ -145,11 +158,18 @@ func (b *Blocks) initR(f *Frame, num int, src io.Reader) (chan []byte, error) {
 				close(c)
 				return
 			}
+			// Perform checksum now as the blocks are received in order.
+			if f.Descriptor.Flags.ContentChecksum() {
+				_, _ = f.checksum.Write(buf)
+			}
+			if leg {
+				cum += uint32(len(buf))
+			}
 			data <- buf
-			size.Put(buf)
+			//size.Put(buf)
 			close(c)
 		}
-	}()
+	}(f.isLegacy())
 	return data, nil
 }
 
@@ -173,14 +193,12 @@ type FrameDataBlock struct {
 	Checksum uint32
 	data     []byte // buffer for compressed data
 	src      []byte // uncompressed data
-	done     bool   // for legacy support
 	err      error  // used in concurrent mode
 }
 
 func (b *FrameDataBlock) Close(f *Frame) {
 	b.Size = 0
 	b.Checksum = 0
-	b.done = false
 	b.err = nil
 	if b.data != nil {
 		// Block was not already closed.
@@ -224,6 +242,8 @@ func (b *FrameDataBlock) Compress(f *Frame, src []byte, level lz4block.Compressi
 }
 
 func (b *FrameDataBlock) Write(f *Frame, dst io.Writer) error {
+	// Write is called in the same order as blocks are compressed,
+	// so content checksum must be done here.
 	if f.Descriptor.Flags.ContentChecksum() {
 		_, _ = f.checksum.Write(b.src)
 	}
@@ -246,45 +266,47 @@ func (b *FrameDataBlock) Write(f *Frame, dst io.Writer) error {
 }
 
 // Read updates b with the next block data, size and checksum if available.
-func (b *FrameDataBlock) Read(f *Frame, src io.Reader) error {
+func (b *FrameDataBlock) Read(f *Frame, src io.Reader, cum uint32) (uint32, error) {
 	x, err := f.readUint32(src)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	switch leg := f.isLegacy(); {
-	case leg && x == frameMagicLegacy:
-		// Concatenated legacy frame.
-		return b.Read(f, src)
-	case leg && b.done:
-		// In legacy mode, all blocks are of size 8Mb.
-		// When a uncompressed block size is less than 8Mb,
-		// then it means the end of the stream is reached.
-		return io.EOF
-	case !leg && x == 0:
+	if f.isLegacy() {
+		switch x {
+		case frameMagicLegacy:
+			// Concatenated legacy frame.
+			return b.Read(f, src, cum)
+		case cum:
+			// Only works in non concurrent mode, for concurrent mode
+			// it is handled separately.
+			// Linux kernel format appends the total uncompressed size at the end.
+			return 0, io.EOF
+		}
+	} else if x == 0 {
 		// Marker for end of stream.
-		return io.EOF
+		return 0, io.EOF
 	}
 	b.Size = DataBlockSize(x)
 
 	size := b.Size.size()
 	if size > cap(b.data) {
-		return lz4errors.ErrOptionInvalidBlockSize
+		return x, lz4errors.ErrOptionInvalidBlockSize
 	}
 	b.data = b.data[:size]
 	if _, err := io.ReadFull(src, b.data); err != nil {
-		return err
+		return x, err
 	}
 	if f.Descriptor.Flags.BlockChecksum() {
 		sum, err := f.readUint32(src)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		b.Checksum = sum
 	}
-	return nil
+	return x, nil
 }
 
-func (b *FrameDataBlock) Uncompress(f *Frame, dst []byte) ([]byte, error) {
+func (b *FrameDataBlock) Uncompress(f *Frame, dst []byte, sum bool) ([]byte, error) {
 	if b.Size.Uncompressed() {
 		n := copy(dst, b.data)
 		dst = dst[:n]
@@ -294,9 +316,6 @@ func (b *FrameDataBlock) Uncompress(f *Frame, dst []byte) ([]byte, error) {
 			return nil, err
 		}
 		dst = dst[:n]
-		if f.isLegacy() && uint32(n) < lz4block.Block8Mb {
-			b.done = true
-		}
 	}
 	if f.Descriptor.Flags.BlockChecksum() {
 		if c := xxh32.ChecksumZero(dst); c != b.Checksum {
@@ -304,7 +323,7 @@ func (b *FrameDataBlock) Uncompress(f *Frame, dst []byte) ([]byte, error) {
 			return nil, err
 		}
 	}
-	if f.Descriptor.Flags.ContentChecksum() {
+	if sum && f.Descriptor.Flags.ContentChecksum() {
 		_, _ = f.checksum.Write(dst)
 	}
 	return dst, nil

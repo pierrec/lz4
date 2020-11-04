@@ -38,6 +38,7 @@ type Reader struct {
 	reads   chan []byte      // pending data
 	idx     int              // size of pending data
 	handler func(int)
+	cum     uint32
 }
 
 func (*Reader) private() {}
@@ -83,6 +84,7 @@ func (r *Reader) init() error {
 	r.idx = 0
 	size := r.frame.Descriptor.Flags.BlockSizeIndex()
 	r.data = size.Get()
+	r.cum = 0
 	return nil
 }
 
@@ -100,14 +102,17 @@ func (r *Reader) Read(buf []byte) (n int, err error) {
 	default:
 		return 0, r.state.fail()
 	}
-	var bn int
 	for len(buf) > 0 {
+		var bn int
 		if r.idx == 0 {
-			if !r.isNotConcurrent() {
-				r.data = <-r.reads
-				err = r.frame.Blocks.ErrorR()
-			} else {
+			if r.isNotConcurrent() {
 				bn, err = r.read(buf)
+			} else {
+				r.data = <-r.reads
+				if len(r.data) == 0 {
+					// No uncompressed data: something went wrong or we are done.
+					err = r.frame.Blocks.ErrorR()
+				}
 			}
 			switch err {
 			case nil:
@@ -145,7 +150,8 @@ func (r *Reader) Read(buf []byte) (n int, err error) {
 // - else, the uncompress data is stored in r.data and 0 is returned
 func (r *Reader) read(buf []byte) (int, error) {
 	block := r.frame.Blocks.Block
-	if err := block.Read(r.frame, r.src); err != nil {
+	_, err := block.Read(r.frame, r.src, r.cum)
+	if err != nil {
 		return 0, err
 	}
 	var direct bool
@@ -155,10 +161,11 @@ func (r *Reader) read(buf []byte) (int, error) {
 		direct = true
 		dst = buf
 	}
-	dst, err := block.Uncompress(r.frame, dst)
+	dst, err = block.Uncompress(r.frame, dst, true)
 	if err != nil {
 		return 0, err
 	}
+	r.cum += uint32(len(dst))
 	if direct {
 		return len(dst), nil
 	}
@@ -202,7 +209,7 @@ func (r *Reader) WriteTo_(w io.Writer) (n int64, err error) {
 	size := r.frame.Descriptor.Flags.BlockSizeIndex()
 	data := size.Get()
 	for {
-		err = block.Read(r.frame, r.src)
+		_, err = block.Read(r.frame, r.src, 0)
 		switch err {
 		case nil:
 		case io.EOF:
@@ -212,7 +219,7 @@ func (r *Reader) WriteTo_(w io.Writer) (n int64, err error) {
 			return
 		}
 		dst := data
-		dst, err = block.Uncompress(r.frame, dst)
+		dst, err = block.Uncompress(r.frame, dst, true)
 		if err != nil {
 			return
 		}

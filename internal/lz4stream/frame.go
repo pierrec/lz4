@@ -4,11 +4,12 @@ package lz4stream
 import (
 	"encoding/binary"
 	"fmt"
+	"io"
+	"io/ioutil"
+
 	"github.com/pierrec/lz4/v4/internal/lz4block"
 	"github.com/pierrec/lz4/v4/internal/lz4errors"
 	"github.com/pierrec/lz4/v4/internal/xxh32"
-	"io"
-	"io/ioutil"
 )
 
 //go:generate go run gen.go

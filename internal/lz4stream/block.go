@@ -18,10 +18,9 @@ type Blocks struct {
 }
 
 func (b *Blocks) initW(f *Frame, dst io.Writer, num int) {
-	size := f.Descriptor.Flags.BlockSizeIndex()
 	if num == 1 {
 		b.Blocks = nil
-		b.Block = NewFrameDataBlock(size)
+		b.Block = NewFrameDataBlock(f)
 		return
 	}
 	b.Block = nil
@@ -100,7 +99,7 @@ func (b *Blocks) initR(f *Frame, num int, src io.Reader) (chan []byte, error) {
 	size := f.Descriptor.Flags.BlockSizeIndex()
 	if num == 1 {
 		b.Blocks = nil
-		b.Block = NewFrameDataBlock(size)
+		b.Block = NewFrameDataBlock(f)
 		return nil, nil
 	}
 	b.Block = nil
@@ -116,7 +115,7 @@ func (b *Blocks) initR(f *Frame, num int, src io.Reader) (chan []byte, error) {
 		var cumx uint32
 		var err error
 		for b.ErrorR() == nil {
-			block := NewFrameDataBlock(size)
+			block := NewFrameDataBlock(f)
 			cumx, err = block.Read(f, src, cum)
 			if err != nil {
 				break
@@ -182,8 +181,8 @@ func (b *Blocks) closeR(err error) {
 	b.mu.Unlock()
 }
 
-func NewFrameDataBlock(size lz4block.BlockSizeIndex) *FrameDataBlock {
-	buf := size.Get()
+func NewFrameDataBlock(f *Frame) *FrameDataBlock {
+	buf := f.Descriptor.Flags.BlockSizeIndex().Get()
 	return &FrameDataBlock{Data: buf, data: buf}
 }
 
@@ -202,8 +201,7 @@ func (b *FrameDataBlock) Close(f *Frame) {
 	b.err = nil
 	if b.data != nil {
 		// Block was not already closed.
-		size := f.Descriptor.Flags.BlockSizeIndex()
-		size.Put(b.data)
+		lz4block.Put(b.data)
 		b.Data = nil
 		b.data = nil
 		b.src = nil

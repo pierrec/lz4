@@ -3,6 +3,7 @@ package lz4
 import (
 	"io"
 
+	"github.com/pierrec/lz4/v4/internal/lz4block"
 	"github.com/pierrec/lz4/v4/internal/lz4errors"
 	"github.com/pierrec/lz4/v4/internal/lz4stream"
 )
@@ -120,8 +121,7 @@ func (r *Reader) Read(buf []byte) (n int, err error) {
 				if er := r.frame.CloseR(r.src); er != nil {
 					err = er
 				}
-				size := r.frame.Descriptor.Flags.BlockSizeIndex()
-				size.Put(r.data)
+				lz4block.Put(r.data)
 				r.data = nil
 				return
 			default:
@@ -180,8 +180,7 @@ func (r *Reader) read(buf []byte) (int, error) {
 // w.Close must be called before Reset.
 func (r *Reader) Reset(reader io.Reader) {
 	if r.data != nil {
-		size := r.frame.Descriptor.Flags.BlockSizeIndex()
-		size.Put(r.data)
+		lz4block.Put(r.data)
 		r.data = nil
 	}
 	r.frame.Reset(r.num)
@@ -208,7 +207,7 @@ func (r *Reader) WriteTo(w io.Writer) (n int64, err error) {
 	if r.isNotConcurrent() {
 		size := r.frame.Descriptor.Flags.BlockSizeIndex()
 		data = size.Get()
-		defer size.Put(data)
+		defer lz4block.Put(data)
 	}
 	for {
 		var bn int

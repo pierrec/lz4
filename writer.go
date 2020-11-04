@@ -129,20 +129,19 @@ func (w *Writer) write(data []byte, safe bool) error {
 		w.handler(len(block.Data))
 		return err
 	}
-	size := w.frame.Descriptor.Flags.BlockSizeIndex()
 	c := make(chan *lz4stream.FrameDataBlock)
 	w.frame.Blocks.Blocks <- c
-	go func(c chan *lz4stream.FrameDataBlock, data []byte, size lz4block.BlockSizeIndex, safe bool) {
-		b := lz4stream.NewFrameDataBlock(size)
+	go func(c chan *lz4stream.FrameDataBlock, data []byte, safe bool) {
+		b := lz4stream.NewFrameDataBlock(w.frame)
 		c <- b.Compress(w.frame, data, w.level)
 		<-c
 		w.handler(len(b.Data))
 		b.Close(w.frame)
 		if safe {
 			// safe to put it back as the last usage of it was FrameDataBlock.Write() called before c is closed
-			size.Put(data)
+			lz4block.Put(data)
 		}
-	}(c, data, size, safe)
+	}(c, data, safe)
 
 	return nil
 }
@@ -168,8 +167,7 @@ func (w *Writer) Close() (err error) {
 	err = w.frame.CloseW(w.src, w.num)
 	// It is now safe to free the buffer.
 	if w.data != nil {
-		size := w.frame.Descriptor.Flags.BlockSizeIndex()
-		size.Put(w.data)
+		lz4block.Put(w.data)
 		w.data = nil
 	}
 	return
@@ -207,7 +205,7 @@ func (w *Writer) ReadFrom(r io.Reader) (n int64, err error) {
 	data := size.Get()
 	if w.isNotConcurrent() {
 		// Keep the same buffer for the whole process.
-		defer size.Put(data)
+		defer lz4block.Put(data)
 	}
 	for !done {
 		rn, err = io.ReadFull(r, data)

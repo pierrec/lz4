@@ -67,29 +67,19 @@ func (b BlockSizeIndex) Get() []byte {
 	return buf.([]byte)
 }
 
-func (b BlockSizeIndex) Put(buf []byte) {
+func Put(buf []byte) {
 	// Safeguard: do not allow invalid buffers.
-	switch c := uint32(cap(buf)); b {
-	case 4:
-		if c == Block64Kb {
-			BlockPool64K.Put(buf[:c])
-		}
-	case 5:
-		if c == Block256Kb {
-			BlockPool256K.Put(buf[:c])
-		}
-	case 6:
-		if c == Block1Mb {
-			BlockPool1M.Put(buf[:c])
-		}
-	case 7:
-		if c == Block4Mb {
-			BlockPool4M.Put(buf[:c])
-		}
-	case 3:
-		if c == legacyBlockSize {
-			BlockPool8M.Put(buf[:c])
-		}
+	switch c := cap(buf); uint32(c) {
+	case Block64Kb:
+		BlockPool64K.Put(buf[:c])
+	case Block256Kb:
+		BlockPool256K.Put(buf[:c])
+	case Block1Mb:
+		BlockPool1M.Put(buf[:c])
+	case Block4Mb:
+		BlockPool4M.Put(buf[:c])
+	case legacyBlockSize:
+		BlockPool8M.Put(buf[:c])
 	}
 }
 

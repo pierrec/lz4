@@ -3,6 +3,10 @@
 package lz4block
 
 func decodeBlock(dst, src []byte) (ret int) {
+	// Restrict capacities so we don't read or write out of bounds.
+	dst = dst[:len(dst):len(dst)]
+	src = src[:len(src):len(src)]
+
 	const hasError = -2
 	defer func() {
 		if recover() != nil {

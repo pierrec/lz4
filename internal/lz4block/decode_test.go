@@ -115,6 +115,11 @@ func TestBlockDecode(t *testing.T) {
 			concat(emitSeq("a", 1, 15), emitSeq("B", 1, 15), emitSeq("end", 0, 0)),
 			[]byte(strings.Repeat("a", 16) + strings.Repeat("B", 16) + "end"),
 		},
+		{
+			"fuzz-3e4ce8cc0da392ca5a353b6ffef6d08f400ac5f9",
+			[]byte("0000\x01\x00"),
+			[]byte("0000000"),
+		},
 	}
 
 	for _, test := range tests {
@@ -135,24 +140,46 @@ func TestBlockDecode(t *testing.T) {
 func TestDecodeBlockInvalid(t *testing.T) {
 	t.Parallel()
 
-	dst := make([]byte, 100)
-
 	for _, test := range []struct {
 		name string
 		src  string
+		size int // Output size to try.
 	}{
 		{
 			"empty_input",
 			"",
+			100,
 		},
 		{
 			"final_lit_too_short",
 			"\x20a", // litlen = 2 but only a single-byte literal
+			100,
+		},
+		{
+			"write_beyond_len_dst",
+			"\x1b0\x01\x00000000000000",
+			len("\x1b0\x01\x00000000000000"),
 		},
 	} {
-		r := decodeBlock(dst, []byte(test.src))
-		if r >= 0 {
-			t.Errorf("no error for %s", test.name)
-		}
+		t.Run(test.name, func(t *testing.T) {
+			dst := make([]byte, test.size+8)
+			for i := range dst {
+				dst[i] = byte(i)
+			}
+			dst = dst[:test.size]
+
+			r := decodeBlock(dst, []byte(test.src))
+			if r >= 0 {
+				t.Errorf("no error for %s", test.name)
+			}
+
+			dst = dst[:cap(dst)]
+			for i := test.size; i < len(dst); i++ {
+				if dst[i] != byte(i) {
+					t.Error("decodeBlock wrote out of bounds")
+					break
+				}
+			}
+		})
 	}
 }

@@ -42,3 +42,32 @@ func Fuzz(data []byte) int {
 	}
 	return 1
 }
+
+// Fuzzer for UncompressBlock: tries to decompress into a block the same size
+// as the input.
+//
+// go-fuzz-build && go-fuzz -func=FuzzUncompressBlock -workdir=uncompress
+func FuzzUncompressBlock(data []byte) int {
+	decomp := make([]byte, len(data)+16-len(data)%8)
+	for i := range decomp {
+		decomp[i] = byte(i)
+	}
+	decomp = decomp[:len(data)]
+
+	n, err := lz4.UncompressBlock(data, decomp)
+	if n > len(decomp) {
+		panic("uncompressed length greater than buffer")
+	}
+
+	decomp = decomp[:cap(decomp)]
+	for i := len(data); i < len(decomp); i++ {
+		if decomp[i] != byte(i) {
+			panic("UncompressBlock wrote out of bounds")
+		}
+	}
+
+	if err != nil {
+		return 0
+	}
+	return 1
+}

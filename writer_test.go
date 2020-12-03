@@ -142,7 +142,7 @@ func TestIssue43(t *testing.T) {
 
 		f, err := os.Open("testdata/issue43.data")
 		if err != nil {
-			t.Fatal(err)
+			panic(err)
 		}
 		defer f.Close()
 
@@ -151,7 +151,7 @@ func TestIssue43(t *testing.T) {
 
 		_, err = io.Copy(zw, f)
 		if err != nil {
-			t.Fatal(err)
+			panic(err)
 		}
 	}()
 	_, err := io.Copy(ioutil.Discard, lz4.NewReader(r))

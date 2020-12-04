@@ -16,13 +16,13 @@ The implementation is based on the reference C [one](https://github.com/lz4/lz4)
 Assuming you have the go toolchain installed:
 
 ```
-go get github.com/pierrec/lz4
+go get github.com/pierrec/lz4/v4
 ```
 
 There is a command line interface tool to compress and decompress LZ4 files.
 
 ```
-go install github.com/pierrec/lz4/cmd/lz4c
+go install github.com/pierrec/lz4/v4/cmd/lz4c
 ```
 
 Usage

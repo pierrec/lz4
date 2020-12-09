@@ -1,7 +1,6 @@
 # lz4 : LZ4 compression in pure Go
 
-[![GoDoc](https://godoc.org/github.com/pierrec/lz4?status.svg)](https://godoc.org/github.com/pierrec/lz4)
-[![Build Status](https://travis-ci.org/pierrec/lz4.svg?branch=master)](https://travis-ci.org/pierrec/lz4)
+[![Go Reference](https://pkg.go.dev/badge/github.com/pierrec/lz4/v4.svg)](https://pkg.go.dev/github.com/pierrec/lz4/v4)
 [![CI](https://github.com/pierrec/lz4/workflows/ci/badge.svg)](https://github.com/pierrec/lz4/actions)
 [![Go Report Card](https://goreportcard.com/badge/github.com/pierrec/lz4)](https://goreportcard.com/report/github.com/pierrec/lz4)
 [![GitHub tag (latest SemVer)](https://img.shields.io/github/tag/pierrec/lz4.svg?style=social)](https://github.com/pierrec/lz4/tags)

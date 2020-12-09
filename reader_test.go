@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"os"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -19,26 +20,57 @@ func _o(s ...lz4.Option) []lz4.Option {
 }
 
 func TestReader(t *testing.T) {
-	goldenFiles := []string{
-		"testdata/e.txt.lz4",
-		"testdata/gettysburg.txt.lz4",
-		"testdata/Mark.Twain-Tom.Sawyer.txt.lz4",
-		"testdata/Mark.Twain-Tom.Sawyer_long.txt.lz4",
-		"testdata/pg1661.txt.lz4",
-		"testdata/pi.txt.lz4",
-		"testdata/random.data.lz4",
-		"testdata/repeat.txt.lz4",
-		"testdata/pg_control.tar.lz4",
+	goldenFiles := []struct {
+		name   string
+		isText bool
+	}{
+		{
+			name:   "testdata/e.txt.lz4",
+			isText: true,
+		},
+		{
+			name:   "testdata/gettysburg.txt.lz4",
+			isText: true,
+		},
+		{
+			name:   "testdata/Mark.Twain-Tom.Sawyer.txt.lz4",
+			isText: true,
+		},
+		{
+			name:   "testdata/Mark.Twain-Tom.Sawyer_long.txt.lz4",
+			isText: true,
+		},
+		{
+			name:   "testdata/pg1661.txt.lz4",
+			isText: false,
+		},
+		{
+			name:   "testdata/pi.txt.lz4",
+			isText: true,
+		},
+		{
+			name:   "testdata/random.data.lz4",
+			isText: false,
+		},
+		{
+			name:   "testdata/repeat.txt.lz4",
+			isText: true,
+		},
+		{
+			name:   "testdata/pg_control.tar.lz4",
+			isText: false,
+		},
 	}
 
-	for _, fname := range goldenFiles {
+	for _, golden := range goldenFiles {
 		for _, opts := range [][]lz4.Option{
 			nil,
 			_o(lz4.ConcurrencyOption(-1)),
 		} {
+			fname := golden.name
+			isText := golden.isText
 			label := fmt.Sprintf("%s %v", fname, opts)
 			t.Run(label, func(t *testing.T) {
-				fname := fname
 				t.Parallel()
 
 				f, err := os.Open(fname)
@@ -48,9 +80,15 @@ func TestReader(t *testing.T) {
 				defer f.Close()
 
 				rawfile := strings.TrimSuffix(fname, ".lz4")
-				raw, err := ioutil.ReadFile(rawfile)
+				_raw, err := ioutil.ReadFile(rawfile)
 				if err != nil {
 					t.Fatal(err)
+				}
+				var raw []byte
+				if isText && runtime.GOOS == "windows" {
+					raw = []byte(strings.ReplaceAll(string(_raw), "\r\n", "\n"))
+				} else {
+					raw = _raw
 				}
 
 				out := new(bytes.Buffer)

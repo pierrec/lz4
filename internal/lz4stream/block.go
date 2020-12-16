@@ -67,8 +67,9 @@ func (b *Blocks) close(f *Frame, num int) error {
 		return err
 	}
 	if b.Blocks == nil {
-		// Not initialized yet.
-		return nil
+		err := b.err
+		b.err = nil
+		return err
 	}
 	c := make(chan *FrameDataBlock)
 	b.Blocks <- c

@@ -1,7 +1,10 @@
 // Package lz4block provides LZ4 BlockSize types and pools of buffers.
 package lz4block
 
-import "sync"
+import (
+	"runtime"
+	"sync"
+)
 
 const (
 	Block64Kb uint32 = 1 << (16 + iota*2)
@@ -18,6 +21,7 @@ var (
 	BlockPool1M   = sync.Pool{New: func() interface{} { return make([]byte, Block1Mb) }}
 	BlockPool4M   = sync.Pool{New: func() interface{} { return make([]byte, Block4Mb) }}
 	BlockPool8M   = sync.Pool{New: func() interface{} { return make([]byte, legacyBlockSize) }}
+	TaskProcessor = NewConcurrentTaskProcessor(0)
 )
 
 func Index(b uint32) BlockSizeIndex {
@@ -86,3 +90,32 @@ func Put(buf []byte) {
 type CompressionLevel uint32
 
 const Fast CompressionLevel = 0
+
+type Task func()
+type ConcurrentTaskProcessor struct {
+	tasks chan Task
+}
+
+func NewConcurrentTaskProcessor(concurrentTaskNum int) *ConcurrentTaskProcessor {
+	if concurrentTaskNum <= 0 {
+		concurrentTaskNum = runtime.NumCPU()
+	}
+	queue := make(chan Task, concurrentTaskNum)
+	for i := 0; i < concurrentTaskNum; i++ {
+		go func() {
+			for {
+				select {
+				case task := <-queue:
+					task()
+				}
+			}
+		}()
+	}
+	return &ConcurrentTaskProcessor {
+		tasks: queue,
+	}
+}
+
+func (w *ConcurrentTaskProcessor) Do(task Task) {
+	w.tasks <-task
+}

@@ -115,22 +115,25 @@ func (b *Blocks) initR(f *Frame, num int, src io.Reader) (chan []byte, error) {
 			block := NewFrameDataBlock(f)
 			cumx, err = block.Read(f, src, 0)
 			if err != nil {
+				block.Close(f)
 				break
 			}
 			// Recheck for an error as reading may be slow and uncompressing is expensive.
 			if b.ErrorR() != nil {
+				block.Close(f)
 				break
 			}
 			c := make(chan []byte)
 			blocks <- c
-			go func() {
+			lz4block.TaskProcessor.Do(func() {
+				defer block.Close(f)
 				data, err := block.Uncompress(f, size.Get(), false)
 				if err != nil {
 					b.closeR(err)
 				} else {
 					c <- data
 				}
-			}()
+			})
 		}
 		// End the collection loop and the data channel.
 		c := make(chan []byte)
@@ -162,6 +165,7 @@ func (b *Blocks) initR(f *Frame, num int, src io.Reader) (chan []byte, error) {
 				cum += uint32(len(buf))
 			}
 			data <- buf
+			lz4block.Put(buf)
 			close(c)
 		}
 	}(f.isLegacy())

@@ -2,6 +2,7 @@ package lz4
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 
 	"github.com/pierrec/lz4/v4"
@@ -41,6 +42,32 @@ func Fuzz(data []byte) int {
 		panic("not equal")
 	}
 	return 1
+}
+
+// CompressBlock with various destination sizes.
+// Shares its corpus with Fuzz.
+//
+// go-fuzz-build && go-fuzz -func=FuzzCompressBlock
+func FuzzCompressBlock(data []byte) int {
+	var (
+		bound = lz4.CompressBlockBound(len(data))
+		c     lz4.Compressor
+		comp  = make([]byte, lz4.CompressBlockBound(len(data)))
+		keep  = 0
+	)
+
+	for _, b := range []int{bound, len(data), len(data) - len(data)>>1} {
+		n, err := c.CompressBlock(data, comp[:b:b])
+
+		switch {
+		case err != nil && b == bound: // Should always work.
+			panic(err)
+		case n > b:
+			panic(fmt.Sprintf("n = %d > b = %d", n, b))
+		}
+	}
+
+	return keep
 }
 
 // Fuzzer for UncompressBlock: tries to decompress into a block the same size

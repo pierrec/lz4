@@ -126,10 +126,9 @@ func TestBlockDecode(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			buf := make([]byte, len(test.exp))
 			n := decodeBlock(buf, test.src)
-			if n <= 0 {
-				t.Log(-n)
+			if n < 0 {
+				t.Log(n)
 			}
-
 			if !bytes.Equal(buf, test.exp) {
 				t.Fatalf("expected %q got %q", test.exp, buf)
 			}

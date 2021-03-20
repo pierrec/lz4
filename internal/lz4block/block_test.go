@@ -10,6 +10,7 @@ import (
 
 	"github.com/pierrec/lz4/v4"
 	"github.com/pierrec/lz4/v4/internal/lz4block"
+	"github.com/pierrec/lz4/v4/internal/lz4errors"
 )
 
 type testcase struct {
@@ -162,5 +163,21 @@ func TestIssue23(t *testing.T) {
 		if got, want := n, 300; got > want {
 			t.Fatalf("not able to compress repeated data: got %d; want %d", got, want)
 		}
+	}
+}
+
+func TestIssue116(t *testing.T) {
+	src, err := ioutil.ReadFile("../../fuzz/corpus/pg1661.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dst := make([]byte, len(src)-len(src)>>1)
+	lz4block.CompressBlock(src, dst)
+
+	var c lz4block.Compressor
+	_, err = c.CompressBlock(src, dst)
+	if err != lz4errors.ErrInvalidSourceShortBuffer {
+		t.Fatalf("expected %v, got nil", lz4errors.ErrInvalidSourceShortBuffer)
 	}
 }

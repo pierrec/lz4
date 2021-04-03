@@ -41,6 +41,10 @@ func TestReader(t *testing.T) {
 			isText: true,
 		},
 		{
+			name:   "testdata/Mark.Twain-Tom.Sawyer_linked.txt.lz4",
+			isText: true,
+		},
+		{
 			name:   "testdata/pg1661.txt.lz4",
 			isText: false,
 		},

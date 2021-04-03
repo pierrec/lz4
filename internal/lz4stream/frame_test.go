@@ -99,7 +99,7 @@ func TestFrameDataBlock(t *testing.T) {
 				t.Fatal(err)
 			}
 			buf := make([]byte, size)
-			buf, err := block.Uncompress(f, buf, false)
+			buf, err := block.Uncompress(f, buf, nil, false)
 			if err != nil {
 				t.Fatal(err)
 			}

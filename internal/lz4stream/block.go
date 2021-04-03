@@ -127,7 +127,7 @@ func (b *Blocks) initR(f *Frame, num int, src io.Reader) (chan []byte, error) {
 			blocks <- c
 			go func() {
 				defer block.Close(f)
-				data, err := block.Uncompress(f, size.Get(), false)
+				data, err := block.Uncompress(f, size.Get(), nil, false)
 				if err != nil {
 					b.closeR(err)
 				} else {
@@ -303,12 +303,12 @@ func (b *FrameDataBlock) Read(f *Frame, src io.Reader, cum uint32) (uint32, erro
 	return x, nil
 }
 
-func (b *FrameDataBlock) Uncompress(f *Frame, dst []byte, sum bool) ([]byte, error) {
+func (b *FrameDataBlock) Uncompress(f *Frame, dst, dict []byte, sum bool) ([]byte, error) {
 	if b.Size.Uncompressed() {
 		n := copy(dst, b.data)
 		dst = dst[:n]
 	} else {
-		n, err := lz4block.UncompressBlock(b.data, dst)
+		n, err := lz4block.UncompressBlock(b.data, dst, dict)
 		if err != nil {
 			return nil, err
 		}

@@ -125,7 +125,7 @@ func TestBlockDecode(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			buf := make([]byte, len(test.exp))
-			n := decodeBlock(buf, test.src)
+			n := decodeBlock(buf, test.src, nil)
 			if n < 0 {
 				t.Log(n)
 			}
@@ -167,7 +167,7 @@ func TestDecodeBlockInvalid(t *testing.T) {
 			}
 			dst = dst[:test.size]
 
-			r := decodeBlock(dst, []byte(test.src))
+			r := decodeBlock(dst, []byte(test.src), nil)
 			if r >= 0 {
 				t.Errorf("no error for %s", test.name)
 			}

@@ -59,7 +59,7 @@ func TestCompressUncompressBlock(t *testing.T) {
 
 		// Uncompress the data.
 		buf := make([]byte, len(src))
-		n, err = lz4block.UncompressBlock(zbuf, buf)
+		n, err = lz4block.UncompressBlock(zbuf, buf, nil)
 		if err != nil {
 			t.Fatal(err)
 		} else if n < 0 || n > len(buf) {

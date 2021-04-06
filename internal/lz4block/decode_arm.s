@@ -19,12 +19,12 @@
 
 #define minMatch	$4
 
-// func decodeBlock(dst, src []byte) int
-TEXT ·decodeBlock(SB), NOFRAME|NOSPLIT, $-4-28
-	MOVW dst_base +0(FP), dst
-	MOVW dst_len  +4(FP), dstend
-	MOVW src_base+12(FP), src
-	MOVW src_len +16(FP), srcend
+// func decodeBlock(dst, src, dict []byte) int
+TEXT ·decodeBlock(SB), NOFRAME|NOSPLIT, $-4-40
+	MOVW dst_base  +0(FP), dst
+	MOVW dst_len   +4(FP), dstend
+	MOVW src_base +12(FP), src
+	MOVW src_len  +16(FP), srcend
 
 	CMP $0, srcend
 	BEQ shortSrc
@@ -183,7 +183,7 @@ copyMatchDone:
 
 end:
 	SUB  dstorig, dst, tmp1
-	MOVW tmp1, ret+24(FP)
+	MOVW tmp1, ret+36(FP)
 	RET
 
 	// The three error cases have distinct labels so we can put different
@@ -193,5 +193,5 @@ shortDst:
 shortSrc:
 corrupt:
 	MOVW $-1, tmp1
-	MOVW tmp1, ret+24(FP)
+	MOVW tmp1, ret+36(FP)
 	RET

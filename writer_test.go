@@ -1,6 +1,7 @@
 package lz4_test
 
 import (
+	"archive/tar"
 	"bytes"
 	"fmt"
 	"io"
@@ -254,5 +255,51 @@ func TestWriterLegacy(t *testing.T) {
 				t.Fatal("uncompressed compressed output different from source")
 			}
 		})
+	}
+}
+
+func TestWriterConcurrency(t *testing.T) {
+	const someGiantFile = "testdata/vmlinux_LZ4_19377"
+
+	out := new(bytes.Buffer)
+	zw := lz4.NewWriter(out)
+	if err := zw.Apply(
+		lz4.ConcurrencyOption(4),
+		lz4.BlockSizeOption(lz4.Block4Mb),
+		lz4.ChecksumOption(true)); err != nil {
+		t.Fatal(err)
+	}
+
+	// Test writing a tar file.
+	tw := tar.NewWriter(zw)
+	stat, err := os.Stat(someGiantFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	header, err := tar.FileInfoHeader(stat, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.WriteHeader(header); err != nil {
+		t.Fatal(err)
+	}
+	src, err := os.Open(someGiantFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	copyBuf := make([]byte, 16 << 20) // Use a 16 MiB buffer.
+	if _, err := io.CopyBuffer(tw, src, copyBuf); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	zr := lz4.NewReader(out)
+	if _, err := io.Copy(ioutil.Discard, zr); err != nil {
+		t.Fatal(err)
 	}
 }

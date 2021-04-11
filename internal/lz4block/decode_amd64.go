@@ -1,4 +1,3 @@
-// +build amd64 arm
 // +build !appengine
 // +build gc
 // +build !noasm

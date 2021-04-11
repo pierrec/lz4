@@ -1,12 +1,10 @@
-// +build !amd64,!arm appengine !gc noasm
-
 package lz4block
 
 import (
 	"encoding/binary"
 )
 
-func decodeBlock(dst, src, dict []byte) (ret int) {
+func decodeBlockGo(dst, src, dict []byte) (ret int) {
 	// Restrict capacities so we don't read or write out of bounds.
 	dst = dst[:len(dst):len(dst)]
 	src = src[:len(src):len(src)]

@@ -130,6 +130,8 @@ func (b *Blocks) initR(f *Frame, num int, src io.Reader) (chan []byte, error) {
 				data, err := block.Uncompress(f, size.Get(), nil, false)
 				if err != nil {
 					b.closeR(err)
+					// Close the block channel to indicate an error.
+					close(c)
 				} else {
 					c <- data
 				}
@@ -150,12 +152,23 @@ func (b *Blocks) initR(f *Frame, num int, src io.Reader) (chan []byte, error) {
 	// on the returned channel.
 	go func(leg bool) {
 		defer close(blocks)
+		skipBlocks := false
 		for c := range blocks {
-			buf := <-c
+			buf, ok := <-c
+			if !ok {
+				// A closed channel indicates an error.
+				// All remaining channels should be discarded.
+				skipBlocks = true
+				continue
+			}
 			if buf == nil {
 				// Signal to end the loop.
 				close(c)
 				return
+			}
+			if skipBlocks {
+				// A previous error has occurred, skipping remaining channels.
+				continue
 			}
 			// Perform checksum now as the blocks are received in order.
 			if f.Descriptor.Flags.ContentChecksum() {

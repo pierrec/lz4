@@ -269,3 +269,19 @@ func TestReaderLegacy(t *testing.T) {
 		}
 	}
 }
+
+func TestUncompressBadBlock(t *testing.T) {
+	f, err := os.Open("testdata/malformed.block.lz4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	zr := lz4.NewReader(f)
+	if err := zr.Apply(lz4.ConcurrencyOption(4)); err != nil {
+		t.Fatal(err)
+	}
+	_, err = ioutil.ReadAll(zr)
+	if err == nil || !strings.Contains(err.Error(), "invalid block checksum") {
+		t.Error("bad block is not detected")
+	}
+}

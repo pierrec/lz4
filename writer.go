@@ -173,7 +173,10 @@ func (z *Writer) writeHeader() error {
 
 // Write compresses data from the supplied buffer into the underlying io.Writer.
 // Write does not return until the data has been written.
-func (z *Writer) Write(buf []byte) (int, error) {
+func (z *Writer) Write(buffer []byte) (int, error) {
+	buf := make([]byte, len(buffer))
+	copy(buf, buffer)
+
 	if !z.Header.done {
 		if err := z.writeHeader(); err != nil {
 			return 0, err
@@ -223,7 +226,10 @@ func (z *Writer) Write(buf []byte) (int, error) {
 }
 
 // compressBlock compresses a block.
-func (z *Writer) compressBlock(data []byte) error {
+func (z *Writer) compressBlock(dataBlock []byte) error {
+	data := make([]byte, len(dataBlock))
+	copy(data, dataBlock)
+
 	if !z.NoChecksum {
 		_, _ = z.checksum.Write(data)
 	}

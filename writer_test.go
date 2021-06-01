@@ -1,6 +1,7 @@
 package lz4_test
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"io"
@@ -181,5 +182,62 @@ func TestIssue71(t *testing.T) {
 				t.Fatal("should be compressible")
 			}
 		})
+	}
+}
+
+func TestIssue125(t *testing.T) {
+	goldenFiles := []string{
+		"testdata/e.txt",
+		"testdata/gettysburg.txt",
+		"testdata/Mark.Twain-Tom.Sawyer.txt",
+		"testdata/Mark.Twain-Tom.Sawyer_long.txt",
+		"testdata/pg1661.txt",
+		"testdata/pi.txt",
+		"testdata/random.data",
+		"testdata/repeat.txt",
+		"testdata/vmlinux_LZ4_19377",
+	}
+
+	for _, fname := range goldenFiles {
+		for _, concurrency := range []int{0, 4, -1} {
+			label := fmt.Sprintf("%s(%d)", fname, concurrency)
+			t.Run(label, func(t *testing.T) {
+				t.Parallel()
+
+				// this issue doesn't happen when read the entire file into a []byte
+				// and then use bytes.NewReader() since it actually does a copy on its
+				// own for each call to Read(), so we use *os.File directly with Copy()
+				f, err := os.Open(fname)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer f.Close()
+
+				var out bytes.Buffer
+				writer := lz4.NewWriter(&out).WithConcurrency(concurrency)
+				writer.Header = lz4.Header{
+					// we use a small enough block size so it is easier to trigger the issue
+					// as most examples files are small
+					BlockMaxSize: 1024 * 64,
+				}
+
+				_, err = io.Copy(writer, f)
+				if err != nil {
+					t.Fatal(err)
+				}
+				writer.Close()
+
+				reader := lz4.NewReader(&out)
+
+				var d bytes.Buffer
+				decompressed := bufio.NewWriter(&d)
+
+				_, err = io.Copy(decompressed, reader)
+				if err != nil {
+					t.Fail()
+					t.Log(err)
+				}
+			})
+		}
 	}
 }

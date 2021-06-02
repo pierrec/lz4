@@ -84,13 +84,8 @@ func (z *Writer) WithConcurrency(n int) *Writer {
 					z.err = err
 				}
 			}
-			if isCompressed := res.size&compressedBlockFlag == 0; isCompressed {
-				// It is now safe to release the buffer as no longer in use by any goroutine.
-				putBuffer(cap(res.data), res.data)
-			} else {
-				// if the block is uncompressed, return it to the buffer to the pool
-				putBuffer(z.Header.BlockMaxSize, res.data)
-			}
+			// It is now safe to release the buffer as no longer in use by any goroutine.
+			putBuffer(cap(res.data), res.data)
 			if h := z.OnBlockDone; h != nil {
 				h(n)
 			}
@@ -412,11 +407,13 @@ func writerCompressBlock(c chan zResult, header Header, data []byte) {
 	if zn > 0 && zn < len(data) {
 		res.size = uint32(zn)
 		res.data = zdata[:zn]
-		// if it is compressed, we return the input buffer sooner to the pool
+		// release the uncompressed block since it is not used anymore
 		putBuffer(header.BlockMaxSize, data)
 	} else {
 		res.size = uint32(len(data)) | compressedBlockFlag
 		res.data = data
+		// release the compressed block since it was not used
+		putBuffer(header.BlockMaxSize, zdata)
 	}
 	if header.BlockChecksum {
 		res.checksum = xxh32.ChecksumZero(res.data)

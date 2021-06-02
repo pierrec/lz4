@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"runtime"
-	"sync"
 
 	"github.com/pierrec/lz4/internal/xxh32"
 )
@@ -30,7 +29,6 @@ type Writer struct {
 	data      []byte        // Data to be compressed + buffer for compressed data.
 	idx       int           // Index into data.
 	hashtable [winSize]int  // Hash table used in CompressBlock().
-	buffers   sync.Pool
 
 	// For concurrency.
 	c   chan chan zResult // Channel for block compression goroutines and writer goroutine.
@@ -91,7 +89,7 @@ func (z *Writer) WithConcurrency(n int) *Writer {
 				putBuffer(cap(res.data), res.data)
 			} else {
 				// if the block is uncompressed, return it the buffer to the pool
-				z.buffers.Put(res.data)
+				putBuffer(z.Header.BlockMaxSize, res.data)
 			}
 			if h := z.OnBlockDone; h != nil {
 				h(n)
@@ -180,10 +178,6 @@ func (z *Writer) writeHeader() error {
 // Write does not return until the data has been written.
 func (z *Writer) Write(buf []byte) (int, error) {
 	if !z.Header.done {
-		// prepare the sync.Pool on the first write since we now know the block max size
-		z.buffers.New = func() interface{} {
-			return make([]byte, z.Header.BlockMaxSize)
-		}
 		if err := z.writeHeader(); err != nil {
 			return 0, err
 		}
@@ -242,10 +236,10 @@ func (z *Writer) compressBlock(data []byte) error {
 		z.c <- c // Send now to guarantee order
 
 		// get a buffer from the pool and copy the data over
-		block := z.buffers.Get().([]byte)[:len(data)]
+		block := getBuffer(z.Header.BlockMaxSize)[:len(data)]
 		copy(block, data)
 
-		go writerCompressBlock(c, z.Header, block, &z.buffers)
+		go writerCompressBlock(c, z.Header, block)
 		return nil
 	}
 
@@ -313,7 +307,7 @@ func (z *Writer) Flush() error {
 		return nil
 	}
 
-	data := z.buffers.Get().([]byte)[:len(z.data[:z.idx])]
+	data := getBuffer(z.Header.BlockMaxSize)[:len(z.data[:z.idx])]
 	copy(data, z.data[:z.idx])
 
 	z.idx = 0
@@ -325,7 +319,7 @@ func (z *Writer) Flush() error {
 	}
 	c := make(chan zResult)
 	z.c <- c
-	writerCompressBlock(c, z.Header, data, &z.buffers)
+	writerCompressBlock(c, z.Header, data)
 	return nil
 }
 
@@ -404,7 +398,7 @@ func (z *Writer) writeUint32(x uint32) error {
 
 // writerCompressBlock compresses data into a pooled buffer and writes its result
 // out to the input channel.
-func writerCompressBlock(c chan zResult, header Header, data []byte, pool *sync.Pool) {
+func writerCompressBlock(c chan zResult, header Header, data []byte) {
 	zdata := getBuffer(header.BlockMaxSize)
 	// The compressed block size cannot exceed the input's.
 	var zn int
@@ -419,9 +413,7 @@ func writerCompressBlock(c chan zResult, header Header, data []byte, pool *sync.
 		res.size = uint32(zn)
 		res.data = zdata[:zn]
 		// if it is compressed, we return the input buffer sooner to the pool
-		if pool != nil {
-			pool.Put(data)
-		}
+		putBuffer(header.BlockMaxSize, data)
 	} else {
 		res.size = uint32(len(data)) | compressedBlockFlag
 		res.data = data

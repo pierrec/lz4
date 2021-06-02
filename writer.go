@@ -88,7 +88,7 @@ func (z *Writer) WithConcurrency(n int) *Writer {
 				// It is now safe to release the buffer as no longer in use by any goroutine.
 				putBuffer(cap(res.data), res.data)
 			} else {
-				// if the block is uncompressed, return it the buffer to the pool
+				// if the block is uncompressed, return it to the buffer to the pool
 				putBuffer(z.Header.BlockMaxSize, res.data)
 			}
 			if h := z.OnBlockDone; h != nil {

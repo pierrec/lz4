@@ -181,3 +181,22 @@ func TestIssue116(t *testing.T) {
 		t.Fatalf("expected %v, got nil", lz4errors.ErrInvalidSourceShortBuffer)
 	}
 }
+
+func TestWriteLiteralLen(t *testing.T) {
+	for _, c := range []struct {
+		dstlen int
+		src    string
+	}{
+		// These used to panic when writing literal lengths.
+		{41, "00000\b000\xa4000\xe6000\v00" +
+			"0\xb7000\xb8000#000\x820\x00\x00\x00\x00\x00" +
+			"\x00\x00\x00\x0000\xff0000\x00000,000e" +
+			"000000000000000000000"},
+		{62, "00000r000o000a000s000e000tion, 00000e000" +
+			"a0d0000t000p000tition, 0o000i000e0c0000o" +
+			"0 00000000000000000000000000000000000000000"},
+	} {
+		dst := make([]byte, c.dstlen)
+		lz4block.CompressBlock([]byte(c.src), dst)
+	}
+}

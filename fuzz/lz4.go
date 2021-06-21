@@ -81,7 +81,7 @@ func FuzzUncompressBlock(data []byte) int {
 	}
 	decomp = decomp[:len(data)]
 
-	n, err := lz4.UncompressBlock(data, decomp, nil)
+	n, err := lz4.UncompressBlock(data, decomp)
 	if n > len(decomp) {
 		panic("uncompressed length greater than buffer")
 	}

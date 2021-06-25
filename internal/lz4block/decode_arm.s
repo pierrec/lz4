@@ -1,6 +1,7 @@
 // +build gc
 // +build !noasm
 
+#include "go_asm.h"
 #include "textflag.h"
 
 // Register allocation.
@@ -16,8 +17,6 @@
 #define tmp1	R8
 #define tmp2	R9
 #define tmp3	R12
-
-#define minMatch	$4
 
 // func decodeBlockNodict(dst, src []byte) int
 TEXT ·decodeBlockNodict(SB), NOFRAME+NOSPLIT, $-4-28
@@ -95,9 +94,6 @@ copyLiteralLoopCond:
 	SUB.S  $4, len
 	BPL    copyLiteralLoop
 
-	// Restore len, which is now negative.
-	ADD $4, len
-
 copyLiteralFinish:
 	// Copy remaining 0-3 bytes.
 	TST        $2, len
@@ -106,8 +102,8 @@ copyLiteralFinish:
 	MOVW.NE    tmp2 >> 8, tmp1
 	MOVB.NE.P  tmp1, 1(dst)
 	TST        $1, len
-	MOVBU.NE.P 1(src), tmp1
-	MOVB.NE.P  tmp1, 1(dst)
+	MOVBU.NE.P 1(src), tmp3
+	MOVB.NE.P  tmp3, 1(dst)
 
 copyLiteralDone:
 	CMP src, srcend
@@ -123,8 +119,7 @@ copyLiteralDone:
 	BHI   shortSrc
 	MOVBU -2(src), offset
 	MOVBU -1(src), tmp1
-	ORR   tmp1 << 8, offset
-	CMP   $0, offset
+	ORR.S tmp1 << 8, offset
 	BEQ   corrupt
 
 	// Read rest of match length.
@@ -142,7 +137,7 @@ readMatchlenLoop:
 readMatchlenDone:
 	// Bounds check dst+len+minMatch and match = dst-offset.
 	ADD    dst, len, tmp1
-	ADD    minMatch, tmp1
+	ADD    $const_minMatch, tmp1
 	CMP    dstend, tmp1
 	//BHI  shortDst	// Uncomment for distinct error codes.
 	SUB    offset, dst, match

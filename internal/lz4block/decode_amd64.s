@@ -131,27 +131,17 @@ lit_len_loop_pre:
 	CMPQ CX, $0xF
 	JNE copy_literal
 
+	// do { BX = src[si++]; lit_len += BX } while (BX == 0xFF).
 lit_len_loop:
-	// for src[si] == 0xFF
-	CMPB (SI), $0xFF
-	JNE lit_len_finalise
+	CMPQ SI, R9
+	JGE err_short_buf
 
-	// bounds check src[si+1]
-	LEAQ 1(SI), AX
-	CMPQ AX, R9
-	JGT err_short_buf
-
-	// lit_len += 0xFF
-	ADDQ $0xFF, CX
+	MOVBLZX (SI), BX
 	INCQ SI
-	JMP lit_len_loop
+	ADDQ BX, CX
 
-lit_len_finalise:
-	// lit_len += int(src[si])
-	// si++
-	MOVBQZX (SI), AX
-	ADDQ AX, CX
-	INCQ SI
+	CMPB BX, $0xFF
+	JE lit_len_loop
 
 copy_literal:
 	// bounds check src and dst
@@ -247,27 +237,17 @@ match_len_loop_pre:
 	CMPB CX, $0xF
 	JNE copy_match
 
+	// do { BX = src[si++]; mlen += BX } while (BX == 0xFF).
 match_len_loop:
-	// for src[si] == 0xFF
-	// lit_len += 0xFF
-	CMPB (SI), $0xFF
-	JNE match_len_finalise
+	CMPQ SI, R9
+	JGE err_short_buf
 
-	// bounds check src[si+1]
-	LEAQ 1(SI), AX
-	CMPQ AX, R9
-	JGT err_short_buf
-
-	ADDQ $0xFF, CX
+	MOVBLZX (SI), BX
 	INCQ SI
-	JMP match_len_loop
+	ADDQ BX, CX
 
-match_len_finalise:
-	// lit_len += int(src[si])
-	// si++
-	MOVBQZX (SI), AX
-	ADDQ AX, CX
-	INCQ SI
+	CMPB BX, $0xFF
+	JE match_len_loop
 
 copy_match:
 	// mLen += minMatch

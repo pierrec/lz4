@@ -193,6 +193,11 @@ func TestDecodeWithDict(t *testing.T) {
 		// First part in dictionary, rest in dst.
 		{"\x35foo\x09\x00\x401234", "0barbaz", "foobarbazfoo1234"},
 
+		// Same, but >16 bytes before the end,
+		// to test the short match shortcut in the amd64 decoder.
+		{"\x35abc\x09\x00\xf0\x0f0123456789abcdefghijklmnopqrst", "012defghi",
+			"abcdefghiabc0123456789abcdefghijklmnopqrst"},
+
 		// Offset points before start of dictionary.
 		{"\x35foo\xff\xff\x401234", "XYZ", ""},
 	} {

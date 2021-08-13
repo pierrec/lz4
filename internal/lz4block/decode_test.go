@@ -182,3 +182,37 @@ func TestDecodeBlockInvalid(t *testing.T) {
 		})
 	}
 }
+
+func TestDecodeWithDict(t *testing.T) {
+	for _, c := range []struct {
+		src, dict, want string // If want == "", expect an error.
+	}{
+		// Entire match in dictionary.
+		{"\x11b\x0a\x00\x401234", "barbazquux", "barbaz1234"},
+
+		// First part in dictionary, rest in dst.
+		{"\x35foo\x09\x00\x401234", "0barbaz", "foobarbazfoo1234"},
+
+		// Offset points before start of dictionary.
+		{"\x35foo\xff\xff\x401234", "XYZ", ""},
+	} {
+		// Add sentinel for debugging.
+		dict := []byte(c.dict + "ABCD")[:len(c.dict)]
+		dst := make([]byte, 100)
+
+		r := decodeBlock(dst, []byte(c.src), dict)
+
+		if c.want == "" {
+			if r >= 0 {
+				t.Error("expected an error, got", r)
+			}
+		} else {
+			switch {
+			case r < 0:
+				t.Errorf("error %d for %q", r, c.want)
+			case string(dst[:r]) != c.want:
+				t.Errorf("expected %q, got %q", c.want, dst[:r])
+			}
+		}
+	}
+}

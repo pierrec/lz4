@@ -54,12 +54,13 @@ readLitlenDone:
 	BEQ copyLiteralDone
 
 	// Bounds check dst+len and src+len.
-	ADD    dst, len, tmp1
-	CMP    dstend, tmp1
-	//BHI  shortDst	// Uncomment for distinct error codes.
-	ADD    src, len, tmp2
-	CMP.LS srcend, tmp2
-	BHI    shortSrc
+	ADD.S    dst, len, tmp1
+	ADD.CC.S src, len, tmp2
+	BCS      shortSrc
+	CMP      dstend, tmp1
+	//BHI    shortDst // Uncomment for distinct error codes.
+	CMP.LS   srcend, tmp2
+	BHI      shortSrc
 
 	// Copy literal.
 	CMP $4, len
@@ -115,7 +116,8 @@ copyLiteralDone:
 	AND $15, token, len
 
 	// Read offset.
-	ADD   $2, src
+	ADD.S $2, src
+	BCS   shortSrc
 	CMP   srcend, src
 	BHI   shortSrc
 	MOVBU -2(src), offset

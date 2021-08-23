@@ -44,7 +44,8 @@ readLitlenLoop:
 	CMP     src, srcend
 	BEQ     shortSrc
 	MOVBU.P 1(src), tmp1
-	ADD     tmp1, len
+	ADD.S   tmp1, len
+	BVS     shortDst
 	CMP     $255, tmp1
 	BEQ     readLitlenLoop
 
@@ -130,7 +131,8 @@ readMatchlenLoop:
 	CMP     src, srcend
 	BEQ     shortSrc
 	MOVBU.P 1(src), tmp1
-	ADD     tmp1, len
+	ADD.S   tmp1, len
+	BVS     shortDst
 	CMP     $255, tmp1
 	BEQ     readMatchlenLoop
 

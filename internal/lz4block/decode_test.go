@@ -183,6 +183,36 @@ func TestDecodeBlockInvalid(t *testing.T) {
 	}
 }
 
+// Literal lengths should be checked for overflow.
+//
+// This test exists primarily for 32-bit platforms.
+// Since a length n takes around n/255 bytes to encode,
+// overflow can only occur in blocks larger than 32PiB and
+// decodeBlock will error out because the literal is too small.
+func TestLongLengths(t *testing.T) {
+	// n + 15 is large enough to overflow uint32.
+	const (
+		n      = (1 << 32) / 255
+		remain = (255*n + 15) % (1 << 32)
+	)
+
+	src := make([]byte, 0, 100+n) // Just over 16MiB.
+	src = append(src, '\xf0')
+	for i := 0; i < n; i++ {
+		src = append(src, 255)
+	}
+	src = append(src, 0)
+	for i := 0; i < remain; i++ {
+		src = append(src, 'A'+byte(i))
+	}
+
+	dst := make([]byte, 2*remain)
+	r := decodeBlock(dst, src, nil)
+	if r >= 0 {
+		t.Errorf("want error, got %d (remain=%d)", r, remain)
+	}
+}
+
 func TestDecodeWithDict(t *testing.T) {
 	for _, c := range []struct {
 		src, dict, want string // If want == "", expect an error.

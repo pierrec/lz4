@@ -44,7 +44,8 @@ readLitlenLoop:
 	CMP     src, srcend
 	BEQ     shortSrc
 	MOVBU.P 1(src), tmp1
-	ADD     tmp1, len
+	ADD.S   tmp1, len
+	BVS     shortDst
 	CMP     $255, tmp1
 	BEQ     readLitlenLoop
 
@@ -53,12 +54,13 @@ readLitlenDone:
 	BEQ copyLiteralDone
 
 	// Bounds check dst+len and src+len.
-	ADD    dst, len, tmp1
-	CMP    dstend, tmp1
-	//BHI  shortDst	// Uncomment for distinct error codes.
-	ADD    src, len, tmp2
-	CMP.LS srcend, tmp2
-	BHI    shortSrc
+	ADD.S    dst, len, tmp1
+	ADD.CC.S src, len, tmp2
+	BCS      shortSrc
+	CMP      dstend, tmp1
+	//BHI    shortDst // Uncomment for distinct error codes.
+	CMP.LS   srcend, tmp2
+	BHI      shortSrc
 
 	// Copy literal.
 	CMP $4, len
@@ -96,14 +98,15 @@ copyLiteralLoopCond:
 
 copyLiteralFinish:
 	// Copy remaining 0-3 bytes.
-	TST        $2, len
-	MOVHU.NE.P 2(src), tmp2
-	MOVB.NE.P  tmp2, 1(dst)
-	MOVW.NE    tmp2 >> 8, tmp1
-	MOVB.NE.P  tmp1, 1(dst)
-	TST        $1, len
-	MOVBU.NE.P 1(src), tmp3
-	MOVB.NE.P  tmp3, 1(dst)
+	// At this point, len may be < 0, but len&3 is still accurate.
+	TST       $1, len
+	MOVB.NE.P 1(src), tmp3
+	MOVB.NE.P tmp3, 1(dst)
+	TST       $2, len
+	MOVB.NE.P 2(src), tmp1
+	MOVB.NE.P tmp1, 2(dst)
+	MOVB.NE   -1(src), tmp2
+	MOVB.NE   tmp2, -1(dst)
 
 copyLiteralDone:
 	CMP src, srcend
@@ -114,7 +117,8 @@ copyLiteralDone:
 	AND $15, token, len
 
 	// Read offset.
-	ADD   $2, src
+	ADD.S $2, src
+	BCS   shortSrc
 	CMP   srcend, src
 	BHI   shortSrc
 	MOVBU -2(src), offset
@@ -130,7 +134,8 @@ readMatchlenLoop:
 	CMP     src, srcend
 	BEQ     shortSrc
 	MOVBU.P 1(src), tmp1
-	ADD     tmp1, len
+	ADD.S   tmp1, len
+	BVS     shortDst
 	CMP     $255, tmp1
 	BEQ     readMatchlenLoop
 

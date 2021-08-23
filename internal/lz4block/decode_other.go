@@ -54,12 +54,16 @@ func decodeBlockGo(dst, src, dict []byte) (ret int) {
 					}
 				}
 			case lLen == 0xF:
-				for src[si] == 0xFF {
-					lLen += 0xFF
+				for {
+					x := uint(src[si])
+					if lLen += x; int(lLen) < 0 {
+						return hasError
+					}
 					si++
+					if x != 0xFF {
+						break
+					}
 				}
-				lLen += uint(src[si])
-				si++
 				fallthrough
 			default:
 				copy(dst[di:di+lLen], src[si:si+lLen])
@@ -80,16 +84,19 @@ func decodeBlockGo(dst, src, dict []byte) (ret int) {
 		si += 2
 
 		// Match.
-		mLen := b & 0xF
-		if mLen == 0xF {
-			for src[si] == 0xFF {
-				mLen += 0xFF
+		mLen := minMatch + b&0xF
+		if mLen == minMatch+0xF {
+			for {
+				x := uint(src[si])
+				if mLen += x; int(mLen) < 0 {
+					return hasError
+				}
 				si++
+				if x != 0xFF {
+					break
+				}
 			}
-			mLen += uint(src[si])
-			si++
 		}
-		mLen += minMatch
 
 		// Copy the match.
 		if di < offset {

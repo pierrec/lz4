@@ -203,6 +203,9 @@ memmove_lit:
 	ADDQ dst_len+8(FP), R8
 	MOVQ src_base+24(FP), R9
 	ADDQ src_len+32(FP), R9
+	MOVQ dict_base+48(FP), R14
+	MOVQ dict_len+56(FP), R15
+	ADDQ R14, R15
 	MOVQ R8, R12
 	SUBQ $32, R12
 	MOVQ R9, R13

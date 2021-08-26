@@ -304,9 +304,7 @@ copy_match_loop:
 	INCQ DI
 	INCQ BX
 	DECQ CX
-
-	CMPQ CX, $0
-	JGT copy_match_loop
+	JNZ copy_match_loop
 
 	JMP loop
 

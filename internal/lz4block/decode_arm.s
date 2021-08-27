@@ -142,10 +142,11 @@ readMatchlenLoop:
 
 readMatchlenDone:
 	// Bounds check dst+len+minMatch.
-	ADD dst, len, tmp1
-	ADD $const_minMatch, tmp1
-	CMP dstend, tmp1
-	BHI shortDst
+	ADD.S    dst, len, tmp1
+	ADD.CC.S $const_minMatch, tmp1
+	BCS      shortDst
+	CMP      dstend, tmp1
+	BHI      shortDst
 
 	RSB dst, offset, match
 	CMP dstorig, match

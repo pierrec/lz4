@@ -11,15 +11,16 @@
 #define dstend	R3
 #define srcend	R4
 #define match	R5	// Match address.
-#define token	R6
-#define len	R7	// Literal and match lengths.
-#define offset	R6	// Match offset; overlaps with token.
-#define tmp1	R8
-#define tmp2	R9
+#define dictend	R6
+#define token	R7
+#define len	R8	// Literal and match lengths.
+#define offset	R7	// Match offset; overlaps with token.
+#define tmp1	R9
+#define tmp2	R11
 #define tmp3	R12
 
-// func decodeBlockNodict(dst, src []byte) int
-TEXT ·decodeBlockNodict(SB), NOFRAME+NOSPLIT, $-4-28
+// func decodeBlock(dst, src, dict []byte) int
+TEXT ·decodeBlock(SB), NOFRAME+NOSPLIT, $-4-40
 	MOVW dst_base  +0(FP), dst
 	MOVW dst_len   +4(FP), dstend
 	MOVW src_base +12(FP), src
@@ -140,15 +141,44 @@ readMatchlenLoop:
 	BEQ     readMatchlenLoop
 
 readMatchlenDone:
-	// Bounds check dst+len+minMatch and match = dst-offset.
-	ADD    dst, len, tmp1
-	ADD    $const_minMatch, tmp1
-	CMP    dstend, tmp1
-	//BHI  shortDst	// Uncomment for distinct error codes.
-	SUB    offset, dst, match
-	CMP.LS match, dstorig
-	BHI    corrupt
+	// Bounds check dst+len+minMatch.
+	ADD dst, len, tmp1
+	ADD $const_minMatch, tmp1
+	CMP dstend, tmp1
+	BHI shortDst
 
+	RSB dst, offset, match
+	CMP dstorig, match
+	BGE copyMatch4
+
+	// match < dstorig means the match starts in the dictionary,
+	// at len(dict) - offset + (dst - dstorig).
+	MOVW dict_base+24(FP), match
+	MOVW dict_len +28(FP), dictend
+
+	ADD $const_minMatch, len
+
+	RSB   dst, dstorig, tmp1
+	RSB   dictend, offset, tmp2
+	ADD.S tmp2, tmp1
+	BMI   shortDict
+	ADD   match, dictend
+	ADD   tmp1, match
+
+copyDict:
+	MOVBU.P 1(match), tmp1
+	MOVB.P  tmp1, 1(dst)
+	SUB.S   $1, len
+	CMP.NE  match, dictend
+	BNE     copyDict
+
+	// If the match extends beyond the dictionary, the rest is at dstorig.
+	CMP  $0, len
+	BEQ  copyMatchDone
+	MOVW dstorig, match
+	B    copyMatch
+
+	// Copy a regular match.
 	// Since len+minMatch is at least four, we can do a 4× unrolled
 	// byte copy loop. Using MOVW instead of four byte loads is faster,
 	// but to remain portable we'd have to align match first, which is
@@ -183,15 +213,16 @@ copyMatchDone:
 
 end:
 	SUB  dstorig, dst, tmp1
-	MOVW tmp1, ret+24(FP)
+	MOVW tmp1, ret+36(FP)
 	RET
 
-	// The three error cases have distinct labels so we can put different
+	// The error cases have distinct labels so we can put different
 	// return codes here when debugging, or if the error returns need to
 	// be changed.
+shortDict:
 shortDst:
 shortSrc:
 corrupt:
 	MOVW $-1, tmp1
-	MOVW tmp1, ret+24(FP)
+	MOVW tmp1, ret+36(FP)
 	RET

@@ -102,12 +102,10 @@ loop:
 	// match length, we already have the offset.
 	CMPQ CX, $0xF
 	JEQ match_len_loop_pre
-	CMPQ DX, R11
-	JLT match_len_loop_pre
 	CMPQ DX, $8
 	JLT match_len_loop_pre
 	CMPQ AX, R11
-	JLT err_short_buf
+	JLT match_len_loop_pre
 
 	// memcpy(op + 0, match + 0, 8);
 	MOVQ (AX), BX

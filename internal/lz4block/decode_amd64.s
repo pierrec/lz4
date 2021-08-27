@@ -2,6 +2,7 @@
 // +build gc
 // +build !noasm
 
+#include "go_asm.h"
 #include "textflag.h"
 
 // AX scratch
@@ -47,7 +48,7 @@ TEXT ·decodeBlock(SB), NOSPLIT, $48-80
 loop:
 	// for si < len(src)
 	CMPQ SI, R9
-	JGE end
+	JAE end
 
 	// token := uint32(src[si])
 	MOVBQZX (SI), DX
@@ -63,9 +64,9 @@ loop:
 	CMPQ CX, $0xF
 	JEQ lit_len_loop_pre
 	CMPQ DI, R12
-	JGE lit_len_loop_pre
+	JAE lit_len_loop_pre
 	CMPQ SI, R13
-	JGE lit_len_loop_pre
+	JAE lit_len_loop_pre
 
 	// copy shortcut
 
@@ -92,11 +93,13 @@ loop:
 	// offset := uint16(data[:2])
 	MOVWQZX (SI), DX
 	ADDQ $2, SI
+	JC err_short_buf
 
 	MOVQ DI, AX
 	SUBQ DX, AX
+	JC err_corrupt
 	CMPQ AX, DI
-	JGT err_short_buf
+	JA err_short_buf
 
 	// if we can't do the second stage then jump straight to read the
 	// match length, we already have the offset.
@@ -105,7 +108,7 @@ loop:
 	CMPQ DX, $8
 	JLT match_len_loop_pre
 	CMPQ AX, R11
-	JLT match_len_loop_pre
+	JB match_len_loop_pre
 
 	// memcpy(op + 0, match + 0, 8);
 	MOVQ (AX), BX
@@ -117,7 +120,7 @@ loop:
 	MOVW 16(AX), BX
 	MOVW BX, 16(DI)
 
-	LEAQ 4(DI)(CX*1), DI // minmatch
+	LEAQ const_minMatch(DI)(CX*1), DI
 
 	// shortcut complete, load next token
 	JMP loop
@@ -132,7 +135,7 @@ lit_len_loop_pre:
 	// do { BX = src[si++]; lit_len += BX } while (BX == 0xFF).
 lit_len_loop:
 	CMPQ SI, R9
-	JGE err_short_buf
+	JAE err_short_buf
 
 	MOVBLZX (SI), BX
 	INCQ SI
@@ -143,13 +146,17 @@ lit_len_loop:
 
 copy_literal:
 	// bounds check src and dst
-	LEAQ (SI)(CX*1), AX
+	MOVQ SI, AX
+	ADDQ CX, AX
+	JC err_short_buf
 	CMPQ AX, R9
-	JGT err_short_buf
+	JA err_short_buf
 
-	LEAQ (DI)(CX*1), AX
-	CMPQ AX, R8
-	JGT err_short_buf
+	MOVQ DI, BX
+	ADDQ CX, BX
+	JC err_short_buf
+	CMPQ BX, R8
+	JA err_short_buf
 
 	// whats a good cut off to call memmove?
 	CMPQ CX, $16
@@ -211,21 +218,21 @@ memmove_lit:
 
 finish_lit_copy:
 	CMPQ SI, R9
-	JGE end
+	JAE end
 
 offset:
 	// CX := mLen
 	// free up DX to use for offset
 	MOVQ DX, CX
 
-	LEAQ 2(SI), AX
-	CMPQ AX, R9
-	JGT err_short_buf
-
 	// offset
-	// DX := int(src[si]) | int(src[si+1])<<8
-	MOVWQZX (SI), DX
+	// si += 2
+	// DX := int(src[si-2]) | int(src[si-1])<<8
 	ADDQ $2, SI
+	JC err_short_buf
+	CMPQ SI, R9
+	JA err_short_buf
+	MOVWQZX -2(SI), DX
 
 	// 0 offset is invalid
 	CMPQ DX, $0
@@ -241,7 +248,7 @@ match_len_loop_pre:
 	// do { BX = src[si++]; mlen += BX } while (BX == 0xFF).
 match_len_loop:
 	CMPQ SI, R9
-	JGE err_short_buf
+	JAE err_short_buf
 
 	MOVBLZX (SI), BX
 	INCQ SI
@@ -256,9 +263,11 @@ copy_match:
 
 	// check we have match_len bytes left in dst
 	// di+match_len < len(dst)
-	LEAQ (DI)(CX*1), AX
+	MOVQ DI, AX
+	ADDQ CX, AX
+	JC err_short_buf
 	CMPQ AX, R8
-	JGT err_short_buf
+	JA err_short_buf
 
 	// DX = offset
 	// CX = match_len
@@ -268,13 +277,14 @@ copy_match:
 
 	// check BX is within dst
 	// if BX < &dst
+	JC copy_match_from_dict
 	CMPQ BX, R11
-	JLT copy_match_from_dict
+	JBE copy_match_from_dict
 
 	// if offset + match_len < di
 	LEAQ (BX)(CX*1), AX
 	CMPQ DI, AX
-	JGT copy_interior_match
+	JA copy_interior_match
 
 	// AX := len(dst[:di])
 	// MOVQ DI, AX
@@ -294,9 +304,7 @@ copy_match_loop:
 	INCQ DI
 	INCQ BX
 	DECQ CX
-
-	CMPQ CX, $0
-	JGT copy_match_loop
+	JNZ copy_match_loop
 
 	JMP loop
 
@@ -331,7 +339,7 @@ copy_match_from_dict:
 	// check BX is within dict
 	// if BX < &dict
 	CMPQ BX, R14
-	JLT err_short_dict
+	JB err_short_dict
 
 	// if match_len > dict_bytes_available, match fits entirely within external dictionary : just copy
 	CMPQ CX, AX
@@ -389,7 +397,7 @@ copy_match_from_dict:
 	// if &dst + rest_size > di, copy byte by byte
 	CMPQ AX, DI
 
-	JGT copy_match_loop
+	JA copy_match_loop
 
 memmove_match:
 	// memmove(to, from, len)

@@ -185,10 +185,10 @@ func TestDecodeBlockInvalid(t *testing.T) {
 
 // Literal lengths should be checked for overflow.
 //
-// This test exists primarily for 32-bit platforms.
-// Since a length n takes around n/255 bytes to encode,
-// overflow can only occur in blocks larger than 32PiB and
-// decodeBlock will error out because the literal is too small.
+// This test exists primarily for 32-bit platforms. Since a length n takes
+// around n/255 bytes to encode, overflow can only occur on a 64-bit processor
+// in blocks larger than 32PiB and decodeBlock will error out because the
+// literal is too small.
 func TestLongLengths(t *testing.T) {
 	// n + 15 is large enough to overflow uint32.
 	const (

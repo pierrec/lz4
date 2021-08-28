@@ -159,6 +159,11 @@ func TestDecodeBlockInvalid(t *testing.T) {
 			"\x1b0\x01\x00000000000000",
 			len("\x1b0\x01\x00000000000000"),
 		},
+		{
+			"bounds-crasher", // Triggered a broken bounds check in amd64 decoder.
+			"\x000000",
+			10,
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			dst := make([]byte, test.size+8)

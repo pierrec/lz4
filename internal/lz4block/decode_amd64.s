@@ -18,7 +18,7 @@
 // R12 short output end
 // R13 short input end
 // R14 &dict
-// R15 &dict + len(dict)
+// R15 len(dict)
 
 // func decodeBlock(dst, src, dict []byte) int
 TEXT ·decodeBlock(SB), NOSPLIT, $48-80
@@ -35,7 +35,6 @@ TEXT ·decodeBlock(SB), NOSPLIT, $48-80
 
 	MOVQ dict_base+48(FP), R14
 	MOVQ dict_len+56(FP), R15
-	ADDQ R14, R15
 
 	// shortcut ends
 	// short output end
@@ -210,7 +209,6 @@ memmove_lit:
 	ADDQ src_len+32(FP), R9
 	MOVQ dict_base+48(FP), R14
 	MOVQ dict_len+56(FP), R15
-	ADDQ R14, R15
 	MOVQ R8, R12
 	SUBQ $32, R12
 	MOVQ R9, R13
@@ -332,14 +330,12 @@ copy_match_from_dict:
 	MOVQ R11, AX
 	SUBQ BX, AX
 
-	// BX = &dict_end - dict_bytes_available
+	// BX = len(dict) - dict_bytes_available
 	MOVQ R15, BX
 	SUBQ AX, BX
+	JS err_short_dict
 
-	// check BX is within dict
-	// if BX < &dict
-	CMPQ BX, R14
-	JB err_short_dict
+	ADDQ R14, BX
 
 	// if match_len > dict_bytes_available, match fits entirely within external dictionary : just copy
 	CMPQ CX, AX
@@ -376,7 +372,6 @@ copy_match_from_dict:
 	ADDQ src_len+32(FP), R9
 	MOVQ dict_base+48(FP), R14
 	MOVQ dict_len+56(FP), R15
-	ADDQ R14, R15
 	MOVQ R8, R12
 	SUBQ $32, R12
 	MOVQ R9, R13
@@ -428,7 +423,6 @@ memmove_match:
 	SUBQ $16, R13
 	MOVQ dict_base+48(FP), R14
 	MOVQ dict_len+56(FP), R15
-	ADDQ R14, R15
 
 	JMP loop
 

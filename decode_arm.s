@@ -18,12 +18,12 @@
 #define tmp2	R11
 #define tmp3	R12
 
-// func decodeBlock(dst, src []byte) int
-TEXT ·decodeBlock(SB), NOFRAME+NOSPLIT, $-8-56
-	MOVD dst_base  +0(FP), dst
-	MOVD dst_len   +8(FP), dstend
-	MOVD src_base +24(FP), src
-	MOVD src_len  +32(FP), srcend
+// func decodeBlock(dst, src, dict []byte) int
+TEXT ·decodeBlock(SB), NOFRAME+NOSPLIT, $-4-28
+	MOVW dst_base  +0(FP), dst
+	MOVW dst_len   +4(FP), dstend
+	MOVW src_base +12(FP), src
+	MOVW src_len  +16(FP), srcend
 
 	CMP $0, srcend
 	BEQ shortSrc
@@ -31,12 +31,12 @@ TEXT ·decodeBlock(SB), NOFRAME+NOSPLIT, $-8-56
 	ADD dst, dstend
 	ADD src, srcend
 
-	MOVD dst, dstorig
+	MOVW dst, dstorig
 
 loop:
 	// Read token. Extract literal length.
 	MOVBU.P 1(src), token
-	LSR     $4, token, len
+	MOVW    token >> 4, len
 	CMP     $15, len
 	BNE     readLitlenDone
 
@@ -44,7 +44,7 @@ readLitlenLoop:
 	CMP     src, srcend
 	BEQ     shortSrc
 	MOVBU.P 1(src), tmp1
-	ADDS    tmp1, len
+	ADD.S   tmp1, len
 	BVS     shortDst
 	CMP     $255, tmp1
 	BEQ     readLitlenLoop
@@ -54,86 +54,59 @@ readLitlenDone:
 	BEQ copyLiteralDone
 
 	// Bounds check dst+len and src+len.
-	ADDS     dst, len, tmp1
-	BCS      shortSrc
-	ADDS     src, len, tmp2
+	ADD.S    dst, len, tmp1
+	ADD.CC.S src, len, tmp2
 	BCS      shortSrc
 	CMP      dstend, tmp1
-	BHI      shortDst
-	CMP      srcend, tmp2
+	//BHI    shortDst // Uncomment for distinct error codes.
+	CMP.LS   srcend, tmp2
 	BHI      shortSrc
 
 	// Copy literal.
-	CMP $8, len
+	CMP $4, len
 	BLO copyLiteralFinish
 
-	// Copy 0-7 bytes until src is aligned.
+	// Copy 0-3 bytes until src is aligned.
 	TST        $1, src
-	BEQ        twos
-	MOVBU.P    1(src), tmp1
-	MOVB.P     tmp1, 1(dst)
-	SUB        $1, len
+	MOVBU.NE.P 1(src), tmp1
+	MOVB.NE.P  tmp1, 1(dst)
+	SUB.NE     $1, len
 
-twos:
 	TST        $2, src
-	BEQ        fours
-	MOVHU.P    2(src), tmp2
-	MOVB.P     tmp2, 1(dst)
-	LSR        $8, tmp2, tmp1
-	MOVB.P     tmp1, 1(dst)
-	SUB        $2, len
-
-fours:
-	TST        $4, src
-	BEQ        copyLiteralLoopCond
-	MOVWU.P    4(src), tmp2
-	MOVB.P     tmp2, 1(dst)
-	LSR        $8, tmp2, tmp1
-	MOVB.P     tmp1, 1(dst)
-	LSR        $16, tmp2, tmp3
-	MOVB.P     tmp3, 1(dst)
-	LSR        $24, tmp2, tmp1
-	MOVB.P     tmp1, 1(dst)
-	SUB        $4, len
+	MOVHU.NE.P 2(src), tmp2
+	MOVB.NE.P  tmp2, 1(dst)
+	MOVW.NE    tmp2 >> 8, tmp1
+	MOVB.NE.P  tmp1, 1(dst)
+	SUB.NE     $2, len
 
 	B copyLiteralLoopCond
 
 copyLiteralLoop:
 	// Aligned load, unaligned write.
-	MOVD.P 8(src), tmp1
-	MOVD.P tmp1, 8(dst)
+	MOVW.P 4(src), tmp1
+	MOVW   tmp1 >>  8, tmp2
+	MOVB   tmp2, 1(dst)
+	MOVW   tmp1 >> 16, tmp3
+	MOVB   tmp3, 2(dst)
+	MOVW   tmp1 >> 24, tmp2
+	MOVB   tmp2, 3(dst)
+	MOVB.P tmp1, 4(dst)
 copyLiteralLoopCond:
-	// Loop until len-8 < 0.
-	SUBS   $8, len
+	// Loop until len-4 < 0.
+	SUB.S  $4, len
 	BPL    copyLiteralLoop
 
 copyLiteralFinish:
-	// Copy remaining 0-7 bytes.
-	// At this point, len may be < 0, but len&7 is still accurate.
+	// Copy remaining 0-3 bytes.
+	// At this point, len may be < 0, but len&3 is still accurate.
 	TST       $1, len
-	BEQ       finishTwos
-	MOVB.P    1(src), tmp3
-	MOVB.P    tmp3, 1(dst)
-
-finishTwos:
+	MOVB.NE.P 1(src), tmp3
+	MOVB.NE.P tmp3, 1(dst)
 	TST       $2, len
-	BEQ       finishFours
-	MOVB.P    2(src), tmp1
-	MOVB.P    tmp1, 2(dst)
-	MOVB      -1(src), tmp2
-	MOVB      tmp2, -1(dst)
-
-finishFours:
-	TST       $4, len
-	BEQ       copyLiteralDone
-	MOVB.P    4(src), tmp1
-	MOVB.P    tmp1, 4(dst)
-	MOVB      -1(src), tmp2
-	MOVB      tmp2, -1(dst)
-	MOVB      -2(src), tmp1
-	MOVB      tmp1, -2(dst)
-	MOVB      -3(src), tmp2
-	MOVB      tmp2, -3(dst)
+	MOVB.NE.P 2(src), tmp1
+	MOVB.NE.P tmp1, 2(dst)
+	MOVB.NE   -1(src), tmp2
+	MOVB.NE   tmp2, -1(dst)
 
 copyLiteralDone:
 	CMP src, srcend
@@ -144,14 +117,13 @@ copyLiteralDone:
 	AND $15, token, len
 
 	// Read offset.
-	ADDS  $2, src
+	ADD.S $2, src
 	BCS   shortSrc
 	CMP   srcend, src
 	BHI   shortSrc
 	MOVBU -2(src), offset
 	MOVBU -1(src), tmp1
-	ORR   tmp1 << 8, offset
-	CMP   $0, offset
+	ORR.S tmp1 << 8, offset
 	BEQ   corrupt
 
 	// Read rest of match length.
@@ -162,25 +134,25 @@ readMatchlenLoop:
 	CMP     src, srcend
 	BEQ     shortSrc
 	MOVBU.P 1(src), tmp1
-	ADDS    tmp1, len
+	ADD.S   tmp1, len
 	BVS     shortDst
 	CMP     $255, tmp1
 	BEQ     readMatchlenLoop
 
 readMatchlenDone:
 	// Bounds check dst+len+minMatch.
-	ADDS     dst, len, tmp1
-	ADDS     $const_minMatch, tmp1
+	ADD.S    dst, len, tmp1
+	ADD.CC.S $const_minMatch, tmp1
 	BCS      shortDst
 	CMP      dstend, tmp1
 	BHI      shortDst
 
-	SUB offset, dst, match
+	RSB dst, offset, match
 	CMP dstorig, match
 
-	// match < dstorig means the match starts in the dictionary,
-	// but v3 doesn't support dictionary files.
-	BLT dictNotSupported
+  // match < dstorig means the match starts in the dictionary,
+  // but v3 doesn't support dictionary files.
+  BLT dictNotSupported
 
 	// Copy a regular match.
 	// Since len+minMatch is at least four, we can do a 4× unrolled
@@ -189,7 +161,7 @@ readMatchlenDone:
 	// too expensive. By alternating loads and stores, we also handle
 	// the case offset < 4.
 copyMatch4:
-	SUBS    $4, len
+	SUB.S   $4, len
 	MOVBU.P 4(match), tmp1
 	MOVB.P  tmp1, 4(dst)
 	MOVBU   -3(match), tmp2
@@ -201,12 +173,12 @@ copyMatch4:
 	BPL     copyMatch4
 
 	// Restore len, which is now negative.
-	ADDS  $4, len
+	ADD.S $4, len
 	BEQ   copyMatchDone
 
 copyMatch:
 	// Finish with a byte-at-a-time copy.
-	SUBS    $1, len
+	SUB.S   $1, len
 	MOVBU.P 1(match), tmp2
 	MOVB.P  tmp2, 1(dst)
 	BNE     copyMatch
@@ -217,25 +189,19 @@ copyMatchDone:
 
 end:
 	SUB  dstorig, dst, tmp1
-	MOVD tmp1, ret+48(FP)
+	MOVW tmp1, ret+24(FP)
 	RET
 
 	// The error cases have distinct labels so we can put different
 	// return codes here when debugging, or if the error returns need to
 	// be changed.
 dictNotSupported:
-	MOVD $-4, tmp1
-	MOVD tmp1, ret+48(FP)
+	MOVW $-4, tmp1
+	MOVW tmp1, ret+24(FP)
 	RET
 shortDst:
-	MOVD $-3, tmp1
-	MOVD tmp1, ret+48(FP)
-	RET
 shortSrc:
-	MOVD $-2, tmp1
-	MOVD tmp1, ret+48(FP)
-	RET
 corrupt:
-	MOVD $-1, tmp1
-	MOVD tmp1, ret+48(FP)
+	MOVW $-1, tmp1
+	MOVW tmp1, ret+24(FP)
 	RET

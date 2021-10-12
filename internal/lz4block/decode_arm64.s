@@ -102,21 +102,7 @@ fours:
 copyLiteralLoop:
 	// Aligned load, unaligned write.
 	MOVD.P 8(src), tmp1
-	LSR    $8, tmp1, tmp2
-	MOVB   tmp2, 1(dst)
-	LSR    $16, tmp1, tmp3
-	MOVB   tmp3, 2(dst)
-	LSR    $24, tmp1, tmp2
-	MOVB   tmp2, 3(dst)
-	LSR    $32, tmp1, tmp3
-	MOVB   tmp3, 4(dst)
-	LSR    $40, tmp1, tmp2
-	MOVB   tmp2, 5(dst)
-	LSR    $48, tmp1, tmp3
-	MOVB   tmp3, 6(dst)
-	LSR    $56, tmp1, tmp2
-	MOVB   tmp2, 7(dst)
-	MOVB.P tmp1, 8(dst)
+	MOVD.P tmp1, 8(dst)
 copyLiteralLoopCond:
 	// Loop until len-8 < 0.
 	SUBS   $8, len

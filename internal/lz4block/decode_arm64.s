@@ -1,6 +1,9 @@
 // +build gc
 // +build !noasm
 
+// This implementation assumes that strict alignment checking is turned off.
+// The Go compiler makes the same assumption.
+
 #include "go_asm.h"
 #include "textflag.h"
 
@@ -11,28 +14,30 @@
 #define dstend	R3
 #define srcend	R4
 #define match	R5	// Match address.
-#define dictend	R6
-#define token	R7
-#define len	R8	// Literal and match lengths.
-#define offset	R7	// Match offset; overlaps with token.
-#define tmp1	R9
-#define tmp2	R11
-#define tmp3	R12
+#define dict	R6
+#define dictlen	R7
+#define dictend	R8
+#define token	R9
+#define len	R10	// Literal and match lengths.
+#define lenRem	R11
+#define offset	R12	// Match offset.
+#define tmp1	R13
+#define tmp2	R14
+#define tmp3	R15
+#define tmp4	R16
 
 // func decodeBlock(dst, src, dict []byte) int
-TEXT ·decodeBlock(SB), NOFRAME+NOSPLIT, $-8-80
-	MOVD dst_base  +0(FP), dst
-	MOVD dst_len   +8(FP), dstend
-	MOVD src_base +24(FP), src
-	MOVD src_len  +32(FP), srcend
+TEXT ·decodeBlock(SB), NOFRAME+NOSPLIT, $0-80
+	LDP  dst_base+0(FP), (dst, dstend)
+	ADD  dst, dstend
+	MOVD dst, dstorig
 
-	CMP $0, srcend
-	BEQ shortSrc
-
-	ADD dst, dstend
+	LDP src_base+24(FP), (src, srcend)
+	CBZ srcend, shortSrc
 	ADD src, srcend
 
-	MOVD dst, dstorig
+	LDP dict_base+48(FP), (dict, dictlen)
+	ADD dict, dictlen, dictend
 
 loop:
 	// Read token. Extract literal length.
@@ -51,111 +56,69 @@ readLitlenLoop:
 	BEQ     readLitlenLoop
 
 readLitlenDone:
-	CMP $0, len
-	BEQ copyLiteralDone
+	CBZ len, copyLiteralDone
 
 	// Bounds check dst+len and src+len.
-	ADDS     dst, len, tmp1
-	BCS      shortSrc
-	ADDS     src, len, tmp2
-	BCS      shortSrc
-	CMP      dstend, tmp1
-	BHI      shortDst
-	CMP      srcend, tmp2
-	BHI      shortSrc
+	ADDS dst, len, tmp1
+	BCS  shortSrc
+	ADDS src, len, tmp2
+	BCS  shortSrc
+	CMP  dstend, tmp1
+	BHI  shortDst
+	CMP  srcend, tmp2
+	BHI  shortSrc
 
 	// Copy literal.
-	CMP $8, len
-	BLO copyLiteralFinish
-
-	// Copy 0-7 bytes until src is aligned.
-	TST        $1, src
-	BEQ        twos
-	MOVBU.P    1(src), tmp1
-	MOVB.P     tmp1, 1(dst)
-	SUB        $1, len
-
-twos:
-	TST        $2, src
-	BEQ        fours
-	MOVHU.P    2(src), tmp2
-	MOVB.P     tmp2, 1(dst)
-	LSR        $8, tmp2, tmp1
-	MOVB.P     tmp1, 1(dst)
-	SUB        $2, len
-
-fours:
-	TST        $4, src
-	BEQ        copyLiteralLoopCond
-	MOVWU.P    4(src), tmp2
-	MOVB.P     tmp2, 1(dst)
-	LSR        $8, tmp2, tmp1
-	MOVB.P     tmp1, 1(dst)
-	LSR        $16, tmp2, tmp3
-	MOVB.P     tmp3, 1(dst)
-	LSR        $24, tmp2, tmp1
-	MOVB.P     tmp1, 1(dst)
-	SUB        $4, len
-
-	B copyLiteralLoopCond
+	SUBS $16, len
+	BLO  copyLiteralShort
+	AND  $15, len, lenRem
 
 copyLiteralLoop:
-	// Aligned load, unaligned write.
-	MOVD.P 8(src), tmp1
-	MOVD.P tmp1, 8(dst)
-copyLiteralLoopCond:
-	// Loop until len-8 < 0.
-	SUBS   $8, len
-	BPL    copyLiteralLoop
+	SUBS  $16, len
+	LDP.P 16(src), (tmp1, tmp2)
+	STP.P (tmp1, tmp2), 16(dst)
+	BPL   copyLiteralLoop
 
-copyLiteralFinish:
-	// Copy remaining 0-7 bytes.
-	// At this point, len may be < 0, but len&7 is still accurate.
-	TST       $1, len
-	BEQ       finishTwos
-	MOVB.P    1(src), tmp3
-	MOVB.P    tmp3, 1(dst)
+	// lenRem = len%16 is the remaining number of bytes we need to copy.
+	// Since len was >= 16, we can do this in one load and one store,
+	// overlapping with the last load and store, without worrying about
+	// writing out of bounds.
+	ADD lenRem, src
+	ADD lenRem, dst
+	LDP -16(src), (tmp1, tmp2)
+	STP (tmp1, tmp2), -16(dst)
 
-finishTwos:
-	TST       $2, len
-	BEQ       finishFours
-	MOVB.P    2(src), tmp1
-	MOVB.P    tmp1, 2(dst)
-	MOVB      -1(src), tmp2
-	MOVB      tmp2, -1(dst)
+	B copyLiteralDone
 
-finishFours:
-	TST       $4, len
-	BEQ       copyLiteralDone
-	MOVB.P    4(src), tmp1
-	MOVB.P    tmp1, 4(dst)
-	MOVB      -1(src), tmp2
-	MOVB      tmp2, -1(dst)
-	MOVB      -2(src), tmp1
-	MOVB      tmp1, -2(dst)
-	MOVB      -3(src), tmp2
-	MOVB      tmp2, -3(dst)
+	// Copy literal of length 0-15.
+copyLiteralShort:
+	TBZ     $3, len, 3(PC)
+	MOVD.P  8(src), tmp1
+	MOVD.P  tmp1, 8(dst)
+	TBZ     $2, len, 3(PC)
+	MOVW.P  4(src), tmp2
+	MOVW.P  tmp2, 4(dst)
+	TBZ     $1, len, 3(PC)
+	MOVH.P  2(src), tmp3
+	MOVH.P  tmp3, 2(dst)
+	TBZ     $0, len, 3(PC)
+	MOVBU.P 1(src), tmp4
+	MOVB.P  tmp4, 1(dst)
 
 copyLiteralDone:
 	CMP src, srcend
 	BEQ end
-
-	// Initial part of match length.
-	// This frees up the token register for reuse as offset.
-	AND $15, token, len
 
 	// Read offset.
 	ADDS  $2, src
 	BCS   shortSrc
 	CMP   srcend, src
 	BHI   shortSrc
-	MOVBU -2(src), offset
-	MOVBU -1(src), tmp1
-	ORR   tmp1 << 8, offset
-	CMP   $0, offset
-	BEQ   corrupt
+	MOVHU -2(src), offset
+	CBZ   offset, corrupt
 
-	// Read rest of match length.
+	// Read match length.
+	AND $15, token, len
 	CMP $15, len
 	BNE readMatchlenDone
 
@@ -169,74 +132,82 @@ readMatchlenLoop:
 	BEQ     readMatchlenLoop
 
 readMatchlenDone:
-	// Bounds check dst+len+minMatch.
-	ADDS     dst, len, tmp1
-	ADDS     $const_minMatch, tmp1
-	BCS      shortDst
-	CMP      dstend, tmp1
-	BHI      shortDst
+	ADD $const_minMatch, len
+
+	// Bounds check dst+len.
+	ADDS dst, len, tmp2
+	BCS  shortDst
+	CMP  dstend, tmp2
+	BHI  shortDst
 
 	SUB offset, dst, match
 	CMP dstorig, match
-	BGE copyMatch4
+	BHS copyMatchTry8
 
 	// match < dstorig means the match starts in the dictionary,
 	// at len(dict) - offset + (dst - dstorig).
-	MOVD dict_base+48(FP), match
-	MOVD dict_len +56(FP), dictend
-
-	ADD $const_minMatch, len
-
-	SUB   dstorig, dst, tmp1
-	SUB   offset, dictend, tmp2
-	ADDS  tmp2, tmp1
-	BMI   shortDict
-	ADD   match, dictend
-	ADD   tmp1, match
+	SUB  dstorig, dst, tmp1
+	SUB  offset, dictlen, tmp2
+	ADDS tmp2, tmp1
+	BMI  shortDict
+	ADD  dict, tmp1, match
 
 copyDict:
-	MOVBU.P 1(match), tmp1
-	MOVB.P  tmp1, 1(dst)
+	MOVBU.P 1(match), tmp3
+	MOVB.P  tmp3, 1(dst)
 	SUBS    $1, len
-	BEQ     extends
-	CMP     match, dictend
+	CCMP    NE, dictend, match, $0b0100 // 0100 sets the Z (EQ) flag.
 	BNE     copyDict
 
-extends:
-	// If the match extends beyond the dictionary, the rest is at dstorig.
-	CMP  $0, len
-	BEQ  copyMatchDone
-	MOVD dstorig, match
-	B    copyMatch
+	CBZ  len, copyMatchDone
 
-	// Copy a regular match.
-	// Since len+minMatch is at least four, we can do a 4× unrolled
-	// byte copy loop. Using MOVW instead of four byte loads is faster,
-	// but to remain portable we'd have to align match first, which is
-	// too expensive. By alternating loads and stores, we also handle
-	// the case offset < 4.
-copyMatch4:
-	SUBS    $4, len
+	// If the match extends beyond the dictionary, the rest is at dstorig.
+	MOVD dstorig, match
+
+	// The code up to copyMatchLoop1 assumes len >= minMatch.
+	CMP $const_minMatch, len
+	BLO copyMatchLoop1
+
+copyMatchTry8:
+	// Copy doublewords if both len and offset are at least eight.
+	// A 16-at-a-time loop doesn't provide a further speedup.
+	CMP  $8, len
+	CCMP HS, offset, $8, $0
+	BLO  copyMatchLoop1
+
+	AND    $7, len, lenRem
+	SUB    $8, len
+copyMatchLoop8:
+	SUBS   $8, len
+	MOVD.P 8(match), tmp1
+	MOVD.P tmp1, 8(dst)
+	BPL    copyMatchLoop8
+
+	ADD  lenRem, match
+	ADD  lenRem, dst
+	MOVD -8(match), tmp2
+	MOVD tmp2, -8(dst)
+	B    copyMatchDone
+
+	// 4× unrolled byte copy loop for the overlapping case.
+copyMatchLoop4:
+	SUB     $4, len
 	MOVBU.P 4(match), tmp1
 	MOVB.P  tmp1, 4(dst)
 	MOVBU   -3(match), tmp2
 	MOVB    tmp2, -3(dst)
 	MOVBU   -2(match), tmp3
 	MOVB    tmp3, -2(dst)
-	MOVBU   -1(match), tmp1
-	MOVB    tmp1, -1(dst)
-	BPL     copyMatch4
+	MOVBU   -1(match), tmp4
+	MOVB    tmp4, -1(dst)
+	CBNZ   len, copyMatchLoop4
 
-	// Restore len, which is now negative.
-	ADDS  $4, len
-	BEQ   copyMatchDone
-
-copyMatch:
+copyMatchLoop1:
 	// Finish with a byte-at-a-time copy.
-	SUBS    $1, len
+	SUB     $1, len
 	MOVBU.P 1(match), tmp2
 	MOVB.P  tmp2, 1(dst)
-	BNE     copyMatch
+	CBNZ    len, copyMatchLoop1
 
 copyMatchDone:
 	CMP src, srcend
@@ -251,17 +222,8 @@ end:
 	// return codes here when debugging, or if the error returns need to
 	// be changed.
 shortDict:
-	MOVD $-4, tmp1
-	MOVD tmp1, ret+72(FP)
-	RET
 shortDst:
-	MOVD $-3, tmp1
-	MOVD tmp1, ret+72(FP)
-	RET
 shortSrc:
-	MOVD $-2, tmp1
-	MOVD tmp1, ret+72(FP)
-	RET
 corrupt:
 	MOVD $-1, tmp1
 	MOVD tmp1, ret+72(FP)

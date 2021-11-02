@@ -173,7 +173,7 @@ copyMatchLoop4:
 	MOVB    tmp3, -2(dst)
 	MOVBU   -1(match), tmp4
 	MOVB    tmp4, -1(dst)
-	CBNZ   len, copyMatchLoop4
+	CBNZ    len, copyMatchLoop4
 
 copyMatchLoop1:
 	// Finish with a byte-at-a-time copy.

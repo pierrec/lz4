@@ -285,3 +285,44 @@ func TestUncompressBadBlock(t *testing.T) {
 		t.Error("bad block is not detected")
 	}
 }
+
+func TestValidFrameHeader(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		inBytes []byte
+		want    bool
+		errNil  bool
+	}{
+		{
+			name:    "It is a LZ4",
+			inBytes: []byte{4, 34, 77, 24, 96, 112, 115, 113, 199, 14, 0, 194, 48, 55, 48, 55, 48, 49, 48, 48, 48, 48, 48, 48, 8, 0, 67, 52, 49, 101, 100, 16, 0, 12, 2, 0, 139, 49, 51, 53, 102, 48, 51, 56, 98, 23, 0, 15, 2, 0, 14, 20, 50, 33, 0, 41, 46, 0, 112, 0, 31, 50, 112, 0},
+			want:    true,
+			errNil:  true,
+		},
+		{
+			name:    "Not a LZ4",
+			inBytes: []byte("I am not a lz4 header"),
+			want:    false,
+			errNil:  true,
+		},
+		{
+			name:    "It is a legacy lz4",
+			inBytes: []byte{2, 33, 76, 24, 191, 4, 0, 0, 240, 18, 32, 32, 70, 111, 117, 114, 32, 115, 99, 111, 114, 101, 32, 97, 110, 100, 32, 115, 101, 118, 101, 110, 32, 121, 101, 97, 114, 115, 32, 97, 103, 111, 32, 30, 0, 240, 39, 102, 97, 116, 104, 101, 114, 115, 32, 98, 114, 111, 117, 103, 104, 116, 32, 102},
+			want:    true,
+			errNil:  true,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := lz4.ValidFrameHeader(tt.inBytes)
+			if err != nil {
+				if tt.errNil {
+					t.Errorf("ValidFrameHeader(bytes.NewReader(%v)) returned error %v, want nil", tt.inBytes, err)
+				}
+				return
+			}
+			if got != tt.want {
+				t.Errorf("ValidFrameHeader(bytes.NewReader(%v)) returned %t, want %t", tt.inBytes, got, tt.want)
+			}
+		})
+	}
+}

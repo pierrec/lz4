@@ -38,6 +38,7 @@ func TestWriter(t *testing.T) {
 			label := fmt.Sprintf("%s/%s", fname, option)
 			t.Run(label, func(t *testing.T) {
 				fname := fname
+				option := option
 				t.Parallel()
 
 				raw, err := ioutil.ReadFile(fname)

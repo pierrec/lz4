@@ -288,7 +288,7 @@ func TestWriterConcurrency(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	copyBuf := make([]byte, 16 << 20) // Use a 16 MiB buffer.
+	copyBuf := make([]byte, 16<<20) // Use a 16 MiB buffer.
 	if _, err := io.CopyBuffer(tw, src, copyBuf); err != nil {
 		t.Fatal(err)
 	}

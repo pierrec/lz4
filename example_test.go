@@ -35,7 +35,7 @@ func Example() {
 func ExampleCompressBlock() {
 	s := "hello world"
 	data := []byte(strings.Repeat(s, 100))
-	buf := make([]byte, len(data))
+	buf := make([]byte, lz4.CompressBlockBound(len(data)))
 
 	var c lz4.Compressor
 	n, err := c.CompressBlock(data, buf)

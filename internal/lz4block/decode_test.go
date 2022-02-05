@@ -228,7 +228,13 @@ func TestDecodeWithDict(t *testing.T) {
 		// First part in dictionary, rest in dst.
 		{"\x35foo\x09\x00\x401234", "0barbaz", "foobarbazfoo1234"},
 
-		// Same, but >16 bytes before the end,
+		// Copy end of dictionary three times, then a literal.
+		{"\x08\x04\x00\x50abcde", "---1234", "123412341234abcde"},
+
+		// First part in dictionary, rest in dst, copied multiple times.
+		{"\x1a1\x05\x00\x50abcde", "---2345", "123451234512345abcde"},
+
+		// First part in dictionary, rest in dst, but >16 bytes before the end,
 		// to test the short match shortcut in the amd64 decoder.
 		{"\x35abc\x09\x00\xf0\x0f0123456789abcdefghijklmnopqrst", "012defghi",
 			"abcdefghiabc0123456789abcdefghijklmnopqrst"},

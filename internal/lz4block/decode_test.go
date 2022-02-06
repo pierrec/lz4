@@ -81,6 +81,11 @@ func TestBlockDecode(t *testing.T) {
 			[]byte{},
 		},
 		{
+			"empty_input_nil_dst",
+			[]byte{0},
+			nil,
+		},
+		{
 			"literal_only_short",
 			emitSeq("hello", 0, 0),
 			[]byte("hello"),

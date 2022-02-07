@@ -162,19 +162,6 @@ copyMatchLoop8:
 	MOVD tmp2, -8(dst)
 	B    copyMatchDone
 
-	// 4× unrolled byte copy loop for the overlapping case.
-copyMatchLoop4:
-	SUB     $4, len
-	MOVBU.P 4(match), tmp1
-	MOVB.P  tmp1, 4(dst)
-	MOVBU   -3(match), tmp2
-	MOVB    tmp2, -3(dst)
-	MOVBU   -2(match), tmp3
-	MOVB    tmp3, -2(dst)
-	MOVBU   -1(match), tmp4
-	MOVB    tmp4, -1(dst)
-	CBNZ    len, copyMatchLoop4
-
 copyMatchLoop1:
 	// Finish with a byte-at-a-time copy.
 	SUB     $1, len

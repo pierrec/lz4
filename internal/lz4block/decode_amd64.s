@@ -58,6 +58,7 @@ loop:
 	// CX = lit_len
 	MOVQ DX, CX
 	SHRQ $4, CX
+	JZ   finish_lit_copy
 
 	// if lit_len != 0xF
 	CMPQ CX, $0xF
@@ -125,9 +126,6 @@ loop:
 	JMP loop
 
 lit_len_loop_pre:
-	// if lit_len > 0
-	CMPQ CX, $0
-	JEQ offset
 	CMPQ CX, $0xF
 	JNE copy_literal
 

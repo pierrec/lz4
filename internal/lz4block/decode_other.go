@@ -13,6 +13,11 @@ func decodeBlock(dst, src, dict []byte) (ret int) {
 	src = src[:len(src):len(src)]
 
 	const hasError = -2
+
+	if len(src) == 0 {
+		return hasError
+	}
+
 	defer func() {
 		if recover() != nil {
 			ret = hasError
@@ -20,7 +25,7 @@ func decodeBlock(dst, src, dict []byte) (ret int) {
 	}()
 
 	var si, di uint
-	for {
+	for si < uint(len(src)) {
 		// Literals and match lengths (token).
 		b := uint(src[si])
 		si++
@@ -74,7 +79,7 @@ func decodeBlock(dst, src, dict []byte) (ret int) {
 			}
 		}
 		if si == uint(len(src)) {
-			return int(di)
+			break
 		} else if si > uint(len(src)) {
 			return hasError
 		}
@@ -127,6 +132,8 @@ func decodeBlock(dst, src, dict []byte) (ret int) {
 		}
 		di += uint(copy(dst[di:di+mLen], expanded[:mLen]))
 	}
+
+	return int(di)
 }
 
 func u16(p []byte) uint { return uint(binary.LittleEndian.Uint16(p)) }

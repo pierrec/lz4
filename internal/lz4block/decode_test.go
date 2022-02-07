@@ -81,6 +81,11 @@ func TestBlockDecode(t *testing.T) {
 			[]byte{},
 		},
 		{
+			"empty_input_nil_dst",
+			[]byte{0},
+			nil,
+		},
+		{
 			"literal_only_short",
 			emitSeq("hello", 0, 0),
 			[]byte("hello"),
@@ -126,8 +131,8 @@ func TestBlockDecode(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			buf := make([]byte, len(test.exp))
 			n := decodeBlock(buf, test.src, nil)
-			if n < 0 {
-				t.Log(n)
+			if n != len(test.exp) {
+				t.Errorf("expected %d, got %d", len(test.exp), n)
 			}
 			if !bytes.Equal(buf, test.exp) {
 				t.Fatalf("expected %q got %q", test.exp, buf)

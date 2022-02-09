@@ -155,6 +155,18 @@ func TestDecodeBlockInvalid(t *testing.T) {
 			100,
 		},
 		{
+			// A string of zeros could be interpreted as empty match+empty literal repeated,
+			// but only the last block may have an empty match (with the offset missing).
+			"repeated_zero_few",
+			string(make([]byte, 6)),
+			100,
+		},
+		{
+			"repeated_zero_many",
+			string(make([]byte, 100)),
+			100,
+		},
+		{
 			"final_lit_too_short",
 			"\x20a", // litlen = 2 but only a single-byte literal
 			100,

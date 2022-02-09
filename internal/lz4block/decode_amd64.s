@@ -50,28 +50,27 @@ loop:
 	JAE end
 
 	// token := uint32(src[si])
-	MOVBQZX (SI), DX
+	MOVBLZX (SI), DX
 	INCQ SI
 
 	// lit_len = token >> 4
 	// if lit_len > 0
 	// CX = lit_len
-	MOVQ DX, CX
-	SHRQ $4, CX
-	JZ   finish_lit_copy
+	MOVL DX, CX
+	SHRL $4, CX
 
 	// if lit_len != 0xF
-	CMPQ CX, $0xF
-	JEQ lit_len_loop_pre
+	CMPL CX, $0xF
+	JEQ  lit_len_loop
 	CMPQ DI, R12
-	JAE lit_len_loop_pre
+	JAE  copy_literal
 	CMPQ SI, R13
-	JAE lit_len_loop_pre
+	JAE  copy_literal
 
 	// copy shortcut
 
 	// A two-stage shortcut for the most common case:
-	// 1) If the literal length is 0..14, and there is enough space,
+	// 1) If the literal length is 1..14, and there is enough space,
 	// enter the shortcut and copy 16 bytes on behalf of the literals
 	// (in the fast mode, only 8 bytes can be safely copied this way).
 	// 2) Further if the match length is 4..18, copy 18 bytes in a similar
@@ -85,13 +84,13 @@ loop:
 	ADDQ CX, DI
 	ADDQ CX, SI
 
-	MOVQ DX, CX
-	ANDQ $0xF, CX
+	MOVL DX, CX
+	ANDL $0xF, CX
 
 	// The second stage: prepare for match copying, decode full info.
 	// If it doesn't work out, the info won't be wasted.
 	// offset := uint16(data[:2])
-	MOVWQZX (SI), DX
+	MOVWLZX (SI), DX
 	ADDQ $2, SI
 	JC err_short_buf
 
@@ -103,9 +102,9 @@ loop:
 
 	// if we can't do the second stage then jump straight to read the
 	// match length, we already have the offset.
-	CMPQ CX, $0xF
+	CMPL CX, $0xF
 	JEQ match_len_loop_pre
-	CMPQ DX, $8
+	CMPL DX, $8
 	JLT match_len_loop_pre
 	CMPQ AX, R11
 	JB match_len_loop_pre
@@ -125,10 +124,7 @@ loop:
 	// shortcut complete, load next token
 	JMP loop
 
-lit_len_loop_pre:
-	CMPQ CX, $0xF
-	JNE copy_literal
-
+	// Read the rest of the literal length:
 	// do { BX = src[si++]; lit_len += BX } while (BX == 0xFF).
 lit_len_loop:
 	CMPQ SI, R9
@@ -155,7 +151,7 @@ copy_literal:
 	CMPQ BX, R8
 	JA err_short_buf
 
-	// Copy matches of <=48 bytes through the XMM registers.
+	// Copy literals of <=48 bytes through the XMM registers.
 	CMPQ CX, $48
 	JGT memmove_lit
 
@@ -258,8 +254,7 @@ match_len_loop:
 	JE match_len_loop
 
 copy_match:
-	// mLen += minMatch
-	ADDQ $4, CX
+	ADDQ $const_minMatch, CX
 
 	// check we have match_len bytes left in dst
 	// di+match_len < len(dst)

@@ -26,10 +26,10 @@ func BenchmarkCompress(b *testing.B) {
 }
 
 func BenchmarkCompressRandom(b *testing.B) {
-	buf := make([]byte, len(randomLZ4))
+	buf := make([]byte, lz4.CompressBlockBound(len(random)))
 	var c lz4.Compressor
 
-	n, _ := c.CompressBlock(pg1661, buf)
+	n, _ := c.CompressBlock(random, buf)
 
 	b.ReportAllocs()
 	b.SetBytes(int64(len(random)))

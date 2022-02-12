@@ -133,7 +133,7 @@ func (c *Compressor) CompressBlock(src, dst []byte) (int, error) {
 		// We check a match at s, s+1 and s+2 and pick the first one we get.
 		// Checking 3 only requires us to load the source one.
 		ref := c.get(h, si)
-		ref2 := c.get(h2, si)
+		ref2 := c.get(h2, si+1)
 		c.put(h, si)
 		c.put(h2, si+1)
 
@@ -182,7 +182,7 @@ func (c *Compressor) CompressBlock(src, dst []byte) (int, error) {
 		si, mLen = si+mLen, si+minMatch
 
 		// Find the longest match by looking by batches of 8 bytes.
-		for si+8 < sn {
+		for si+8 <= sn {
 			x := binary.LittleEndian.Uint64(src[si:]) ^ binary.LittleEndian.Uint64(src[si-offset:])
 			if x == 0 {
 				si += 8

@@ -187,6 +187,15 @@ func TestIssue51(t *testing.T) {
 	}
 }
 
+func TestIssue167(t *testing.T) {
+	src := []byte("\xe300000000000000\t\x00\x00")
+	dst := make([]byte, 18)
+	_, err := lz4.UncompressBlock(src, dst)
+	if err == nil {
+		t.Fatal("expected buffer too short error")
+	}
+}
+
 func TestIssue71(t *testing.T) {
 	for _, tc := range []string{
 		"abc",               // < mfLimit

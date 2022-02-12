@@ -228,6 +228,29 @@ func TestIssue71(t *testing.T) {
 	}
 }
 
+func TestWriterFlush(t *testing.T) {
+	out := new(bytes.Buffer)
+	zw := lz4.NewWriter(out)
+	if err := zw.Apply(); err != nil {
+		t.Fatal(err)
+	}
+	data := strings.Repeat("0123456789", 100)
+	if _, err := zw.Write([]byte(data)); err != nil {
+		t.Fatal(err)
+	}
+	// header only
+	if got, want := out.Len(), 7; got != want {
+		t.Fatalf("got %d, want %d", got, want)
+	}
+	if err := zw.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	// header + data
+	if got, want := out.Len(), 7; got == want {
+		t.Fatalf("got %d, want %d", got, want)
+	}
+}
+
 func TestWriterLegacy(t *testing.T) {
 	goldenFiles := []string{
 		"testdata/vmlinux_LZ4_19377",

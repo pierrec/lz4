@@ -112,6 +112,9 @@ copyLiteralShortEnd:
 	MOVB.P  tmp4, 1(dst)
 
 copyLiteralDone:
+	// Initial part of match length.
+	AND $15, token, len
+
 	CMP src, srcend
 	BEQ end
 
@@ -123,8 +126,7 @@ copyLiteralDone:
 	MOVHU -2(src), offset
 	CBZ   offset, corrupt
 
-	// Read match length.
-	AND $15, token, len
+	// Read rest of match length.
 	CMP $15, len
 	BNE readMatchlenDone
 
@@ -170,6 +172,7 @@ copyMatchLoop8:
 
 	MOVD (match)(len), tmp2 // match+len == match+lenRem-8.
 	ADD  lenRem, dst
+	MOVD $0, len
 	MOVD tmp2, -8(dst)
 	B    copyMatchDone
 
@@ -185,6 +188,7 @@ copyMatchDone:
 	BNE loop
 
 end:
+	CBNZ len, corrupt
 	SUB  dstorig, dst, tmp1
 	MOVD tmp1, ret+48(FP)
 	RET

@@ -89,6 +89,8 @@ loop:
 	// If it doesn't work out, the info won't be wasted.
 	// offset := uint16(data[:2])
 	MOVWLZX (SI), DX
+	TESTL DX, DX
+	JE err_corrupt
 	ADDQ $2, SI
 	JC err_short_buf
 

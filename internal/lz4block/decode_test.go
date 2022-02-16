@@ -198,6 +198,12 @@ func TestDecodeBlockInvalid(t *testing.T) {
 			"\x000000",
 			10,
 		},
+		{
+			// Zero offset in a short literal.
+			"zero_offset",
+			"\xe1abcdefghijklmn\x00\x00\xe0abcdefghijklmn",
+			40,
+		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			dst := make([]byte, test.size+8)

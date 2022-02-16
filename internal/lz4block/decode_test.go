@@ -101,6 +101,11 @@ func TestBlockDecode(t *testing.T) {
 			bytes.Repeat([]byte("A"), 15),
 		},
 		{
+			"literal_only_long_2",
+			emitSeq(strings.Repeat("A", 16), 0, 0),
+			bytes.Repeat([]byte("A"), 16),
+		},
+		{
 			"repeat_match_len",
 			emitSeq("a", 1, 4),
 			[]byte("aaaaa"),
@@ -114,6 +119,13 @@ func TestBlockDecode(t *testing.T) {
 			"long_match",
 			emitSeq("A", 1, 16),
 			bytes.Repeat([]byte("A"), 17),
+		},
+		{
+			// Triggers a case in the amd64 decoder where its last action
+			// is a call to runtime.memmove.
+			"memmove_last",
+			emitSeq(strings.Repeat("ABCD", 20), 80, 60),
+			bytes.Repeat([]byte("ABCD"), 36)[:140],
 		},
 		{
 			"repeat_match_log_len_2_seq",
@@ -170,6 +182,11 @@ func TestDecodeBlockInvalid(t *testing.T) {
 			"final_lit_too_short",
 			"\x20a", // litlen = 2 but only a single-byte literal
 			100,
+		},
+		{
+			"no_space_for_offset",
+			"\x01", // mLen > 0 but no following offset.
+			10,
 		},
 		{
 			"write_beyond_len_dst",

@@ -7,8 +7,8 @@
 
 // AX scratch
 // BX scratch
-// CX scratch
-// DX token
+// CX literal and match lengths
+// DX token, match offset
 //
 // DI &dst
 // SI &src
@@ -44,11 +44,9 @@ TEXT ·decodeBlock(SB), NOSPLIT, $48-80
 	MOVQ R9, R13
 	SUBQ $16, R13
 
-loop:
-	// for si < len(src)
-	CMPQ SI, R9
-	JAE end
+	XORL CX, CX
 
+loop:
 	// token := uint32(src[si])
 	MOVBLZX (SI), DX
 	INCQ SI
@@ -70,7 +68,7 @@ loop:
 	// copy shortcut
 
 	// A two-stage shortcut for the most common case:
-	// 1) If the literal length is 1..14, and there is enough space,
+	// 1) If the literal length is 0..14, and there is enough space,
 	// enter the shortcut and copy 16 bytes on behalf of the literals
 	// (in the fast mode, only 8 bytes can be safely copied this way).
 	// 2) Further if the match length is 4..18, copy 18 bytes in a similar
@@ -122,7 +120,7 @@ loop:
 	LEAQ const_minMatch(DI)(CX*1), DI
 
 	// shortcut complete, load next token
-	JMP loop
+	JMP loopcheck
 
 	// Read the rest of the literal length:
 	// do { BX = src[si++]; lit_len += BX } while (BX == 0xFF).
@@ -213,13 +211,13 @@ memmove_lit:
 	SUBQ $16, R13
 
 finish_lit_copy:
-	CMPQ SI, R9
-	JAE end
-
-offset:
 	// CX := mLen
 	// free up DX to use for offset
-	MOVQ DX, CX
+	MOVL DX, CX
+	ANDL $0xF, CX
+
+	CMPQ SI, R9
+	JAE end
 
 	// offset
 	// si += 2
@@ -231,10 +229,8 @@ offset:
 	MOVWQZX -2(SI), DX
 
 	// 0 offset is invalid
-	CMPQ DX, $0
-	JEQ err_corrupt
-
-	ANDB $0xF, CX
+	TESTL DX, DX
+	JEQ   err_corrupt
 
 match_len_loop_pre:
 	// if mlen != 0xF
@@ -301,7 +297,7 @@ copy_match_loop:
 	DECQ CX
 	JNZ copy_match_loop
 
-	JMP loop
+	JMP loopcheck
 
 copy_interior_match:
 	CMPQ CX, $16
@@ -317,7 +313,8 @@ copy_interior_match:
 	MOVOU X0, (DI)
 
 	ADDQ CX, DI
-	JMP loop
+	XORL CX, CX
+	JMP  loopcheck
 
 copy_match_from_dict:
 	// CX = match_len
@@ -420,8 +417,21 @@ memmove_match:
 	SUBQ $16, R13
 	MOVQ dict_base+48(FP), R14
 	MOVQ dict_len+56(FP), R15
+	XORL CX, CX
 
-	JMP loop
+loopcheck:
+	// for si < len(src)
+	CMPQ SI, R9
+	JB   loop
+
+end:
+	// Remaining length must be zero.
+	TESTQ CX, CX
+	JNE   err_corrupt
+
+	SUBQ R11, DI
+	MOVQ DI, ret+72(FP)
+	RET
 
 err_corrupt:
 	MOVQ $-1, ret+72(FP)
@@ -433,9 +443,4 @@ err_short_buf:
 
 err_short_dict:
 	MOVQ $-3, ret+72(FP)
-	RET
-
-end:
-	SUBQ R11, DI
-	MOVQ DI, ret+72(FP)
 	RET

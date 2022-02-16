@@ -174,11 +174,9 @@ copyDict:
 	CBZ len, copyMatchDone
 
 	// If the match extends beyond the dictionary, the rest is at dstorig.
+	// Recompute the offset for the next check.
 	MOVD dstorig, match
-
-	// The code up to copyMatchLoop1 assumes len >= minMatch.
-	CMP $const_minMatch, len
-	BLO copyMatchLoop1
+	SUB  dstorig, dst, offset
 
 copyMatchTry8:
 	// Copy doublewords if both len and offset are at least eight.
@@ -190,23 +188,22 @@ copyMatchTry8:
 	AND    $7, len, lenRem
 	SUB    $8, len
 copyMatchLoop8:
-	SUBS   $8, len
 	MOVD.P 8(match), tmp1
 	MOVD.P tmp1, 8(dst)
+	SUBS   $8, len
 	BPL    copyMatchLoop8
 
-	ADD  lenRem, match
+	MOVD (match)(len), tmp2 // match+len == match+lenRem-8.
 	ADD  lenRem, dst
-	MOVD -8(match), tmp2
 	MOVD tmp2, -8(dst)
 	B    copyMatchDone
 
 copyMatchLoop1:
-	// Finish with a byte-at-a-time copy.
-	SUB     $1, len
+	// Byte-at-a-time copy for small offsets.
 	MOVBU.P 1(match), tmp2
 	MOVB.P  tmp2, 1(dst)
-	CBNZ    len, copyMatchLoop1
+	SUBS    $1, len
+	BNE     copyMatchLoop1
 
 copyMatchDone:
 	CMP src, srcend

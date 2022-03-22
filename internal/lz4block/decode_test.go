@@ -101,6 +101,11 @@ func TestBlockDecode(t *testing.T) {
 			bytes.Repeat([]byte("A"), 15),
 		},
 		{
+			"literal_only_long_2",
+			emitSeq(strings.Repeat("A", 16), 0, 0),
+			bytes.Repeat([]byte("A"), 16),
+		},
+		{
 			"repeat_match_len",
 			emitSeq("a", 1, 4),
 			[]byte("aaaaa"),
@@ -114,6 +119,13 @@ func TestBlockDecode(t *testing.T) {
 			"long_match",
 			emitSeq("A", 1, 16),
 			bytes.Repeat([]byte("A"), 17),
+		},
+		{
+			// Triggers a case in the amd64 decoder where its last action
+			// is a call to runtime.memmove.
+			"memmove_last",
+			emitSeq(strings.Repeat("ABCD", 20), 80, 60),
+			bytes.Repeat([]byte("ABCD"), 36)[:140],
 		},
 		{
 			"repeat_match_log_len_2_seq",
@@ -172,6 +184,11 @@ func TestDecodeBlockInvalid(t *testing.T) {
 			100,
 		},
 		{
+			"no_space_for_offset",
+			"\x01", // mLen > 0 but no following offset.
+			10,
+		},
+		{
 			"write_beyond_len_dst",
 			"\x1b0\x01\x00000000000000",
 			len("\x1b0\x01\x00000000000000"),
@@ -180,6 +197,12 @@ func TestDecodeBlockInvalid(t *testing.T) {
 			"bounds-crasher", // Triggered a broken bounds check in amd64 decoder.
 			"\x000000",
 			10,
+		},
+		{
+			// Zero offset in a short literal.
+			"zero_offset",
+			"\xe1abcdefghijklmn\x00\x00\xe0abcdefghijklmn",
+			40,
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {

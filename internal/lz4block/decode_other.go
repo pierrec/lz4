@@ -73,9 +73,11 @@ func decodeBlock(dst, src, dict []byte) (ret int) {
 				di += lLen
 			}
 		}
-		if si == uint(len(src)) {
+
+		mLen := b & 0xF
+		if si == uint(len(src)) && mLen == 0 {
 			break
-		} else if si > uint(len(src)) {
+		} else if si >= uint(len(src)) {
 			return hasError
 		}
 
@@ -86,7 +88,7 @@ func decodeBlock(dst, src, dict []byte) (ret int) {
 		si += 2
 
 		// Match.
-		mLen := minMatch + b&0xF
+		mLen += minMatch
 		if mLen == minMatch+0xF {
 			for {
 				x := uint(src[si])

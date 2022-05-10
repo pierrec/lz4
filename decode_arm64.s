@@ -12,16 +12,18 @@
 #define dstorig	R1
 #define src	R2
 #define dstend	R3
-#define srcend	R4
-#define match	R5	// Match address.
-#define token	R9
-#define len	R10	// Literal and match lengths.
-#define lenRem	R11
-#define offset	R12	// Match offset.
-#define tmp1	R13
-#define tmp2	R14
-#define tmp3	R15
-#define tmp4	R16
+#define dstend16	R4	// dstend - 16
+#define srcend	R5
+#define srcend16	R6	// srcend - 16
+#define match	R7	// Match address.
+#define token	R8
+#define len	R9	// Literal and match lengths.
+#define lenRem	R10
+#define offset	R11	// Match offset.
+#define tmp1	R12
+#define tmp2	R13
+#define tmp3	R14
+#define tmp4	R15
 
 // func decodeBlock(dst, src []byte) int
 TEXT ·decodeBlock(SB), NOFRAME+NOSPLIT, $0-56
@@ -33,6 +35,11 @@ TEXT ·decodeBlock(SB), NOFRAME+NOSPLIT, $0-56
 	CBZ srcend, shortSrc
 	ADD src, srcend
 
+	// dstend16 = max(dstend-16, 0) and similarly for srcend16.
+	SUBS $16, dstend, dstend16
+	CSEL LO, ZR, dstend16, dstend16
+	SUBS $16, srcend, srcend16
+	CSEL LO, ZR, srcend16, srcend16
 
 loop:
 	// Read token. Extract literal length.
@@ -66,27 +73,31 @@ readLitlenDone:
 	// Copy literal.
 	SUBS $16, len
 	BLO  copyLiteralShort
-	AND  $15, len, lenRem
 
 copyLiteralLoop:
-	SUBS  $16, len
 	LDP.P 16(src), (tmp1, tmp2)
 	STP.P (tmp1, tmp2), 16(dst)
+	SUBS  $16, len
 	BPL   copyLiteralLoop
 
-	// lenRem = len%16 is the remaining number of bytes we need to copy.
-	// Since len was >= 16, we can do this in one load and one store,
-	// overlapping with the last load and store, without worrying about
-	// writing out of bounds.
-	ADD lenRem, src
-	ADD lenRem, dst
-	LDP -16(src), (tmp1, tmp2)
-	STP (tmp1, tmp2), -16(dst)
+	// Copy (final part of) literal of length 0-15.
+	// If we have >=16 bytes left in src and dst, just copy 16 bytes.
+copyLiteralShort:
+	CMP  dstend16, dst
+	CCMP LO, src, srcend16, $0b0010 // 0010 = preserve carry (LO).
+	BHS  copyLiteralShortEnd
+
+	AND $15, len
+
+	LDP (src), (tmp1, tmp2)
+	ADD len, src
+	STP (tmp1, tmp2), (dst)
+	ADD len, dst
 
 	B copyLiteralDone
 
-	// Copy literal of length 0-15.
-copyLiteralShort:
+	// Safe but slow copy near the end of src, dst.
+copyLiteralShortEnd:
 	TBZ     $3, len, 3(PC)
 	MOVD.P  8(src), tmp1
 	MOVD.P  tmp1, 8(dst)
@@ -142,6 +153,7 @@ readMatchlenDone:
 	// but v3 doesn't support dictionary files.
 	BLT dictNotSupported
 
+copyMatchTry8:
 	// Copy doublewords if both len and offset are at least eight.
 	// A 16-at-a-time loop doesn't provide a further speedup.
 	CMP  $8, len
@@ -161,19 +173,6 @@ copyMatchLoop8:
 	MOVD -8(match), tmp2
 	MOVD tmp2, -8(dst)
 	B    copyMatchDone
-
-	// 4× unrolled byte copy loop for the overlapping case.
-copyMatchLoop4:
-	SUB     $4, len
-	MOVBU.P 4(match), tmp1
-	MOVB.P  tmp1, 4(dst)
-	MOVBU   -3(match), tmp2
-	MOVB    tmp2, -3(dst)
-	MOVBU   -2(match), tmp3
-	MOVB    tmp3, -2(dst)
-	MOVBU   -1(match), tmp4
-	MOVB    tmp4, -1(dst)
-	CBNZ    len, copyMatchLoop4
 
 copyMatchLoop1:
 	// Finish with a byte-at-a-time copy.

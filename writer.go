@@ -234,6 +234,5 @@ func (w *Writer) ReadFrom(r io.Reader) (n int64, err error) {
 			data = size.Get()
 		}
 	}
-	err = w.Close()
 	return
 }

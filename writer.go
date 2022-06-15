@@ -153,7 +153,7 @@ func (w *Writer) Flush() (err error) {
 	default:
 		return nil
 	}
-	defer w.state.nextd(&err)
+
 	if w.idx > 0 {
 		// Flush pending data, disable w.data freeing as it is done later on.
 		if err = w.write(w.data[:w.idx], false); err != nil {

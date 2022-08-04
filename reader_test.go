@@ -326,3 +326,26 @@ func TestValidFrameHeader(t *testing.T) {
 		})
 	}
 }
+
+func TestBadBlock(t *testing.T) {
+	raw, err := os.ReadFile("testdata/bad.data")
+	if err != nil {
+		t.Fatal(err)
+	}
+	compressed, err := os.ReadFile("testdata/bad.data.lz4")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dst := make([]byte, len(raw))
+	n, err := lz4.UncompressBlock(compressed, dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != len(raw) {
+		t.Errorf("invalid uncompressed size: got %d; want %d", n, len(raw))
+	}
+	if !bytes.Equal(dst, raw) {
+		t.Errorf("uncompressed data does not match original")
+	}
+}

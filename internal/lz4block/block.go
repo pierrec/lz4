@@ -33,9 +33,15 @@ func recoverBlock(e *error) {
 
 // blockHash hashes the lower five bytes of x into a value < htSize.
 func blockHash(x uint64) uint32 {
-	const prime6bytes = 227718039650203
-	x &= 1<<40 - 1
-	return uint32((x * prime6bytes) >> (64 - hashLog))
+	if true {
+		// Create hash from 5 bytes.
+		const prime5bytes = 889523592379
+		return uint32(((x << (64 - 40)) * prime5bytes) >> (64 - hashLog))
+	} else {
+		// Create hash from 6 bytes.
+		const prime6bytes = 227718039650203
+		return uint32(((x << (64 - 48)) * prime6bytes) >> (64 - hashLog))
+	}
 }
 
 func CompressBlockBound(n int) int {

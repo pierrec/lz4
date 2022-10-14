@@ -101,7 +101,13 @@ func (r *Reader) init() error {
 }
 
 func (r *Reader) Read(buf []byte) (n int, err error) {
-	defer r.state.check(&err)
+	defer func() {
+		// Inlines a nil check to reduce function call overhead on hot path.
+		// Only set up fn call and stack-pass arg if err != nil.
+		if err != nil {
+			r.state.check(&err)
+		}
+	}()
 	switch r.state.state {
 	case readState:
 	case closedState, errorState:

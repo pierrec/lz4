@@ -170,6 +170,7 @@ func (zrd *CompressingReader) Reset(src io.ReadCloser) {
 	zrd.frame.Reset(1)
 	zrd.state = crStateInitial
 	zrd.src = src
+	zrd.out.clear()
 }
 
 type ovWriter struct {
@@ -207,4 +208,11 @@ func (wr *ovWriter) reset(out []byte) bool {
 
 	wr.data = out
 	return true
+}
+
+func (wr *ovWriter) clear() {
+	wr.data = nil
+	wr.dataPos = 0
+	wr.ov = wr.ov[ : 0]
+	wr.ovPos = 0
 }

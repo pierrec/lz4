@@ -17,6 +17,7 @@ import (
 
 func TestWriter(t *testing.T) {
 	goldenFiles := []string{
+		"testdata/empty.txt",
 		"testdata/e.txt",
 		"testdata/gettysburg.txt",
 		"testdata/Mark.Twain-Tom.Sawyer.txt",
@@ -75,7 +76,7 @@ func TestWriter(t *testing.T) {
 					t.Errorf("invalid sizes: got %d; want %d", got, want)
 				}
 
-				if got, want := out.Bytes(), raw; !reflect.DeepEqual(got, want) {
+				if got, want := out.Bytes(), raw; !bytes.Equal(got, want) {
 					t.Fatal("uncompressed data does not match original")
 				}
 

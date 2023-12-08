@@ -3,8 +3,7 @@ package lz4_test
 import (
 	"bytes"
 	"fmt"
-	"io"
-	"os"
+	"io/ioutil"
 	"strings"
 	"testing"
 
@@ -35,11 +34,11 @@ func TestCompressingReader(t *testing.T) {
 				option := option
 				t.Parallel()
 
-				raw, err := os.ReadFile(fname)
+				raw, err := ioutil.ReadFile(fname)
 				if err != nil {
 					t.Fatal(err)
 				}
-				r := io.NopCloser(bytes.NewReader(raw))
+				r := ioutil.NopCloser(bytes.NewReader(raw))
 
 				// Compress.
 				zcomp := lz4.NewCompressingReader(r)
@@ -47,14 +46,14 @@ func TestCompressingReader(t *testing.T) {
 					t.Fatal(err)
 				}
 
-				zout, err := io.ReadAll(zcomp)
+				zout, err := ioutil.ReadAll(zcomp)
 				if err != nil {
 					t.Fatal(err)
 				}
 
 				// Uncompress.
 				zr := lz4.NewReader(bytes.NewReader(zout))
-				out, err := io.ReadAll(zr)
+				out, err := ioutil.ReadAll(zr)
 				if err != nil {
 					t.Fatal(err)
 				}

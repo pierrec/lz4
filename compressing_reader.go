@@ -204,11 +204,10 @@ func (wr *ovWriter) reset(out []byte) bool {
 		wr.ov = wr.ov[ : 0]
 		wr.ovPos = 0
 		wr.dataPos = ovRem
-	}
-
-	if wr.ovPos > 0 {
+	} else if wr.ovPos > 0 {
 		wr.ov = wr.ov[ : 0]
 		wr.ovPos = 0
+		wr.dataPos = 0
 	}
 
 	wr.data = out

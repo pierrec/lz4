@@ -22,10 +22,36 @@ func Compress(fs *flag.FlagSet) cmdflag.Handler {
 	fs.BoolVar(&blockChecksum, "bc", false, "enable block checksum")
 	var streamChecksum bool
 	fs.BoolVar(&streamChecksum, "sc", false, "disable stream checksum")
-	var level int
-	fs.IntVar(&level, "l", 0, "compression level (0=fastest)")
+	var level uint
+	fs.UintVar(&level, "l", 0, "compression level (0=fastest)")
 	var concurrency int
 	fs.IntVar(&concurrency, "c", -1, "concurrency (default=all CPUs")
+
+	var lvl lz4.CompressionLevel
+	switch level {
+	default:
+		fallthrough
+	case 0:
+		lvl = lz4.Fast
+	case 1:
+		lvl = lz4.Level1
+	case 2:
+		lvl = lz4.Level2
+	case 3:
+		lvl = lz4.Level3
+	case 4:
+		lvl = lz4.Level4
+	case 5:
+		lvl = lz4.Level5
+	case 6:
+		lvl = lz4.Level6
+	case 7:
+		lvl = lz4.Level7
+	case 8:
+		lvl = lz4.Level8
+	case 9:
+		lvl = lz4.Level9
+	}
 
 	return func(args ...string) (int, error) {
 		sz, err := bytefmt.ToBytes(blockMaxSize)
@@ -38,7 +64,7 @@ func Compress(fs *flag.FlagSet) cmdflag.Handler {
 			lz4.BlockChecksumOption(blockChecksum),
 			lz4.BlockSizeOption(lz4.BlockSize(sz)),
 			lz4.ChecksumOption(streamChecksum),
-			lz4.CompressionLevelOption(lz4.CompressionLevel(level)),
+			lz4.CompressionLevelOption(lvl),
 			lz4.ConcurrencyOption(concurrency),
 		}
 		if err := zw.Apply(options...); err != nil {

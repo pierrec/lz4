@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"os/exec"
 	"reflect"
 	"strings"
 	"testing"
@@ -285,8 +286,64 @@ func TestWriterLegacy(t *testing.T) {
 			if _, err := io.Copy(out2, zr); err != nil {
 				t.Fatal(err)
 			}
+
+			if len(src) != out2.Len() {
+				t.Fatalf("uncompressed output not correct size. %d != %d", len(src), out2.Len())
+			}
+
 			if !bytes.Equal(out2.Bytes(), src) {
 				t.Fatal("uncompressed compressed output different from source")
+			}
+		})
+	}
+}
+
+func TestWriterLegacyCommand(t *testing.T) {
+	_, err := exec.LookPath("lz4")
+	if err != nil {
+		t.Skip("no lz4 binary to test against")
+	}
+
+	goldenFiles := []string{
+		"testdata/vmlinux_LZ4_19377",
+		"testdata/bzImage_lz4_isolated",
+	}
+
+	for _, fname := range goldenFiles {
+		t.Run(fname, func(t *testing.T) {
+			fname := fname
+			t.Parallel()
+
+			src, err := ioutil.ReadFile(fname)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			out := new(bytes.Buffer)
+			zw := lz4.NewWriter(out)
+			if err := zw.Apply(lz4.LegacyOption(true), lz4.CompressionLevelOption(lz4.Fast)); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := io.Copy(zw, bytes.NewReader(src)); err != nil {
+				t.Fatal(err)
+			}
+			if err := zw.Close(); err != nil {
+				t.Fatal(err)
+			}
+
+			// write to filesystem for further checking
+			tmp, err := ioutil.TempFile("", "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer os.Remove(tmp.Name())
+			if _, err := tmp.Write(out.Bytes()); err != nil {
+				t.Fatal(err)
+			}
+
+			cmd := exec.Command("lz4", "--test", tmp.Name())
+			if _, err := cmd.Output(); err != nil {
+				t.Fatal(err)
 			}
 		})
 	}

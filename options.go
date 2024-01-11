@@ -105,6 +105,23 @@ func ChecksumOption(flag bool) Option {
 	}
 }
 
+// AppendOption  if appendToLz4File = true ,then will not write header
+func AppendOption(appendToLz4File bool) Option {
+	return func(a applier) error {
+		switch w := a.(type) {
+		case nil:
+			s := fmt.Sprintf("AppendOption(%v)", appendToLz4File)
+			return lz4errors.Error(s)
+		case *Writer:
+			if appendToLz4File {
+				w.frame.Descriptor.Checksum = 1
+			}
+			return nil
+		}
+		return lz4errors.ErrOptionNotApplicable
+	}
+}
+
 // SizeOption sets the size of the original uncompressed data (default=0). It is useful to know the size of the
 // whole uncompressed data stream.
 func SizeOption(size uint64) Option {

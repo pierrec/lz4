@@ -267,11 +267,47 @@ copyMatchTry4:
 	BEQ     copyMatchDone
 
 copyMatchLoop1:
+	// For offset == 1 or 2 and len >= 8, splat the 1- or 2-byte pattern
+	// into tmp3 and store 8 bytes at a time. The remaining 1..7 bytes,
+	// plus offset == 3 and the len < 8 cases, fall through to the
+	// byte-by-byte loop below. match is not advanced during the splat;
+	// the byte loop's post-index read correctly observes the pattern
+	// because match[k] for k >= offset sees the bytes we just splatted.
+	CMP $8, len
+	BLO copyMatchByteLoop         // len < 8: byte loop is shorter.
+	CMP $2, offset
+	BHI copyMatchByteLoop         // offset == 3: period doesn't tile 8B.
+	BEQ copyMatchSplat2           // offset == 2
+
+	// offset == 1: splat a single byte to all 8 bytes of tmp3.
+	MOVBU (match), tmp3
+	ORR   tmp3<<8, tmp3, tmp3
+	ORR   tmp3<<16, tmp3, tmp3
+	B     copyMatchSplatTile32
+
+copyMatchSplat2:
+	// offset == 2: splat a halfword.
+	MOVHU (match), tmp3
+	ORR   tmp3<<16, tmp3, tmp3
+
+copyMatchSplatTile32:
+	ORR tmp3<<32, tmp3, tmp3
+
+copyMatchSplatLoop:
+	MOVD.P tmp3, 8(dst)
+	SUB    $8, len
+	CMP    $8, len
+	BHS    copyMatchSplatLoop
+
+	CBZ len, copyMatchDone
+	// fall through with 1..7 bytes remaining.
+
+copyMatchByteLoop:
 	// Byte-at-a-time copy for small offsets <= 3.
 	MOVBU.P 1(match), tmp2
 	MOVB.P  tmp2, 1(dst)
 	SUBS    $1, len
-	BNE     copyMatchLoop1
+	BNE     copyMatchByteLoop
 
 copyMatchDone:
 	CMP src, srcend

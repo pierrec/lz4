@@ -30,7 +30,12 @@
 #define dstend32	R20	// dstend - 32 (shortcut guard)
 
 // func decodeBlock(dst, src, dict []byte) int
-TEXT ·decodeBlock(SB), NOFRAME+NOSPLIT, $0-80
+//
+// Frame: 48 bytes for calling runtime·memmove in the long-match fast path
+// (arg0..arg2 at 0/8/16(SP), spill of dst-after-match and src at 24/32(SP)).
+// NOSPLIT is preserved -- memmove's own stack use is well under the nosplit
+// margin.
+TEXT ·decodeBlock(SB), NOSPLIT, $48-80
 	LDP  dst_base+0(FP), (dst, dstend)
 	ADD  dst, dstend
 	MOVD dst, dstorig
@@ -255,6 +260,20 @@ copyDict:
 	SUB  dstorig, dst, offset
 
 copyMatchTry8:
+	// Non-overlapping bulk copy: len >= 64 and offset >= len means the
+	// whole match can be served by runtime.memmove, whose arm64
+	// implementation uses 128-bit NEON with prefetch and outruns any
+	// 16B/iter LDP+STP loop we can realistically write inline. Columnar
+	// / record-oriented workloads hit this case heavily (large offsets,
+	// match length ~record size). Below 64 bytes the call-and-spill
+	// overhead dominates, so the inline LDP/STP loop below stays.
+	CMP  $256, len
+	BLO  copyMatchTry8_inline
+	CMP  len, offset
+	BLO  copyMatchTry8_inline      // offset < len -> match cycles, can't memmove.
+	B    copyMatchViaMemmove
+
+copyMatchTry8_inline:
 	// Copy quadwords (16 bytes/iter via LDP/STP) if len and offset are both
 	// large enough. offset >= 32 guarantees there is no store-to-load
 	// forwarding dependency between iterations: iter N+1's LDP reads bytes
@@ -380,6 +399,52 @@ copyMatchByteLoop:
 copyMatchDone:
 	CMP src, srcend
 	BNE loop
+
+	B end
+
+copyMatchViaMemmove:
+	// runtime·memmove(dst, match, len). Caller must guarantee offset >= len
+	// (non-overlapping) and a stack frame of at least 48 bytes.
+	//
+	// Go's arm64 ABI0 places a callee's args at caller_SP + 8 (the 0
+	// offset is reserved for the callee's LR save slot), so arg0..arg2 go
+	// at 8/16/24(RSP) from our POV. The callee may clobber R0..R18 and
+	// most NEON regs; only R19..R28 and V8..V15 are preserved. Every
+	// working register we use is caller-save from memmove's perspective,
+	// so we spill the advanced dst and src to the frame and rebuild
+	// dstend/dstend16/dstend32/srcend/srcend16/dict/dictlen/dictend from
+	// the FP slots after the call.
+	MOVD dst, 8(RSP)               // memmove arg0: to
+	MOVD match, 16(RSP)            // memmove arg1: from
+	MOVD len, 24(RSP)              // memmove arg2: n
+	ADD  len, dst, dst             // post-match dst position
+	MOVD dst, 32(RSP)              // spill advanced dst
+	MOVD src, 40(RSP)              // spill src
+	BL   runtime·memmove(SB)
+	MOVD 32(RSP), dst
+	MOVD 40(RSP), src
+
+	// Rebuild derived pointers/ends. dstorig := dst_base; dstend := dst_base + dst_len; etc.
+	MOVD dst_base+0(FP), dstorig
+	MOVD dst_len+8(FP), dstend
+	ADD  dstorig, dstend, dstend
+	SUBS $16, dstend, dstend16
+	CSEL LO, ZR, dstend16, dstend16
+	SUBS $32, dstend, dstend32
+	CSEL LO, ZR, dstend32, dstend32
+
+	MOVD src_base+24(FP), tmp1
+	MOVD src_len+32(FP), srcend
+	ADD  tmp1, srcend, srcend
+	SUBS $16, srcend, srcend16
+	CSEL LO, ZR, srcend16, srcend16
+
+	MOVD dict_base+48(FP), dict
+	MOVD dict_len+56(FP), dictlen
+	ADD  dict, dictlen, dictend
+
+	MOVD $0, len
+	B    copyMatchDone
 
 end:
 	CBNZ len, corrupt

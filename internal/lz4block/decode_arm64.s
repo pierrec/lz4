@@ -91,12 +91,32 @@ loop:
 	CMP dstorig, match
 	BLO readMatchlen              // dict reference: use existing dict path.
 
-	// 18-byte match copy, sequenced 8+8+2 so that offset == 8 (common
-	// 8-byte RLE) works correctly: each load observes the prior store's
-	// effect. An LDP+STP would load both halves before any store retires,
-	// corrupting the second half for offsets 8..15. dst-space is
-	// guaranteed: dst < dstend-32 and matchlen+minMatch <= 18. Bytes past
-	// matchlen+minMatch get overwritten next iter.
+	// 18-byte match copy. dst-space is guaranteed: dst < dstend-32 and
+	// matchlen+minMatch <= 18. Bytes past matchlen+minMatch get
+	// overwritten next iter.
+	//
+	// For offset >= 18 there is no aliasing between [match, match+17]
+	// and [dst, dst+17], so LDP+STP can load all 16 bytes in parallel
+	// before any store retires -- 4 memory ops total instead of 6.
+	// Measurements on kibble-sourced columnar data (int64c/float64c/
+	// varstring.dictc/hexc) show ~95% of all matches have offset >= 18,
+	// so this is the common case.
+	//
+	// For offset 8..17 an LDP reads past the first store's destination,
+	// so we fall back to sequenced 8+8+2 so that each load observes
+	// the prior store's effect (required for offset == 8 RLE cycling).
+	CMP   $18, offset
+	BLO   shortcutMatchSerial
+
+	LDP   (match), (tmp1, tmp2)
+	MOVHU 16(match), tmp3
+	STP   (tmp1, tmp2), (dst)
+	MOVH  tmp3, 16(dst)
+	ADD   $const_minMatch, len
+	ADD   len, dst
+	B     copyMatchDone
+
+shortcutMatchSerial:
 	MOVD  (match), tmp1
 	MOVD  tmp1, (dst)
 	MOVD  8(match), tmp2

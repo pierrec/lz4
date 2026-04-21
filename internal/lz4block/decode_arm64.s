@@ -27,6 +27,7 @@
 #define tmp2		R16
 #define tmp3		R17
 #define tmp4		R19
+#define dstend32	R20	// dstend - 32 (shortcut guard)
 
 // func decodeBlock(dst, src, dict []byte) int
 TEXT ·decodeBlock(SB), NOFRAME+NOSPLIT, $0-80
@@ -38,9 +39,11 @@ TEXT ·decodeBlock(SB), NOFRAME+NOSPLIT, $0-80
 	CBZ srcend, shortSrc
 	ADD src, srcend
 
-	// dstend16 = max(dstend-16, 0) and similarly for srcend16.
+	// dstend16 = max(dstend-16, 0) and similarly for dstend32, srcend16.
 	SUBS $16, dstend, dstend16
 	CSEL LO, ZR, dstend16, dstend16
+	SUBS $32, dstend, dstend32
+	CSEL LO, ZR, dstend32, dstend32
 	SUBS $16, srcend, srcend16
 	CSEL LO, ZR, srcend16, srcend16
 
@@ -52,7 +55,57 @@ loop:
 	MOVBU.P 1(src), token
 	LSR     $4, token, len
 	CMP     $15, len
-	BNE     readLitlenDone
+	BEQ     readLitlenLoop        // len == 15: extended read, slow path.
+
+	// Shortcut: literal length is 0..14. If we also have at least 32 bytes
+	// of dst and 16 bytes of src remaining, copy 16 literal bytes in one
+	// shot, then try to finish the token's match with an 18-byte copy.
+	// Falls back to the slow path on any guard failure. Mirrors the
+	// "copy shortcut" in decode_amd64.s.
+	CMP dstend32, dst
+	BHS readLitlenDone            // <32 bytes left in dst: slow path.
+	CMP srcend16, src
+	BHS readLitlenDone            // <16 bytes left in src: slow path.
+
+	// 16-byte literal copy (bytes past len get overwritten next iter).
+	LDP (src), (tmp1, tmp2)
+	STP (tmp1, tmp2), (dst)
+	ADD len, src
+	ADD len, dst
+
+	// Derive initial matchlen from token's low nibble.
+	AND $15, token, len
+
+	// Read 2-byte offset (src has >=2 bytes left by the guard above).
+	MOVHU (src), offset
+	ADD   $2, src
+	CBZ   offset, corrupt
+
+	// Fast-match preconditions: matchlen != 15, offset >= 8, match is
+	// within the current block (>= dstorig -- not a dict reference).
+	CMP $15, len
+	BEQ readMatchlen              // extended matchlen: slow path.
+	CMP $8, offset
+	BLO readMatchlen              // small offset: use existing <8 path.
+	SUB offset, dst, match
+	CMP dstorig, match
+	BLO readMatchlen              // dict reference: use existing dict path.
+
+	// 18-byte match copy, sequenced 8+8+2 so that offset == 8 (common
+	// 8-byte RLE) works correctly: each load observes the prior store's
+	// effect. An LDP+STP would load both halves before any store retires,
+	// corrupting the second half for offsets 8..15. dst-space is
+	// guaranteed: dst < dstend-32 and matchlen+minMatch <= 18. Bytes past
+	// matchlen+minMatch get overwritten next iter.
+	MOVD  (match), tmp1
+	MOVD  tmp1, (dst)
+	MOVD  8(match), tmp2
+	MOVD  tmp2, 8(dst)
+	MOVHU 16(match), tmp3
+	MOVH  tmp3, 16(dst)
+	ADD   $const_minMatch, len
+	ADD   len, dst
+	B     copyMatchDone
 
 readLitlenLoop:
 	CMP     src, srcend
@@ -132,6 +185,7 @@ copyLiteralDone:
 	MOVHU -2(src), offset
 	CBZ   offset, corrupt
 
+readMatchlen:
 	// Read rest of match length.
 	CMP $15, len
 	BNE readMatchlenDone

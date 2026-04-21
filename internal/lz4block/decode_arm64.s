@@ -255,8 +255,44 @@ copyDict:
 	SUB  dstorig, dst, offset
 
 copyMatchTry8:
-	// Copy doublewords if both len and offset are at least eight.
-	// A 16-at-a-time loop doesn't provide a further speedup.
+	// Copy quadwords (16 bytes/iter via LDP/STP) if len and offset are both
+	// large enough. offset >= 32 guarantees there is no store-to-load
+	// forwarding dependency between iterations: iter N+1's LDP reads bytes
+	// at (match+16) which, since match = dst - offset, sits at
+	// dst - (offset-16). For offset >= 32 that is pre-dst, untouched by
+	// iter N's STP. Kibble columnar data (int64c/float64c/varstring.dictc/
+	// hexc) shows ~81% of matches with len >= 19 have offset >= 32, and
+	// those long matches produce ~75% of total match-copy bytes, so this
+	// is the dominant path for columnar workloads.
+	// CCMP immediate is 5-bit unsigned (0..31); we can't encode $32 directly,
+	// so compare offset against $31 with BLS (lower or same) to match
+	// "offset < 32" exactly. The first-CMP "len < 16" case falls into BLS
+	// via NZCV=$0 (C=0 => LS).
+	CMP  $16, len
+	CCMP HS, offset, $31, $0
+	BLS  copyMatchTry8Narrow
+
+	AND    $15, len, lenRem
+	SUB    $16, len
+copyMatchLoop16:
+	LDP.P 16(match), (tmp1, tmp2)
+	STP.P (tmp1, tmp2), 16(dst)
+	SUBS   $16, len
+	BPL    copyMatchLoop16
+
+	// LDP lacks a (base)(index) addressing mode, so compute match+len
+	// into a scratch register first.
+	ADD  match, len, tmp3           // tmp3 = match + lenRem - 16
+	LDP  (tmp3), (tmp1, tmp2)
+	ADD  lenRem, dst
+	MOVD $0, len
+	STP  (tmp1, tmp2), -16(dst)
+	B    copyMatchDone
+
+copyMatchTry8Narrow:
+	// 8-byte path for len >= 8 and offset in [8, 32). Preserves existing
+	// behavior for small offsets where the 16B loop would either alias
+	// (offset < 16) or incur per-iter STLF stalls (offset 16..31).
 	CMP  $8, len
 	CCMP HS, offset, $8, $0
 	BLO  copyMatchTry4

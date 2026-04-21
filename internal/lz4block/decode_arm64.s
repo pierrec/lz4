@@ -293,13 +293,25 @@ copyMatchSplat2:
 copyMatchSplatTile32:
 	ORR tmp3<<32, tmp3, tmp3
 
+	// 16-byte store-pair loop for the bulk. G2 onwards (Neoverse N1 and
+	// every later core, and Apple M-series) can retire an STP of two
+	// X-registers as a single 16-byte store; doubling the store width
+	// halves the iteration count and the per-iteration loop overhead.
 copyMatchSplatLoop:
-	MOVD.P tmp3, 8(dst)
-	SUB    $8, len
-	CMP    $8, len
-	BHS    copyMatchSplatLoop
+	CMP    $16, len
+	BLO    copyMatchSplatTail
+	STP.P  (tmp3, tmp3), 16(dst)
+	SUB    $16, len
+	B      copyMatchSplatLoop
 
-	CBZ len, copyMatchDone
+copyMatchSplatTail:
+	// 0..15 bytes remain. If >= 8, emit one more 8-byte store.
+	CBZ    len, copyMatchDone
+	CMP    $8, len
+	BLO    copyMatchByteLoop
+	MOVD.P tmp3, 8(dst)
+	SUBS   $8, len
+	BEQ    copyMatchDone
 	// fall through with 1..7 bytes remaining.
 
 copyMatchByteLoop:

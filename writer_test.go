@@ -462,3 +462,46 @@ func TestWriter_ReadFromZeroLengthRead(t *testing.T) {
 		t.Fatal("decompressed data does not match original after ReadFrom with zero-length reads")
 	}
 }
+
+// TestWriter_ReadFromExactBlockMultiple verifies that ReadFrom returns nil when
+// the source size is an exact multiple of the block size. The final io.ReadFull
+// call returns (0, io.EOF); the named return err must be cleared so callers
+// (notably io.Copy via the io.ReaderFrom shortcut) do not observe io.EOF as a
+// success-path error, which violates the io.ReaderFrom contract.
+func TestWriter_ReadFromExactBlockMultiple(t *testing.T) {
+	for _, bs := range []lz4.BlockSize{lz4.Block64Kb, lz4.Block256Kb, lz4.Block1Mb} {
+		t.Run(fmt.Sprintf("%d", bs), func(t *testing.T) {
+			for _, blocks := range []int{1, 2, 4} {
+				blocks := blocks
+				t.Run(fmt.Sprintf("blocks=%d", blocks), func(t *testing.T) {
+					data := bytes.Repeat([]byte("abcd"), int(bs)/4*blocks)
+
+					buf := new(bytes.Buffer)
+					zw := lz4.NewWriter(buf)
+					if err := zw.Apply(lz4.BlockSizeOption(bs)); err != nil {
+						t.Fatal(err)
+					}
+
+					n, err := zw.ReadFrom(bytes.NewReader(data))
+					if err != nil {
+						t.Fatalf("ReadFrom: got err=%v, want nil", err)
+					}
+					if int(n) != len(data) {
+						t.Fatalf("ReadFrom byte count: got %d, want %d", n, len(data))
+					}
+					if err := zw.Close(); err != nil {
+						t.Fatal(err)
+					}
+
+					out := new(bytes.Buffer)
+					if _, err := io.Copy(out, lz4.NewReader(buf)); err != nil {
+						t.Fatal(err)
+					}
+					if !bytes.Equal(out.Bytes(), data) {
+						t.Fatal("decompressed data does not match original")
+					}
+				})
+			}
+		})
+	}
+}

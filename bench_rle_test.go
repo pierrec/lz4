@@ -58,6 +58,9 @@ func benchRLE(b *testing.B, period int) {
 
 func BenchmarkUncompressRLE1(b *testing.B) { benchRLE(b, 1) }
 func BenchmarkUncompressRLE2(b *testing.B) { benchRLE(b, 2) }
+func BenchmarkUncompressRLE5(b *testing.B) { benchRLE(b, 5) }
+func BenchmarkUncompressRLE6(b *testing.B) { benchRLE(b, 6) }
+func BenchmarkUncompressRLE7(b *testing.B) { benchRLE(b, 7) }
 func BenchmarkUncompressRLE3(b *testing.B) { benchRLE(b, 3) }
 func BenchmarkUncompressRLE4(b *testing.B) { benchRLE(b, 4) }
 

@@ -75,15 +75,15 @@ func writeExtended(buf *bytes.Buffer, rem int) {
 // cycling boundaries (offset == matchlen, offset == 8, etc.).
 func TestMatchCopySingle(t *testing.T) {
 	cases := []struct {
-		name           string
-		offset, mlen   int
-		prefix         int // defaults to offset when 0
+		name         string
+		offset, mlen int
+		prefix       int // defaults to offset when 0
 	}{
 		{"off1_len8_rle", 1, 8, 64},       // splat, byte RLE
 		{"off1_len100_rle", 1, 100, 64},   // splat, long RLE
 		{"off2_len16_rle", 2, 16, 64},     // splat halfword
-		{"off3_len16_rle", 3, 16, 64},     // byte path (not splat)
-		{"off4_len8", 4, 8, 64},           // 4-byte path
+		{"off3_len16_rle", 3, 16, 64},     // tile path, exactly one prefill
+		{"off4_len8", 4, 8, 64},           // word-splat path
 		{"off8_len8", 8, 8, 64},           // shortcut 8+8+2 boundary
 		{"off8_len18", 8, 18, 64},         // shortcut + match-len boundary
 		{"off8_len32", 8, 32, 64},         // copyMatchLoop8 at offset=8
@@ -125,7 +125,7 @@ func TestMatchCopyMatrix(t *testing.T) {
 	// Offsets: cover 1..7 (below the 8-byte threshold), 8..31 (below 16B
 	// threshold), and 32+ (16B eligible). Include the exact threshold
 	// points plus a scattering above.
-	offsets := []int{1, 2, 3, 4, 7, 8, 9, 15, 16, 17, 31, 32, 33, 48, 64, 127, 128, 255, 1024}
+	offsets := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 15, 16, 17, 31, 32, 33, 48, 64, 127, 128, 255, 1024}
 	// Match lengths: every integer from 4..64 catches off-by-one issues in
 	// all the loops; then a few large values exercise the bulk-copy path.
 	var mlens []int

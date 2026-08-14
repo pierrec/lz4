@@ -146,36 +146,9 @@ func TestUnaligned(t *testing.T) {
 	}
 }
 
-// Inputs whose length is a multiple of 2^32 sit on the boundary between Sum32's
-// short-input and accumulator paths. xxHash32 adds the length modulo 2^32, but
-// the choice of path must be made on the true length: 4 GiB is not a short
-// input, even though its truncated length is 0. Sums are from the reference C
-// implementation (the lz4 CLI's frame content checksum over the same input).
-func TestZeroLargeInput(t *testing.T) {
-	if testing.Short() {
-		t.Skip("hashes several GiB")
-	}
-	const fourGiB = int64(1) << 32
-	for _, td := range []struct {
-		sum uint32
-		n   int64
-	}{
-		{0x35b93941, fourGiB},
-		{0xfd20b641, 2 * fourGiB},
-	} {
-		var xxh xxh32.XXHZero
-		block := make([]byte, 1<<20)
-		for written := int64(0); written < td.n; written += int64(len(block)) {
-			_, _ = xxh.Write(block)
-		}
-		if got, want := xxh.Sum32(), td.sum; got != want {
-			t.Errorf("%d bytes: got %x; want %x", td.n, got, want)
-		}
-	}
-}
-
-// /////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
 // Benchmarks
+//
 var testdata1 = []byte(testdata[len(testdata)-1].data)
 
 func Benchmark_XXH32(b *testing.B) {

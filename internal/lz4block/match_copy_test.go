@@ -86,7 +86,15 @@ func TestMatchCopySingle(t *testing.T) {
 		{"off4_len8", 4, 8, 64},           // word-splat path
 		{"off8_len8", 8, 8, 64},           // shortcut 8+8+2 boundary
 		{"off8_len18", 8, 18, 64},         // shortcut + match-len boundary
-		{"off8_len32", 8, 32, 64},         // copyMatchLoop8 at offset=8
+		{"off8_len31", 8, 31, 64},         // copyMatchLoop8 at offset=8 (below tile threshold)
+		{"off8_len32", 8, 32, 64},         // offset-8 tile: exactly the threshold
+		{"off8_len100", 8, 100, 64},       // offset-8 tile with 8B + byte tail
+		{"off16_len32", 16, 32, 64},       // offset-16 tile, no tail
+		{"off16_len47", 16, 47, 64},       // offset-16 tile with 15-byte tail
+		{"off12_len64", 12, 64, 64},       // 9..15 generic tile (prefill 12)
+		{"off17_len32", 17, 32, 64},       // 32B tile: prefill 17 = 2x8 + 1, no tile iteration
+		{"off24_len96", 24, 96, 64},       // 32B tile: prefill 3x8, three iterations
+		{"off31_len4096", 31, 4096, 64},   // 32B tile: long
 		{"off16_len16", 16, 16, 64},       // offset >= 16 but < 32
 		{"off16_len100", 16, 100, 64},     // offset < 32: must use 8B loop
 		{"off32_len16", 32, 16, 64},       // smallest 16B-eligible
@@ -122,17 +130,23 @@ func TestMatchCopySingle(t *testing.T) {
 // most likely to expose addressing-mode or threshold bugs. Each combination
 // is decoded and diffed against the naive reference built in memory.
 func TestMatchCopyMatrix(t *testing.T) {
-	// Offsets: cover 1..7 (below the 8-byte threshold), 8..31 (below 16B
-	// threshold), and 32+ (16B eligible). Include the exact threshold
-	// points plus a scattering above.
-	offsets := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 15, 16, 17, 31, 32, 33, 48, 64, 127, 128, 255, 1024}
+	// Offsets: cover 1..7 (splat/tile paths), every offset in 8..31 (the
+	// 8-byte loop and the offset-8/16/9..15/17..31 tile paths, whose
+	// prefill and tail handling depend on offset%8 and on the exact
+	// remaining length), and 32+ (16B loop / memmove). Include the exact
+	// threshold points plus a scattering above.
+	offsets := []int{1, 2, 3, 4, 5, 6, 7}
+	for o := 8; o <= 33; o++ {
+		offsets = append(offsets, o)
+	}
+	offsets = append(offsets, 48, 64, 127, 128, 255, 1024)
 	// Match lengths: every integer from 4..64 catches off-by-one issues in
 	// all the loops; then a few large values exercise the bulk-copy path.
 	var mlens []int
 	for l := minMatch; l <= 64; l++ {
 		mlens = append(mlens, l)
 	}
-	mlens = append(mlens, 100, 255, 256, 1023, 4096)
+	mlens = append(mlens, 65, 66, 71, 72, 79, 80, 95, 96, 100, 127, 128, 255, 256, 1023, 4096)
 
 	for _, off := range offsets {
 		for _, mlen := range mlens {

@@ -56,13 +56,18 @@ func benchRLE(b *testing.B, period int) {
 	b.ReportMetric(float64(len(compressed))/float64(n), "compress_ratio")
 }
 
-func BenchmarkUncompressRLE1(b *testing.B) { benchRLE(b, 1) }
-func BenchmarkUncompressRLE2(b *testing.B) { benchRLE(b, 2) }
-func BenchmarkUncompressRLE5(b *testing.B) { benchRLE(b, 5) }
-func BenchmarkUncompressRLE6(b *testing.B) { benchRLE(b, 6) }
-func BenchmarkUncompressRLE7(b *testing.B) { benchRLE(b, 7) }
-func BenchmarkUncompressRLE3(b *testing.B) { benchRLE(b, 3) }
-func BenchmarkUncompressRLE4(b *testing.B) { benchRLE(b, 4) }
+func BenchmarkUncompressRLE1(b *testing.B)  { benchRLE(b, 1) }
+func BenchmarkUncompressRLE2(b *testing.B)  { benchRLE(b, 2) }
+func BenchmarkUncompressRLE5(b *testing.B)  { benchRLE(b, 5) }
+func BenchmarkUncompressRLE6(b *testing.B)  { benchRLE(b, 6) }
+func BenchmarkUncompressRLE7(b *testing.B)  { benchRLE(b, 7) }
+func BenchmarkUncompressRLE8(b *testing.B)  { benchRLE(b, 8) }
+func BenchmarkUncompressRLE12(b *testing.B) { benchRLE(b, 12) }
+func BenchmarkUncompressRLE16(b *testing.B) { benchRLE(b, 16) }
+func BenchmarkUncompressRLE24(b *testing.B) { benchRLE(b, 24) }
+func BenchmarkUncompressRLE31(b *testing.B) { benchRLE(b, 31) }
+func BenchmarkUncompressRLE3(b *testing.B)  { benchRLE(b, 3) }
+func BenchmarkUncompressRLE4(b *testing.B)  { benchRLE(b, 4) }
 
 // buildColumnar builds a synthetic input that mimics the match-length and
 // match-offset distribution typical of columnar / record-oriented compressed

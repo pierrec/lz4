@@ -241,6 +241,18 @@ func (r *Reader) WriteTo(w io.Writer) (n int64, err error) {
 	}
 	defer r.state.nextd(&err)
 
+	if r.idx > 0 {
+		// A previous Read left part of the current block unconsumed.
+		var bn int
+		bn, err = w.Write(r.data[r.idx:])
+		n += int64(bn)
+		r.idx = 0
+		if err != nil {
+			return
+		}
+		r.handler(bn)
+	}
+
 	var data []byte
 	if r.isNotConcurrent() {
 		size := r.frame.Descriptor.Flags.BlockSizeIndex()

@@ -69,6 +69,10 @@ func BenchmarkUncompressRLE31(b *testing.B) { benchRLE(b, 31) }
 func BenchmarkUncompressRLE3(b *testing.B)  { benchRLE(b, 3) }
 func BenchmarkUncompressRLE4(b *testing.B)  { benchRLE(b, 4) }
 
+// Overlapping offsets beyond the register tiles.
+func BenchmarkUncompressRLE48(b *testing.B) { benchRLE(b, 48) }
+func BenchmarkUncompressRLE64(b *testing.B) { benchRLE(b, 64) }
+
 // buildColumnar builds a synthetic input that mimics the match-length and
 // match-offset distribution typical of columnar / record-oriented compressed
 // storage. Columnar data tends to have two distinct populations: many short
@@ -142,6 +146,15 @@ func BenchmarkUncompressColumnarLong(b *testing.B) {
 
 // Smaller records -- pushes typical match length down toward 64 bytes, so
 // the shortcut's 18-byte copy fires more often than the long-match loop.
+// Between Short (64) and Med (512): locates the inline-vs-memmove crossover.
+func BenchmarkUncompressColumnar128(b *testing.B) {
+	benchColumnar(b, 1<<20, 128, 256)
+}
+
+func BenchmarkUncompressColumnar256(b *testing.B) {
+	benchColumnar(b, 1<<20, 256, 128)
+}
+
 func BenchmarkUncompressColumnarShort(b *testing.B) {
 	benchColumnar(b, 1<<20, 64, 256)
 }

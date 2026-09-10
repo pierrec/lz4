@@ -3,6 +3,7 @@ package lz4block
 import (
 	"bytes"
 	"encoding/binary"
+	"math/rand"
 	"testing"
 )
 
@@ -237,6 +238,135 @@ func TestMatchCopyChained(t *testing.T) {
 		for i := 0; i < n; i++ {
 			if dst[i] != want[i] {
 				t.Fatalf("first mismatch at byte %d: got 0x%02x want 0x%02x", i, dst[i], want[i])
+			}
+		}
+	}
+}
+
+// TestMatchCopyMatrixSlack repeats the matrix sweep into a dst that has
+// room past the decoded output. TestMatchCopyMatrix sizes dst exactly, so
+// every match tail runs against the end of the buffer; this variant takes
+// the paths that may store past the end of the match (the overrun is
+// inside dst and is not part of the returned output).
+func TestMatchCopyMatrixSlack(t *testing.T) {
+	offsets := []int{1, 2, 3, 4, 5, 6, 7}
+	for o := 8; o <= 33; o++ {
+		offsets = append(offsets, o)
+	}
+	offsets = append(offsets, 48, 64, 127, 128, 255, 256, 1024)
+	var mlens []int
+	for l := minMatch; l <= 64; l++ {
+		mlens = append(mlens, l)
+	}
+	mlens = append(mlens, 65, 66, 71, 72, 79, 80, 95, 96, 100, 127, 128, 255, 256, 257, 1023, 4096)
+
+	for _, off := range offsets {
+		for _, mlen := range mlens {
+			prefix := off
+			if prefix < 16 {
+				prefix = 16
+			}
+			src, want := buildSingleMatchBlock(prefix, off, mlen)
+			for _, slack := range []int{1, 15, 16, 31, 32, 64} {
+				dst := make([]byte, len(want)+slack)
+				n := decodeBlock(dst, src, nil)
+				if n != len(want) {
+					t.Fatalf("off=%d mlen=%d slack=%d: decode returned %d, want %d",
+						off, mlen, slack, n, len(want))
+				}
+				if !bytes.Equal(dst[:n], want) {
+					for i := 0; i < n; i++ {
+						if dst[i] != want[i] {
+							t.Fatalf("off=%d mlen=%d slack=%d: first mismatch at byte %d: got 0x%02x want 0x%02x",
+								off, mlen, slack, i, dst[i], want[i])
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+// TestMatchCopyRandomSequences decodes seeded random blocks of many
+// sequences with small, medium and large offsets and lengths, so the
+// paths interact in orders the single-match tests do not produce. The
+// output buffer carries guard bytes after dst to catch any store past the
+// slice the decoder was given.
+func TestMatchCopyRandomSequences(t *testing.T) {
+	rng := rand.New(rand.NewSource(1))
+	const guard = 64
+	for iter := 0; iter < 4000; iter++ {
+		var buf bytes.Buffer
+		var want []byte
+		nseq := 1 + rng.Intn(24)
+		for i := 0; i < nseq; i++ {
+			litlen := rng.Intn(20)
+			if rng.Intn(8) == 0 {
+				litlen = rng.Intn(300)
+			}
+			if len(want) == 0 && litlen == 0 {
+				litlen = 1
+			}
+			lit := make([]byte, litlen)
+			rng.Read(lit)
+			last := i == nseq-1
+			if last {
+				writeToken(&buf, litlen, 0)
+				buf.Write(lit)
+				want = append(want, lit...)
+				break
+			}
+			mlen := minMatch + rng.Intn(40)
+			switch rng.Intn(6) {
+			case 0:
+				mlen = minMatch + rng.Intn(600)
+			case 1:
+				mlen = minMatch + 200 + rng.Intn(2000)
+			}
+			writeToken(&buf, litlen, mlen-minMatch)
+			buf.Write(lit)
+			want = append(want, lit...)
+			var off int
+			switch rng.Intn(4) {
+			case 0:
+				off = 1 + rng.Intn(8)
+			case 1:
+				off = 1 + rng.Intn(40)
+			default:
+				off = 1 + rng.Intn(600)
+			}
+			if off > len(want) {
+				off = len(want)
+			}
+			o := make([]byte, 2)
+			binary.LittleEndian.PutUint16(o, uint16(off))
+			buf.Write(o)
+			if rawM := mlen - minMatch; rawM >= 15 {
+				writeExtended(&buf, rawM-15)
+			}
+			start := len(want)
+			for j := 0; j < mlen; j++ {
+				want = append(want, want[start-off+j])
+			}
+		}
+		src := buf.Bytes()
+		for _, slack := range []int{0, 7, 33} {
+			dst := make([]byte, len(want)+slack+guard)
+			n := decodeBlock(dst[:len(want)+slack], src, nil)
+			if n != len(want) {
+				t.Fatalf("iter %d slack %d: decode returned %d, want %d", iter, slack, n, len(want))
+			}
+			if !bytes.Equal(dst[:n], want) {
+				for i := 0; i < n; i++ {
+					if dst[i] != want[i] {
+						t.Fatalf("iter %d slack %d: first mismatch at byte %d of %d", iter, slack, i, n)
+					}
+				}
+			}
+			for i := len(want) + slack; i < len(dst); i++ {
+				if dst[i] != 0 {
+					t.Fatalf("iter %d slack %d: guard byte %d written", iter, slack, i-len(want)-slack)
+				}
 			}
 		}
 	}

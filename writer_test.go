@@ -343,7 +343,8 @@ func TestWriterConcurrency(t *testing.T) {
 	if err := zw.Apply(
 		lz4.ConcurrencyOption(4),
 		lz4.BlockSizeOption(lz4.Block4Mb),
-		lz4.ChecksumOption(true)); err != nil {
+		lz4.ChecksumOption(true),
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -503,5 +504,33 @@ func TestWriter_ReadFromExactBlockMultiple(t *testing.T) {
 				})
 			}
 		})
+	}
+}
+
+// Ensure a Close followed by a Reset does not block forever
+// if concurrency is > 1.
+func TestWriterConcurrentCloseThenReset(t *testing.T) {
+	in := bytes.Repeat([]byte("payload "), 100000)
+	var buf bytes.Buffer
+	zw := lz4.NewWriter(&buf)
+	if err := zw.Apply(lz4.ConcurrencyOption(4)); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		buf.Reset()
+		zw.Reset(&buf)
+		if _, err := zw.Write(in); err != nil {
+			t.Fatal(err)
+		}
+		if err := zw.Close(); err != nil {
+			t.Fatal(err)
+		}
+		out, err := io.ReadAll(lz4.NewReader(&buf))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(out, in) {
+			t.Fatalf("round %d: output mismatch", i)
+		}
 	}
 }

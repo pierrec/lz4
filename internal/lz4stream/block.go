@@ -75,6 +75,7 @@ func (b *Blocks) close(f *Frame, num int) error {
 	b.Blocks <- c
 	c <- nil
 	<-c
+	b.Blocks = nil // ensure a second close from Reset does not block
 	err := b.err
 	b.err = nil
 	return err

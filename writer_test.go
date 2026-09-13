@@ -534,3 +534,51 @@ func TestWriterConcurrentCloseThenReset(t *testing.T) {
 		}
 	}
 }
+
+// After Close, a second Close is a no-op and a Write fails.
+func TestWriterAfterClose(t *testing.T) {
+	in := bytes.Repeat([]byte("payload "), 1000)
+	var buf bytes.Buffer
+	zw := lz4.NewWriter(&buf)
+	if _, err := zw.Write(in); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	size := buf.Len()
+	if err := zw.Close(); err != nil {
+		t.Fatalf("second Close: %v", err)
+	}
+	if n, err := zw.Write(in); err != lz4.ErrWriterClosed || n != 0 {
+		t.Fatalf("Write after Close: n=%d err=%v", n, err)
+	}
+	if n, err := zw.ReadFrom(bytes.NewReader(in)); err != lz4.ErrWriterClosed || n != 0 {
+		t.Fatalf("ReadFrom after Close: n=%d err=%v", n, err)
+	}
+	if err := zw.Flush(); err != nil {
+		t.Fatalf("Flush after Close: %v", err)
+	}
+	if buf.Len() != size {
+		t.Fatalf("closed writer appended %d bytes", buf.Len()-size)
+	}
+	out, err := io.ReadAll(lz4.NewReader(&buf))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(out, in) {
+		t.Fatal("output mismatch")
+	}
+	// Reset makes the writer usable again.
+	buf.Reset()
+	zw.Reset(&buf)
+	if _, err := zw.Write(in); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := io.ReadAll(lz4.NewReader(&buf)); err != nil || !bytes.Equal(out, in) {
+		t.Fatalf("after Reset: err %v, match %v", err, bytes.Equal(out, in))
+	}
+}

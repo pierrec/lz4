@@ -72,10 +72,13 @@ func (w *Writer) init() error {
 }
 
 func (w *Writer) Write(buf []byte) (n int, err error) {
+	if w.state.state == closedState {
+		return 0, lz4errors.ErrWriterClosed
+	}
 	defer w.state.check(&err)
 	switch w.state.state {
 	case writeState:
-	case closedState, errorState:
+	case errorState:
 		return 0, w.state.err
 	case newState:
 		if err = w.init(); w.state.next(err) {
@@ -171,6 +174,9 @@ func (w *Writer) Flush() (err error) {
 // Close closes the Writer, flushing any unwritten data to the underlying writer
 // without closing it.
 func (w *Writer) Close() error {
+	if w.state.state == closedState {
+		return nil
+	}
 	if err := w.Flush(); err != nil {
 		return err
 	}
@@ -178,6 +184,7 @@ func (w *Writer) Close() error {
 	// It is now safe to free the buffer.
 	lz4block.Put(w.data)
 	w.data = nil
+	w.state.next(err)
 	return err
 }
 
@@ -198,7 +205,9 @@ func (w *Writer) Reset(writer io.Writer) {
 // ReadFrom efficiently reads from r and compressed into the Writer destination.
 func (w *Writer) ReadFrom(r io.Reader) (n int64, err error) {
 	switch w.state.state {
-	case closedState, errorState:
+	case closedState:
+		return 0, lz4errors.ErrWriterClosed
+	case errorState:
 		return 0, w.state.err
 	case newState:
 		if err = w.init(); w.state.next(err) {

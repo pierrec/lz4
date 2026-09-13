@@ -112,3 +112,37 @@ func TestFrameDataBlock(t *testing.T) {
 		})
 	}
 }
+
+// Ensure the single data block used in non concurrent mode is reused
+// across resets rather than allocated on every init.
+func TestBlocksReuseBlockAcrossReset(t *testing.T) {
+	for _, name := range []string{"reader", "writer"} {
+		f := NewFrame()
+		f.Descriptor.Flags.BlockSizeIndexSet(lz4block.Index(lz4block.Block64Kb))
+		init := func() {
+			if name == "reader" {
+				if _, err := f.InitR(strings.NewReader(""), 1); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				f.InitW(&bytes.Buffer{}, 1, false)
+			}
+		}
+		init()
+		block := f.Blocks.Block
+		if block == nil || block.data == nil {
+			t.Fatalf("%s: no block after init", name)
+		}
+		f.Reset(1)
+		if block.data != nil {
+			t.Fatalf("%s: block buffer not released by Reset", name)
+		}
+		init()
+		if f.Blocks.Block != block {
+			t.Errorf("%s: block not reused after Reset", name)
+		}
+		if f.Blocks.Block.data == nil {
+			t.Errorf("%s: reused block has no buffer", name)
+		}
+	}
+}

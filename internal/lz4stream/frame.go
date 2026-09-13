@@ -130,7 +130,14 @@ func (f *Frame) CloseR(src io.Reader) (err error) {
 	if f.Checksum, err = f.readUint32(src); err != nil {
 		return err
 	}
-	if c := f.checksum.Sum32(); c != f.Checksum {
+	sum := &f.checksum
+	if r := f.Blocks.reader; r != nil {
+		// The async reader checksums on its own copy of the frame. Its
+		// goroutines are done by the time its channel closes, which is
+		// before the caller sees end of stream and gets here.
+		sum = &r.frame.checksum
+	}
+	if c := sum.Sum32(); c != f.Checksum {
 		return fmt.Errorf("%w: got %x; expected %x", lz4errors.ErrInvalidFrameChecksum, c, f.Checksum)
 	}
 	return nil

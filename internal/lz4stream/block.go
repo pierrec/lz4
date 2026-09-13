@@ -268,7 +268,7 @@ func (b *FrameDataBlock) Write(f *Frame, dst io.Writer) error {
 		return err
 	}
 
-	if b.Checksum == 0 {
+	if f.isLegacy() || !f.Descriptor.Flags.BlockChecksum() { // legacy frames have no block checksums
 		return nil
 	}
 	binary.LittleEndian.PutUint32(buf, b.Checksum)

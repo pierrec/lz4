@@ -648,3 +648,35 @@ func TestLegacyFrameKeepsDescriptor(t *testing.T) {
 		t.Fatalf("legacy frame after a checksummed frame: got %d bytes, want %d", out.Len(), len(in))
 	}
 }
+
+// A block checksum is written whenever the option is set, even when the
+// checksum value happens to be zero. Previously, zero was skipped, which broke
+// the reader.
+func TestWriterZeroBlockChecksum(t *testing.T) {
+	zero := []byte{0x27, 0x11, 0x4b, 0x23} // too short to compress; xxh32 is zero
+	rest := []byte("second block")
+	var buf bytes.Buffer
+	zw := lz4.NewWriter(&buf)
+	if err := zw.Apply(lz4.BlockChecksumOption(true)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := zw.Write(zero); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := zw.Write(rest); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	out, err := io.ReadAll(lz4.NewReader(&buf))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := append(zero, rest...); !bytes.Equal(out, want) {
+		t.Fatalf("got % x, want % x", out, want)
+	}
+}

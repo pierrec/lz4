@@ -94,7 +94,7 @@ func (r *Reader) init() error {
 	}
 	r.reads = data
 	r.idx = 0
-	size := r.frame.Descriptor.Flags.BlockSizeIndex()
+	size := r.frame.BlockSizeIndex()
 	r.data = size.Get()
 	r.cum = 0
 	return nil
@@ -243,7 +243,7 @@ func (r *Reader) WriteTo(w io.Writer) (n int64, err error) {
 
 	var data []byte
 	if r.isNotConcurrent() {
-		size := r.frame.Descriptor.Flags.BlockSizeIndex()
+		size := r.frame.BlockSizeIndex()
 		data = size.Get()
 		defer lz4block.Put(data)
 	}

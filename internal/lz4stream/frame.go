@@ -45,8 +45,6 @@ func (f *Frame) Reset(num int) {
 func (f *Frame) InitW(dst io.Writer, num int, legacy bool) {
 	if legacy {
 		f.Magic = frameMagicLegacy
-		idx := lz4block.Index(lz4block.Block8Mb)
-		f.Descriptor.Flags.BlockSizeIndexSet(idx)
 	} else {
 		f.Magic = frameMagic
 		f.Descriptor.initW()
@@ -74,6 +72,15 @@ func (f *Frame) CloseW(dst io.Writer, num int) error {
 
 func (f *Frame) isLegacy() bool {
 	return f.Magic == frameMagicLegacy
+}
+
+// BlockSizeIndex returns the block size of the frame; legacy frames
+// have no descriptors and return 8Mb.
+func (f *Frame) BlockSizeIndex() lz4block.BlockSizeIndex {
+	if f.isLegacy() {
+		return lz4block.Index(lz4block.Block8Mb)
+	}
+	return f.Descriptor.Flags.BlockSizeIndex()
 }
 
 func (f *Frame) ParseHeaders(src io.Reader) error {
@@ -167,8 +174,7 @@ func (fd *FrameDescriptor) Write(f *Frame, dst io.Writer) error {
 
 func (fd *FrameDescriptor) initR(f *Frame, src io.Reader) error {
 	if f.isLegacy() {
-		idx := lz4block.Index(lz4block.Block8Mb)
-		f.Descriptor.Flags.BlockSizeIndexSet(idx)
+		fd.Flags = 0 // no descriptor to read: clear whatever the previous frame left
 		return nil
 	}
 	// Read the flags and the checksum, hoping that there is not content size.

@@ -65,7 +65,7 @@ func (w *Writer) isNotConcurrent() bool {
 // init sets up the Writer when in newState. It does not change the Writer state.
 func (w *Writer) init() error {
 	w.frame.InitW(w.src, w.num, w.legacy)
-	size := w.frame.Descriptor.Flags.BlockSizeIndex()
+	size := w.frame.BlockSizeIndex()
 	w.data = size.Get()
 	w.idx = 0
 	return w.frame.Descriptor.Write(w.frame, w.src)
@@ -115,7 +115,7 @@ func (w *Writer) Write(buf []byte) (n int, err error) {
 			return
 		}
 		if !w.isNotConcurrent() {
-			size := w.frame.Descriptor.Flags.BlockSizeIndex()
+			size := w.frame.BlockSizeIndex()
 			w.data = size.Get()
 		}
 		w.idx = 0
@@ -218,7 +218,7 @@ func (w *Writer) ReadFrom(r io.Reader) (n int64, err error) {
 	}
 	defer w.state.check(&err)
 
-	size := w.frame.Descriptor.Flags.BlockSizeIndex()
+	size := w.frame.BlockSizeIndex()
 	var done bool
 	var rn int
 	data := size.Get()

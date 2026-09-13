@@ -94,7 +94,7 @@ func (b *Blocks) ErrorR() error {
 // If not in concurrent mode, the uncompressed block is b.Block and the returned error
 // needs to be checked.
 func (b *Blocks) initR(f *Frame, num int, src io.Reader) (chan []byte, error) {
-	size := f.Descriptor.Flags.BlockSizeIndex()
+	size := f.BlockSizeIndex()
 	if num == 1 {
 		b.Blocks = nil
 		b.Block = NewFrameDataBlock(f)
@@ -195,7 +195,7 @@ func (b *Blocks) closeR(err error) {
 }
 
 func NewFrameDataBlock(f *Frame) *FrameDataBlock {
-	buf := f.Descriptor.Flags.BlockSizeIndex().Get()
+	buf := f.BlockSizeIndex().Get()
 	return &FrameDataBlock{Data: buf, data: buf}
 }
 
@@ -246,7 +246,7 @@ func (b *FrameDataBlock) Compress(f *Frame, src []byte, level lz4block.Compressi
 	b.Size.sizeSet(len(b.Data))
 	b.src = src // keep track of the source for content checksum
 
-	if f.Descriptor.Flags.BlockChecksum() {
+	if !f.isLegacy() && f.Descriptor.Flags.BlockChecksum() {
 		b.Checksum = xxh32.ChecksumZero(b.Data)
 	}
 	return b

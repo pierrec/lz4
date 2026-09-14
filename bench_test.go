@@ -58,16 +58,34 @@ func BenchmarkCompressHC(b *testing.B) {
 	}
 }
 
-func BenchmarkUncompress(b *testing.B) {
-	buf := make([]byte, len(pg1661))
+// benchmarkUncompressBlock measures the block decoder alone: no frame, no checksum.
+func benchmarkUncompressBlock(b *testing.B, raw []byte) {
+	block := make([]byte, lz4.CompressBlockBound(len(raw)))
+	var c lz4.Compressor
+	n, err := c.CompressBlock(raw, block)
+	if err != nil {
+		b.Fatal(err)
+	}
+	block = block[:n]
+	buf := make([]byte, len(raw))
 
+	b.SetBytes(int64(len(raw)))
 	b.ReportAllocs()
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		_, _ = lz4block.UncompressBlock(pg1661LZ4, buf, nil)
+		if _, err := lz4block.UncompressBlock(block, buf, nil); err != nil {
+			b.Fatal(err)
+		}
 	}
 }
+
+func BenchmarkUncompress(b *testing.B) { benchmarkUncompressBlock(b, pg1661) }
+
+// bzImage is half literal bytes, so it exercises what text skips through
+// the shortcut. Its golden .lz4 is a legacy frame with trailing data, so
+// decode it as a block.
+func BenchmarkUncompressBzImage(b *testing.B) { benchmarkUncompressBlock(b, bzImage) }
 
 func mustLoadFile(f string) []byte {
 	var b []byte
@@ -93,6 +111,7 @@ var (
 	twainLZ4          = mustLoadFile("testdata/Mark.Twain-Tom.Sawyer.txt.lz4")
 	randomLZ4         = mustLoadFile("testdata/random.data.lz4")
 	randomAppendedLZ4 = mustLoadFile("testdata/random_appended.data.lz4")
+	bzImage           = mustLoadFile("testdata/bzImage_lz4_isolated.gz")
 )
 
 func benchmarkUncompress(b *testing.B, compressed []byte) {

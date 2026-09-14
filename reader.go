@@ -36,7 +36,7 @@ type Reader struct {
 	src     io.Reader        // source reader
 	num     int              // concurrency level
 	frame   *lz4stream.Frame // frame being read
-	data    []byte           // block buffer allocated in non concurrent mode
+	data    []byte           // block buffer allocated in non-concurrent mode
 	reads   chan []byte      // pending data
 	idx     int              // size of pending data
 	handler func(int)
@@ -187,7 +187,9 @@ func (r *Reader) read(buf []byte) (int, error) {
 	var direct bool
 	dst := r.data[:cap(r.data)]
 	if len(buf) >= len(dst) {
-		// Uncompress directly into buf.
+		// Decompress directly into buf.
+		// trim r.data as it is not needed now
+		r.data = r.data[:0]
 		direct = true
 		dst = buf
 	}

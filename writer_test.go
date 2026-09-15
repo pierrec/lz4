@@ -5,11 +5,13 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math/rand"
 	"os"
 	"os/exec"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/pierrec/lz4/v4"
 	"github.com/pierrec/lz4/v4/internal/lz4block"
@@ -242,6 +244,195 @@ func TestWriterFlush(t *testing.T) {
 	// header + data
 	if got, want := out.Len(), 7; got == want {
 		t.Fatalf("got %d, want %d", got, want)
+	}
+}
+
+type flushBlockingWriter struct {
+	bytes.Buffer
+	entered chan struct{}
+	release chan struct{}
+	writes  int
+}
+
+func (w *flushBlockingWriter) Write(p []byte) (int, error) {
+	w.writes++
+	if w.writes == 3 {
+		close(w.entered)
+		<-w.release
+	}
+	return w.Buffer.Write(p)
+}
+
+func TestWriterFlushBufferOwnership(t *testing.T) {
+	for _, concurrency := range []int{2, 4} {
+		t.Run(fmt.Sprintf("concurrency=%d", concurrency), func(t *testing.T) {
+			out := &flushBlockingWriter{entered: make(chan struct{}), release: make(chan struct{})}
+			zw := lz4.NewWriter(out)
+			if err := zw.Apply(lz4.ConcurrencyOption(concurrency), lz4.BlockSizeOption(lz4.Block64Kb)); err != nil {
+				t.Fatal(err)
+			}
+			first := make([]byte, 4096)
+			_, _ = rand.New(rand.NewSource(192)).Read(first)
+			second := bytes.Repeat([]byte{0xff}, len(first))
+			if _, err := zw.Write(first); err != nil {
+				t.Fatal(err)
+			}
+			if err := zw.Flush(); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case <-out.entered:
+			case <-time.After(5 * time.Second):
+				close(out.release)
+				t.Fatal("timed out waiting for block write")
+			}
+			n, err := zw.Write(second)
+			close(out.release)
+			if err != nil || n != len(second) {
+				t.Fatalf("Write: got (%d, %v), want (%d, nil)", n, err, len(second))
+			}
+			if err := zw.Flush(); err != nil {
+				t.Fatal(err)
+			}
+			if err := zw.Close(); err != nil {
+				t.Fatal(err)
+			}
+			got, err := io.ReadAll(lz4.NewReader(&out.Buffer))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(got, append(first, second...)) {
+				t.Fatal("uncompressed data does not match original after Flush followed by Write")
+			}
+		})
+	}
+}
+
+func TestWriterFlushRepeated(t *testing.T) {
+	for _, concurrency := range []int{1, 2, 4} {
+		for _, level := range []lz4.CompressionLevel{lz4.Fast, lz4.Level1} {
+			for _, checksum := range []bool{false, true} {
+				t.Run(fmt.Sprintf("concurrency=%d/level=%d/checksum=%t", concurrency, level, checksum), func(t *testing.T) {
+					var out, want bytes.Buffer
+					zw := lz4.NewWriter(&out)
+					if err := zw.Apply(lz4.ConcurrencyOption(concurrency), lz4.BlockSizeOption(lz4.Block64Kb), lz4.CompressionLevelOption(level), lz4.ChecksumOption(checksum), lz4.BlockChecksumOption(checksum)); err != nil {
+						t.Fatal(err)
+					}
+					if err := zw.Flush(); err != nil {
+						t.Fatal(err)
+					}
+					rng := rand.New(rand.NewSource(192))
+					for i := 0; i < 32; i++ {
+						sizes := []int{1, 4096, int(lz4.Block64Kb) - 1, int(lz4.Block64Kb), int(lz4.Block64Kb) + 1}
+						data := bytes.Repeat([]byte{byte(i)}, sizes[i%len(sizes)])
+						if i%2 == 0 {
+							_, _ = rng.Read(data)
+						}
+						want.Write(data)
+						if n, err := zw.Write(data); err != nil || n != len(data) {
+							t.Fatalf("Write: got (%d, %v), want (%d, nil)", n, err, len(data))
+						}
+						if i == 31 {
+							break
+						}
+						for j := 0; j < 2; j++ {
+							if err := zw.Flush(); err != nil {
+								t.Fatal(err)
+							}
+						}
+					}
+					if err := zw.Close(); err != nil {
+						t.Fatal(err)
+					}
+					got, err := io.ReadAll(lz4.NewReader(&out))
+					if err != nil {
+						t.Fatal(err)
+					}
+					if !bytes.Equal(got, want.Bytes()) {
+						t.Fatal("uncompressed data does not match original")
+					}
+				})
+			}
+		}
+	}
+}
+
+type flushErrorWriter struct {
+	writes int
+	failAt int
+}
+
+func (w *flushErrorWriter) Write(p []byte) (int, error) {
+	w.writes++
+	if w.writes >= w.failAt {
+		return 0, io.ErrClosedPipe
+	}
+	return len(p), nil
+}
+
+func TestWriterFlushError(t *testing.T) {
+	for _, concurrency := range []int{1, 2, 4} {
+		for _, failAt := range []int{2, 3} {
+			t.Run(fmt.Sprintf("concurrency=%d/failAt=%d", concurrency, failAt), func(t *testing.T) {
+				zw := lz4.NewWriter(&flushErrorWriter{failAt: failAt})
+				if err := zw.Apply(lz4.ConcurrencyOption(concurrency), lz4.BlockSizeOption(lz4.Block64Kb)); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := zw.Write([]byte("first block")); err != nil {
+					t.Fatal(err)
+				}
+				err := zw.Flush()
+				if concurrency == 1 {
+					if err != io.ErrClosedPipe {
+						t.Fatalf("Flush: got %v, want %v", err, io.ErrClosedPipe)
+					}
+					zw.Reset(io.Discard)
+					return
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				for i := 0; i < 8; i++ {
+					if _, err := zw.Write([]byte("next block")); err != nil {
+						t.Fatal(err)
+					}
+					if err := zw.Flush(); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if err := zw.Close(); err != io.ErrClosedPipe {
+					t.Fatalf("Close: got %v, want %v", err, io.ErrClosedPipe)
+				}
+			})
+		}
+	}
+}
+
+func BenchmarkWriterFlush(b *testing.B) {
+	for _, concurrency := range []int{1, 4} {
+		b.Run(fmt.Sprintf("concurrency=%d", concurrency), func(b *testing.B) {
+			data := bytes.Repeat([]byte("0123456789abcdef"), 256)
+			b.SetBytes(int64(len(data) * 32))
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				zw := lz4.NewWriter(io.Discard)
+				if err := zw.Apply(lz4.ConcurrencyOption(concurrency), lz4.BlockSizeOption(lz4.Block64Kb)); err != nil {
+					b.Fatal(err)
+				}
+				for j := 0; j < 32; j++ {
+					if _, err := zw.Write(data); err != nil {
+						b.Fatal(err)
+					}
+					if err := zw.Flush(); err != nil {
+						b.Fatal(err)
+					}
+				}
+				if err := zw.Close(); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }
 

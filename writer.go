@@ -159,9 +159,12 @@ func (w *Writer) Flush() (err error) {
 	}
 
 	if w.idx > 0 {
-		// Flush pending data, disable w.data freeing as it is done later on.
-		if err = w.write(w.data[:w.idx], false); err != nil {
+		if err = w.write(w.data[:w.idx], true); err != nil {
 			return err
+		}
+		if !w.isNotConcurrent() {
+			size := w.frame.Descriptor.Flags.BlockSizeIndex()
+			w.data = size.Get()
 		}
 		w.idx = 0
 	}

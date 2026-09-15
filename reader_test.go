@@ -362,6 +362,30 @@ func TestReader_WriteTo(t *testing.T) {
 	}
 }
 
+func TestReader_WriteToAfterPartialRead(t *testing.T) {
+	for _, conc := range []int{1, 4} {
+		zr := lz4.NewReader(bytes.NewReader(pg1661LZ4))
+		zr.Apply(lz4.ConcurrencyOption(conc))
+
+		const prefix = 10
+		if _, err := io.ReadFull(zr, make([]byte, prefix)); err != nil {
+			t.Fatalf("concurrency=%d: %v", conc, err)
+		}
+
+		buf := new(bytes.Buffer)
+		n, err := zr.WriteTo(buf)
+		if err != nil {
+			t.Fatalf("concurrency=%d: %v", conc, err)
+		}
+		if want := int64(len(pg1661) - prefix); n != want {
+			t.Fatalf("concurrency=%d: expecting to write %d bytes, got %d", conc, want, n)
+		}
+		if !reflect.DeepEqual(buf.Bytes(), pg1661[prefix:]) {
+			t.Fatalf("concurrency=%d: result does not match original", conc)
+		}
+	}
+}
+
 // TestReader_DirectModeStaleData verifies that a zero-length uncompressed block
 // in direct mode does not cause stale pool data to be returned. Before the fix,
 // r.data was not cleared after a direct-mode decompress, so a subsequent

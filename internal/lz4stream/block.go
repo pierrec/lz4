@@ -56,7 +56,7 @@ var errAbandoned = lz4errors.Error("lz4: concurrent read abandoned")
 func (b *Blocks) initW(f *Frame, dst io.Writer, num int) {
 	if num == 1 {
 		b.Blocks = nil
-		b.Block = NewFrameDataBlock(f)
+		b.Block = b.Block.init(f)
 		return
 	}
 	b.Block = nil
@@ -140,7 +140,7 @@ func (b *Blocks) initR(f *Frame, num int, src io.Reader) (chan []byte, error) {
 	size := f.BlockSizeIndex()
 	if num == 1 {
 		b.Blocks = nil
-		b.Block = NewFrameDataBlock(f)
+		b.Block = b.Block.init(f)
 		return nil, nil
 	}
 	b.Block = nil
@@ -233,8 +233,20 @@ func (b *Blocks) initR(f *Frame, num int, src io.Reader) (chan []byte, error) {
 }
 
 func NewFrameDataBlock(f *Frame) *FrameDataBlock {
+	return (*FrameDataBlock)(nil).init(f)
+}
+
+// init readies b for a new frame, allocating it if nil. In non concurrent
+// mode, the same block is reused across resets.
+func (b *FrameDataBlock) init(f *Frame) *FrameDataBlock {
+	if b == nil {
+		b = new(FrameDataBlock)
+	}
+	b.Close(f) // return any buffer still held; noop if already closed
 	buf := f.BlockSizeIndex().Get()
-	return &FrameDataBlock{Data: buf, data: buf}
+	b.Data = buf
+	b.data = buf
+	return b
 }
 
 type FrameDataBlock struct {

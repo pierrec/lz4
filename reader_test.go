@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/pierrec/lz4/v4"
 )
@@ -445,5 +446,51 @@ func TestReader_DirectModeStaleData(t *testing.T) {
 	if !bytes.Equal(result.Bytes(), payload) {
 		t.Fatalf("decompressed data mismatch: got %d bytes %q, want %d bytes %q",
 			result.Len(), result.Bytes(), len(payload), payload)
+	}
+}
+
+// Ensure a Reset mid-stream does not leak the goroutines and buffers of the
+// abandoned read if concurrency is > 1.
+func TestReaderConcurrentResetMidStream(t *testing.T) {
+	in := bytes.Repeat([]byte("payload "), 500000)
+	var buf bytes.Buffer
+	zw := lz4.NewWriter(&buf)
+	if err := zw.Apply(lz4.BlockSizeOption(lz4.Block64Kb)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := zw.Write(in); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	compressed := buf.Bytes()
+
+	before := runtime.NumGoroutine()
+	zr := lz4.NewReader(nil)
+	if err := zr.Apply(lz4.ConcurrencyOption(4)); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 20; i++ {
+		zr.Reset(bytes.NewReader(compressed))
+		if _, err := io.ReadFull(zr, make([]byte, 100)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	zr.Reset(nil)
+	for deadline := time.Now().Add(5 * time.Second); runtime.NumGoroutine() > before && time.Now().Before(deadline); {
+		time.Sleep(time.Millisecond)
+	}
+	if n := runtime.NumGoroutine(); n > before {
+		t.Fatalf("%d goroutines leaked by mid-stream resets", n-before)
+	}
+
+	zr.Reset(bytes.NewReader(compressed))
+	out, err := io.ReadAll(zr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(out, in) {
+		t.Fatal("output mismatch after resets")
 	}
 }

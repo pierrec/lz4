@@ -534,7 +534,8 @@ func TestWriterConcurrency(t *testing.T) {
 	if err := zw.Apply(
 		lz4.ConcurrencyOption(4),
 		lz4.BlockSizeOption(lz4.Block4Mb),
-		lz4.ChecksumOption(true)); err != nil {
+		lz4.ChecksumOption(true),
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -694,5 +695,179 @@ func TestWriter_ReadFromExactBlockMultiple(t *testing.T) {
 				})
 			}
 		})
+	}
+}
+
+// Ensure a Close followed by a Reset does not block forever
+// if concurrency is > 1.
+func TestWriterConcurrentCloseThenReset(t *testing.T) {
+	in := bytes.Repeat([]byte("payload "), 100000)
+	var buf bytes.Buffer
+	zw := lz4.NewWriter(&buf)
+	if err := zw.Apply(lz4.ConcurrencyOption(4)); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		buf.Reset()
+		zw.Reset(&buf)
+		if _, err := zw.Write(in); err != nil {
+			t.Fatal(err)
+		}
+		if err := zw.Close(); err != nil {
+			t.Fatal(err)
+		}
+		out, err := io.ReadAll(lz4.NewReader(&buf))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(out, in) {
+			t.Fatalf("round %d: output mismatch", i)
+		}
+	}
+}
+
+// After Close, a second Close is a no-op and a Write fails.
+func TestWriterAfterClose(t *testing.T) {
+	in := bytes.Repeat([]byte("payload "), 1000)
+	var buf bytes.Buffer
+	zw := lz4.NewWriter(&buf)
+	if _, err := zw.Write(in); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	size := buf.Len()
+	if err := zw.Close(); err != nil {
+		t.Fatalf("second Close: %v", err)
+	}
+	if n, err := zw.Write(in); err != lz4.ErrWriterClosed || n != 0 {
+		t.Fatalf("Write after Close: n=%d err=%v", n, err)
+	}
+	if n, err := zw.ReadFrom(bytes.NewReader(in)); err != lz4.ErrWriterClosed || n != 0 {
+		t.Fatalf("ReadFrom after Close: n=%d err=%v", n, err)
+	}
+	if err := zw.Flush(); err != nil {
+		t.Fatalf("Flush after Close: %v", err)
+	}
+	if buf.Len() != size {
+		t.Fatalf("closed writer appended %d bytes", buf.Len()-size)
+	}
+	out, err := io.ReadAll(lz4.NewReader(&buf))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(out, in) {
+		t.Fatal("output mismatch")
+	}
+	// Reset makes the writer usable again.
+	buf.Reset()
+	zw.Reset(&buf)
+	if _, err := zw.Write(in); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := io.ReadAll(lz4.NewReader(&buf)); err != nil || !bytes.Equal(out, in) {
+		t.Fatalf("after Reset: err %v, match %v", err, bytes.Equal(out, in))
+	}
+}
+
+// Legacy frames do not use the shared (non legacy) descriptor; this test
+// ensures:
+// * a Writer never adds block checksums to a legacy frame
+// * a Writer keeps its configured block size for the frames after a legacy frame
+// * a Reader does not carry the previous frame's flags into a legacy frame
+func TestLegacyFrameKeepsDescriptor(t *testing.T) {
+	in := bytes.Repeat([]byte("payload "), 100000)
+	var buf bytes.Buffer
+	zw := lz4.NewWriter(&buf)
+	if err := zw.Apply(lz4.BlockSizeOption(lz4.Block64Kb), lz4.BlockChecksumOption(true), lz4.LegacyOption(true)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := zw.Write(in); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	legacy := append([]byte{}, buf.Bytes()...)
+	if out, err := io.ReadAll(lz4.NewReader(bytes.NewReader(legacy))); err != nil || !bytes.Equal(out, in) {
+		t.Fatalf("legacy frame with a block checksum option: err %v, match %v", err, bytes.Equal(out, in))
+	}
+
+	buf.Reset()
+	zw.Reset(&buf)
+	if err := zw.Apply(lz4.LegacyOption(false)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := zw.Write(in); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if bd := buf.Bytes()[5] >> 4 & 7; bd != 4 {
+		t.Fatalf("frame after a legacy frame has block size index %d, want 4 (64Kb)", bd)
+	}
+	if out, err := io.ReadAll(lz4.NewReader(&buf)); err != nil || !bytes.Equal(out, in) {
+		t.Fatalf("frame after a legacy frame: err %v, match %v", err, bytes.Equal(out, in))
+	}
+
+	buf.Reset()
+	zw.Reset(&buf)
+	if err := zw.Apply(lz4.BlockChecksumOption(true)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := zw.Write(in); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	zr := lz4.NewReader(&buf)
+	if _, err := io.Copy(io.Discard, zr); err != nil {
+		t.Fatal(err)
+	}
+	zr.Reset(bytes.NewReader(legacy))
+	var out bytes.Buffer
+	if _, err := io.Copy(&out, zr); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(out.Bytes(), in) {
+		t.Fatalf("legacy frame after a checksummed frame: got %d bytes, want %d", out.Len(), len(in))
+	}
+}
+
+// A block checksum is written whenever the option is set, even when the
+// checksum value happens to be zero. Previously, zero was skipped, which broke
+// the reader.
+func TestWriterZeroBlockChecksum(t *testing.T) {
+	zero := []byte{0x27, 0x11, 0x4b, 0x23} // too short to compress; xxh32 is zero
+	rest := []byte("second block")
+	var buf bytes.Buffer
+	zw := lz4.NewWriter(&buf)
+	if err := zw.Apply(lz4.BlockChecksumOption(true)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := zw.Write(zero); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := zw.Write(rest); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	out, err := io.ReadAll(lz4.NewReader(&buf))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := append(zero, rest...); !bytes.Equal(out, want) {
+		t.Fatalf("got % x, want % x", out, want)
 	}
 }

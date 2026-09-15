@@ -177,7 +177,7 @@ func BenchmarkWriterReset(b *testing.B) {
 	b.ReportAllocs()
 
 	zw := lz4.NewWriter(nil)
-	src := mustLoadFile("testdata/gettysburg.txt")
+	src := mustLoadFile("testdata/gettysburg.txt.gz")
 	var buf bytes.Buffer
 
 	for n := 0; n < b.N; n++ {

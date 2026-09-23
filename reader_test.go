@@ -387,6 +387,136 @@ func TestReader_WriteToAfterPartialRead(t *testing.T) {
 	}
 }
 
+// WriteTo must write out every frame of a stream, including frames whose
+// block size is larger than the first frame's.
+func TestReader_WriteToMultipleFrames(t *testing.T) {
+	small := bytes.Repeat([]byte("abc"), 100)
+	big := bytes.Repeat([]byte("0123456789abcdef-"), 6000)
+
+	for _, tc := range []struct {
+		name   string
+		frames [][]lz4.Option
+	}{
+		{"64K then 64K", [][]lz4.Option{
+			_o(lz4.BlockSizeOption(lz4.Block64Kb)),
+			_o(lz4.BlockSizeOption(lz4.Block64Kb)),
+		}},
+		{"4M then 64K", [][]lz4.Option{
+			_o(lz4.BlockSizeOption(lz4.Block4Mb)),
+			_o(lz4.BlockSizeOption(lz4.Block64Kb)),
+		}},
+		{"64K then 4M", [][]lz4.Option{
+			_o(lz4.BlockSizeOption(lz4.Block64Kb)),
+			_o(lz4.BlockSizeOption(lz4.Block4Mb)),
+		}},
+		{"256K then 1M then 64K", [][]lz4.Option{
+			_o(lz4.BlockSizeOption(lz4.Block256Kb)),
+			_o(lz4.BlockSizeOption(lz4.Block1Mb)),
+			_o(lz4.BlockSizeOption(lz4.Block64Kb)),
+		}},
+		{"64K then legacy", [][]lz4.Option{
+			_o(lz4.BlockSizeOption(lz4.Block64Kb)),
+			_o(lz4.LegacyOption(true)),
+		}},
+	} {
+		// Frames alternate between small and big contents.
+		var stream, want []byte
+		for i, opts := range tc.frames {
+			in := small
+			if i%2 == 1 {
+				in = big
+			}
+			var buf bytes.Buffer
+			zw := lz4.NewWriter(&buf)
+			if err := zw.Apply(opts...); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := zw.Write(in); err != nil {
+				t.Fatal(err)
+			}
+			if err := zw.Close(); err != nil {
+				t.Fatal(err)
+			}
+			stream = append(stream, buf.Bytes()...)
+			want = append(want, in...)
+		}
+
+		for _, conc := range []int{1, 4} {
+			t.Run(fmt.Sprintf("%s concurrency=%d", tc.name, conc), func(t *testing.T) {
+				zr := lz4.NewReader(bytes.NewReader(stream))
+				if err := zr.Apply(lz4.ConcurrencyOption(conc)); err != nil {
+					t.Fatal(err)
+				}
+				all, err := io.ReadAll(zr)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !bytes.Equal(all, want) {
+					t.Fatalf("Read: got %d bytes, want %d", len(all), len(want))
+				}
+
+				var done int
+				zr = lz4.NewReader(bytes.NewReader(stream))
+				if err := zr.Apply(lz4.ConcurrencyOption(conc), lz4.OnBlockDoneOption(func(n int) { done += n })); err != nil {
+					t.Fatal(err)
+				}
+				buf := new(bytes.Buffer)
+				n, err := zr.WriteTo(buf)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if n != int64(buf.Len()) {
+					t.Fatalf("WriteTo: reported %d bytes, wrote %d", n, buf.Len())
+				}
+				if !bytes.Equal(buf.Bytes(), want) {
+					t.Fatalf("WriteTo: got %d bytes, want %d", buf.Len(), len(want))
+				}
+				if done != len(want) {
+					t.Fatalf("WriteTo: OnBlockDone got %d bytes, want %d", done, len(want))
+				}
+			})
+		}
+	}
+}
+
+// A frame with dependent blocks turns off concurrency: WriteTo must still
+// write it out when it follows a frame read concurrently.
+func TestReader_WriteToConcurrentThenLinkedFrame(t *testing.T) {
+	linked := mustLoadFile("testdata/Mark.Twain-Tom.Sawyer_linked.txt.lz4")
+	linkedRaw, err := io.ReadAll(lz4.NewReader(bytes.NewReader(linked)))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	first := []byte("an independent frame read concurrently")
+	var buf bytes.Buffer
+	zw := lz4.NewWriter(&buf)
+	if _, err := zw.Write(first); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	stream := append(buf.Bytes(), linked...)
+	want := append(first, linkedRaw...)
+
+	zr := lz4.NewReader(bytes.NewReader(stream))
+	if err := zr.Apply(lz4.ConcurrencyOption(4)); err != nil {
+		t.Fatal(err)
+	}
+	out := new(bytes.Buffer)
+	n, err := zr.WriteTo(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != int64(out.Len()) {
+		t.Fatalf("reported %d bytes, wrote %d", n, out.Len())
+	}
+	if !bytes.Equal(out.Bytes(), want) {
+		t.Fatalf("got %d bytes, want %d", out.Len(), len(want))
+	}
+}
+
 // TestReader_DirectModeStaleData verifies that a zero-length uncompressed block
 // in direct mode does not cause stale pool data to be returned. Before the fix,
 // r.data was not cleared after a direct-mode decompress, so a subsequent

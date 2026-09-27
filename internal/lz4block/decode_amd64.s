@@ -740,7 +740,12 @@ copy_match_stream_bytes:
 
 	// AVX2 variant of copy_match_stream64, out of line so that it moves
 	// no other code: two 32-byte loads and stores per 64 bytes.
-	PCALIGN $32
+	//
+	// PCALIGN $64 also aligns decodeBlock itself to 64 bytes. Without
+	// it the function is only 32-byte aligned, and whether it lands on a
+	// 64-byte boundary depends on the code linked before it: the other
+	// half moved every hot loop and cost Zen 4/5 2-6% on real data.
+	PCALIGN $64
 copy_match_stream64_avx2:
 	VMOVDQU (BX), Y0
 	VMOVDQU 32(BX), Y1

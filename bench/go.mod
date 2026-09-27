@@ -1,6 +1,6 @@
 module github.com/pierrec/lz4/v4/bench
 
-go 1.17
+go 1.22
 
 require github.com/pierrec/lz4/v4 v4.0.0
 

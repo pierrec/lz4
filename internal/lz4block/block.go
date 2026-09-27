@@ -478,6 +478,9 @@ func (c *CompressorHC) CompressBlock(src, dst []byte, depth CompressionLevel) (i
 
 func compressBlockHC[T hcPosition](t *hcTables[T], src, dst []byte, depth CompressionLevel) (_ int, err error) {
 	defer recoverBlock(&err)
+	// Short destinations are caught by bounds checks, recovered above. Cap dst
+	// so that copies into it cannot reslice past len into the caller's memory.
+	dst = dst[:len(dst):len(dst)]
 
 	// Return 0, nil only if the destination buffer size is < CompressBlockBound.
 	isNotCompressible := len(dst) < CompressBlockBound(len(src))

@@ -40,3 +40,26 @@ TEXT ·cpuHasAVX2(SB), NOSPLIT, $0-1
 no:
 	MOVB  $0, ret+0(FP)
 	RET
+
+// func cpuHasPrefetchW() bool
+TEXT ·cpuHasPrefetchW(SB), NOSPLIT, $0-1
+	// Extended leaf 0x80000001 must exist.
+	MOVL  $0x80000000, AX
+	XORL  CX, CX
+	CPUID
+	CMPL  AX, $0x80000001
+	JB    nopfw
+
+	// Leaf 0x80000001 ECX: PRFCHW (bit 8).
+	MOVL  $0x80000001, AX
+	XORL  CX, CX
+	CPUID
+	TESTL $0x100, CX
+	JZ    nopfw
+
+	MOVB  $1, ret+0(FP)
+	RET
+
+nopfw:
+	MOVB  $0, ret+0(FP)
+	RET

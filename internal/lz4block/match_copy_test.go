@@ -450,7 +450,7 @@ func BenchmarkDecodeLongCopy(b *testing.B) {
 	for _, size := range []struct {
 		name string
 		n    int
-	}{{"1K", 1 << 10}, {"4K", 4 << 10}, {"64K", 64 << 10}, {"256K", 256 << 10}, {"1M", 1 << 20}, {"4M", 4 << 20}} {
+	}{{"1K", 1 << 10}, {"4K", 4 << 10}, {"16K", 16 << 10}, {"32K", 32 << 10}, {"48K", 48 << 10}, {"64K", 64 << 10}, {"256K", 256 << 10}, {"1M", 1 << 20}, {"4M", 4 << 20}} {
 		n := size.n
 		src, dec := buildSingleMatchBlock(n, 1, minMatch)
 		benches = append(benches, bench{"literal/" + size.name, src, dec})

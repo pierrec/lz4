@@ -262,19 +262,15 @@ func (r *Reader) WriteTo(w io.Writer) (n int64, err error) {
 		r.handler(bn)
 	}
 
-	var data []byte
-	if r.isNotConcurrent() {
-		size := r.frame.BlockSizeIndex()
-		data = size.Get()
-		defer lz4block.Put(data)
-	}
 	for {
 		var bn int
 		var dst []byte
 	read:
 		if r.isNotConcurrent() {
-			bn, err = r.read(data)
-			dst = data[:bn]
+			// Uncompress into r.data, which init sizes for every frame.
+			_, err = r.read(nil)
+			dst = r.data
+			bn = len(dst)
 		} else {
 			lz4block.Put(dst)
 			dst = <-r.reads

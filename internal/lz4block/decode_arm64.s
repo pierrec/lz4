@@ -638,15 +638,12 @@ copyMatchStream:
 	BLO copyMatchStreamTail
 
 copyMatchStream64:
-	LDP (match), (tmp1, tmp2)
-	LDP 16(match), (tmp3, tmp4)
-	STP (tmp1, tmp2), (dst)
-	STP (tmp3, tmp4), 16(dst)
-	LDP 32(match), (tmp1, tmp2)
-	LDP 48(match), (tmp3, tmp4)
-	STP (tmp1, tmp2), 32(dst)
-	STP (tmp3, tmp4), 48(dst)
-	ADD $64, match
+	// 64 bytes per iteration through two Q-register pairs.
+	FLDPQ (match), (F0, F1)
+	FLDPQ 32(match), (F2, F3)
+	FSTPQ (F0, F1), (dst)
+	FSTPQ (F2, F3), 32(dst)
+	ADD   $64, match
 	ADD $64, dst
 	SUB $64, len
 	CMP $64, len

@@ -109,6 +109,7 @@ var (
 	pg1661LZ4         = mustLoadFile("testdata/pg1661.txt.lz4")
 	digitsLZ4         = mustLoadFile("testdata/e.txt.lz4")
 	twainLZ4          = mustLoadFile("testdata/Mark.Twain-Tom.Sawyer.txt.lz4")
+	twainLinkedLZ4    = mustLoadFile("testdata/Mark.Twain-Tom.Sawyer_linked.txt.lz4")
 	randomLZ4         = mustLoadFile("testdata/random.data.lz4")
 	randomAppendedLZ4 = mustLoadFile("testdata/random_appended.data.lz4")
 	bzImage           = mustLoadFile("testdata/bzImage_lz4_isolated.gz")
@@ -139,6 +140,10 @@ func BenchmarkUncompressPg1661(b *testing.B) { benchmarkUncompress(b, pg1661LZ4)
 func BenchmarkUncompressDigits(b *testing.B) { benchmarkUncompress(b, digitsLZ4) }
 func BenchmarkUncompressTwain(b *testing.B)  { benchmarkUncompress(b, twainLZ4) }
 func BenchmarkUncompressRand(b *testing.B)   { benchmarkUncompress(b, randomLZ4) }
+
+// Linked 64KB blocks: each block is decoded with the previous 64KB as its
+// dictionary.
+func BenchmarkUncompressTwainLinked(b *testing.B) { benchmarkUncompress(b, twainLinkedLZ4) }
 
 func benchmarkCompress(b *testing.B, uncompressed []byte) {
 	w := bytes.NewBuffer(nil)

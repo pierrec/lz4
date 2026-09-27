@@ -3,6 +3,7 @@ package lz4block
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"math/rand"
 	"testing"
 )
@@ -140,14 +141,17 @@ func TestMatchCopyMatrix(t *testing.T) {
 	for o := 8; o <= 33; o++ {
 		offsets = append(offsets, o)
 	}
-	offsets = append(offsets, 48, 64, 127, 128, 255, 1024)
+	offsets = append(offsets, 48, 64, 127, 128, 255, 1024, 4096, 20000)
 	// Match lengths: every integer from 4..64 catches off-by-one issues in
-	// all the loops; then a few large values exercise the bulk-copy path.
+	// all the loops; then a few large values exercise the bulk-copy path,
+	// the unrolled 64-byte loops, and the grow-then-stream copy of long
+	// matches with offset >= 32 (from 256 bytes, streaming from P >= 512;
+	// up to 64KiB on arm64).
 	var mlens []int
 	for l := minMatch; l <= 64; l++ {
 		mlens = append(mlens, l)
 	}
-	mlens = append(mlens, 65, 66, 71, 72, 79, 80, 95, 96, 100, 127, 128, 255, 256, 1023, 4096)
+	mlens = append(mlens, 65, 66, 71, 72, 79, 80, 95, 96, 100, 127, 128, 255, 256, 1023, 1024, 1025, 1100, 4096, 16383, 16385, 40000, 64<<10, 64<<10+1)
 
 	for _, off := range offsets {
 		for _, mlen := range mlens {
@@ -253,12 +257,12 @@ func TestMatchCopyMatrixSlack(t *testing.T) {
 	for o := 8; o <= 33; o++ {
 		offsets = append(offsets, o)
 	}
-	offsets = append(offsets, 48, 64, 127, 128, 255, 256, 1024)
+	offsets = append(offsets, 48, 64, 127, 128, 255, 256, 1024, 4096, 20000)
 	var mlens []int
 	for l := minMatch; l <= 64; l++ {
 		mlens = append(mlens, l)
 	}
-	mlens = append(mlens, 65, 66, 71, 72, 79, 80, 95, 96, 100, 127, 128, 255, 256, 257, 1023, 4096)
+	mlens = append(mlens, 65, 66, 71, 72, 79, 80, 95, 96, 100, 127, 128, 255, 256, 257, 1023, 1024, 1025, 1100, 4096, 16383, 16385, 40000)
 
 	for _, off := range offsets {
 		for _, mlen := range mlens {
@@ -369,5 +373,140 @@ func TestMatchCopyRandomSequences(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// TestMatchCopyDict decodes single matches that start in the dictionary and
+// either end there or continue into dst, for many distances and lengths.
+// The dictionary and src end at an inaccessible page, so over-reads fault.
+func TestMatchCopyDict(t *testing.T) {
+	const dictLen = 2000
+	dict := guardedTail(t, dictLen)
+	rand.New(rand.NewSource(1)).Read(dict)
+	srcBuf := guardedTail(t, 1<<12)
+
+	var mlens []int
+	for l := minMatch; l <= 40; l++ {
+		mlens = append(mlens, l)
+	}
+	mlens = append(mlens, 47, 48, 63, 64, 100, 255, 256, 1023, 1024, 1025, 1999, 2000, 3000, 20000)
+
+	for _, lit := range []int{0, 5} {
+		lits := []byte("abcde")[:lit]
+		for _, d := range []int{1, 2, 3, 4, 7, 8, 15, 16, 17, 31, 32, 33, 100, 1999, 2000} {
+			for _, mlen := range mlens {
+				off := lit + d
+				var buf bytes.Buffer
+				writeToken(&buf, lit, mlen-minMatch)
+				buf.Write(lits)
+				buf.Write([]byte{byte(off), byte(off >> 8)})
+				if rawM := mlen - minMatch; rawM >= 15 {
+					writeExtended(&buf, rawM-15)
+				}
+				writeToken(&buf, 1, 0)
+				buf.WriteByte('x')
+
+				want := append([]byte(nil), lits...)
+				for j := 0; j < mlen; j++ {
+					if p := len(want) - off; p < 0 {
+						want = append(want, dict[dictLen+p])
+					} else {
+						want = append(want, want[p])
+					}
+				}
+				want = append(want, 'x')
+
+				src := srcBuf[len(srcBuf)-buf.Len():]
+				copy(src, buf.Bytes())
+				dst := make([]byte, len(want))
+				if n := decodeBlock(dst, src, dict); n != len(want) {
+					t.Fatalf("lit=%d d=%d mlen=%d: decode returned %d, want %d", lit, d, mlen, n, len(want))
+				}
+				if !bytes.Equal(dst, want) {
+					for i := range want {
+						if dst[i] != want[i] {
+							t.Fatalf("lit=%d d=%d mlen=%d: first mismatch at byte %d of %d", lit, d, mlen, i, len(want))
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+// BenchmarkDecodeLongCopy measures single sequences whose literal run or
+// match is far longer than any inline copy loop: incompressible data (one
+// long literal), runs of a repeated short pattern such as zeros (one long
+// overlapping match), and long non-overlapping matches. Compare against
+// -tags noasm, which copies these with runtime.memmove.
+func BenchmarkDecodeLongCopy(b *testing.B) {
+	type bench struct {
+		name         string
+		src, decoded []byte
+	}
+	var benches []bench
+	for _, size := range []struct {
+		name string
+		n    int
+	}{{"1K", 1 << 10}, {"4K", 4 << 10}, {"64K", 64 << 10}, {"256K", 256 << 10}, {"1M", 1 << 20}, {"4M", 4 << 20}} {
+		n := size.n
+		src, dec := buildSingleMatchBlock(n, 1, minMatch)
+		benches = append(benches, bench{"literal/" + size.name, src, dec})
+
+		for _, offset := range []int{1, 2, 3, 4, 7, 8, 16, 24, 31, 64, 1024} {
+			prefix := offset
+			if prefix < 16 {
+				prefix = 16
+			}
+			src, dec := buildSingleMatchBlock(prefix, offset, n)
+			benches = append(benches, bench{fmt.Sprintf("overlap%d/%s", offset, size.name), src, dec})
+		}
+	}
+	// Non-overlapping: 32K of literals, then a 32K match of them.
+	src, dec := buildSingleMatchBlock(32<<10, 32<<10, 32<<10)
+	benches = append(benches, bench{"nonoverlap/64K", src, dec})
+
+	// Matches that lie entirely in a 32K dictionary: 200 matches of 64 bytes,
+	// and one 30K match.
+	dict := make([]byte, 32<<10)
+	rand.New(rand.NewSource(1)).Read(dict)
+	dictBlock := func(n, mlen int) bench {
+		var buf bytes.Buffer
+		var want []byte
+		for i := 0; i < n; i++ {
+			offset := len(want) + len(dict) - (i*7919)%(len(dict)-mlen)
+			start := len(dict) + len(want) - offset
+			writeToken(&buf, 0, mlen-minMatch)
+			buf.Write([]byte{byte(offset), byte(offset >> 8)})
+			if rawM := mlen - minMatch; rawM >= 15 {
+				writeExtended(&buf, rawM-15)
+			}
+			want = append(want, dict[start:start+mlen]...)
+		}
+		writeToken(&buf, 1, 0)
+		buf.WriteByte('x')
+		want = append(want, 'x')
+		return bench{fmt.Sprintf("dict%dx%d", n, mlen), buf.Bytes(), want}
+	}
+	dictBenches := []bench{dictBlock(200, 64), dictBlock(1, 30000)}
+
+	run := func(bc bench, dict []byte) {
+		b.Run(bc.name, func(b *testing.B) {
+			dst := make([]byte, len(bc.decoded))
+			if n := decodeBlock(dst, bc.src, dict); n != len(bc.decoded) || !bytes.Equal(dst, bc.decoded) {
+				b.Fatalf("decodeBlock = %d, want %d and matching output", n, len(bc.decoded))
+			}
+			b.SetBytes(int64(len(bc.decoded)))
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				decodeBlock(dst, bc.src, dict)
+			}
+		})
+	}
+	for _, bc := range benches {
+		run(bc, nil)
+	}
+	for _, bc := range dictBenches {
+		run(bc, dict)
 	}
 }

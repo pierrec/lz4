@@ -1,18 +1,21 @@
 #!/bin/sh
-# Fetch the Silesia corpus into testdata/silesia.tar, the file name that
-# klauspost/compress's tests and benchmarks also read. It holds the corpus's
-# 12 files in the usual order, as a reproducible GNU tar (211957760 bytes;
-# the widely used 211947520-byte silesia.tar has the same file data, framed
-# differently). The download and the result are both checked against pinned
-# SHA-256s, so every machine tests the same bytes. Needs curl, unzip and GNU
-# tar.
+# Fetch the Silesia corpus as testdata/silesia.tar (211947520 bytes), the file
+# the Silesia tests and benchmarks read, from klauspost.com: the same bytes
+# klauspost/compress tests. The download and the tar are both checked against
+# pinned SHA-256s, so every machine tests the same bytes.
 #
-# Usage: testdata/fetch_silesia.sh
+# With -cli, also make testdata/silesia.tar.B4D.lz4 and .B7D.lz4 with the lz4
+# CLI (lz4 -BD -B4 and -BD -B7: linked 64 KiB and 4 MiB blocks), for decoding
+# frames this package did not encode.
+#
+# Needs curl and the zstd CLI, and with -cli the lz4 CLI.
+#
+# Usage: testdata/fetch_silesia.sh [-cli]
 set -eu
 
-zip_url=https://sun.aei.polsl.pl/~sdeor/corpus/silesia.zip
-zip_sha256=0626e25f45c0ffb5dc801f13b7c82a3b75743ba07e3a71835a41e3d9f63c77af
-tar_sha256=6e2bc2220fa51f7027518432c7fd01fe3ba830f69ffd8c89622ab073d474cf29
+url=https://klauspost.com/files/compress/silesia.tar.zst
+zst_sha256=c7c7f7c3c93f629aecc8f438c571fa97f5ba6f6074b0db6371e4dd1fc079e538
+tar_sha256=fc60dca8d229df75c4e8bc8ad4c60347ea7770823b97de31cea84352cf462b32
 
 cd "$(dirname "$0")"
 
@@ -22,17 +25,19 @@ sha256() {
 
 if [ -f silesia.tar ] && [ "$(sha256 silesia.tar)" = "$tar_sha256" ]; then
 	echo "silesia.tar is up to date"
-	exit 0
+else
+	tmp=$(mktemp -d)
+	trap 'rm -rf "$tmp"' EXIT
+	curl -fsSL --retry 3 -o "$tmp/silesia.tar.zst" "$url"
+	[ "$(sha256 "$tmp/silesia.tar.zst")" = "$zst_sha256" ] || { echo "silesia.tar.zst: SHA-256 mismatch" >&2; exit 1; }
+	zstd -q -d "$tmp/silesia.tar.zst" -o "$tmp/silesia.tar"
+	[ "$(sha256 "$tmp/silesia.tar")" = "$tar_sha256" ] || { echo "silesia.tar: SHA-256 mismatch" >&2; exit 1; }
+	mv "$tmp/silesia.tar" .
+	echo "fetched silesia.tar"
 fi
 
-tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
-curl -fsSL --retry 3 -o "$tmp/silesia.zip" "$zip_url"
-[ "$(sha256 "$tmp/silesia.zip")" = "$zip_sha256" ] || { echo "silesia.zip: SHA-256 mismatch" >&2; exit 1; }
-unzip -q "$tmp/silesia.zip" -d "$tmp/files"
-# Fixed order, owner, mode and mtime make the tar reproducible.
-(cd "$tmp/files" && tar --format=gnu --owner=0 --group=0 --numeric-owner --mode=0644 --mtime=@0 \
-	-cf "$tmp/silesia.tar" dickens mozilla mr nci ooffice osdb reymont samba sao webster x-ray xml)
-[ "$(sha256 "$tmp/silesia.tar")" = "$tar_sha256" ] || { echo "silesia.tar: SHA-256 mismatch" >&2; exit 1; }
-mv "$tmp/silesia.tar" silesia.tar
-echo "fetched silesia.tar"
+if [ "${1:-}" = "-cli" ]; then
+	lz4 -q -f -BD -B4 silesia.tar silesia.tar.B4D.lz4
+	lz4 -q -f -BD -B7 silesia.tar silesia.tar.B7D.lz4
+	echo "made silesia.tar.B4D.lz4 and silesia.tar.B7D.lz4 with $(lz4 --version 2>&1 | head -1)"
+fi

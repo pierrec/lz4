@@ -26,8 +26,8 @@ jobs:
           go test ./... -v -race -tags noasm
   silesia:
     # Round-trip and decoder tests on the Silesia corpus (testdata/silesia.tar,
-    # as in klauspost/compress), on both assembly decoders. The corpus is
-    # fetched once and cached; the key is its pinned SHA-256.
+    # the same bytes klauspost/compress tests), on both assembly decoders. The
+    # corpus is fetched once and cached; the key is its pinned SHA-256.
     strategy:
       fail-fast: false
       matrix:
@@ -43,15 +43,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: testdata/silesia.tar
-          key: silesia-tar-6e2bc2220fa51f7027518432c7fd01fe3ba830f69ffd8c89622ab073d474cf29
-      - name: fetch Silesia
+          key: silesia-tar-fc60dca8d229df75c4e8bc8ad4c60347ea7770823b97de31cea84352cf462b32
+      - name: fetch Silesia and make C CLI frames
         # On a cache hit this only verifies the cached file.
-        run: testdata/fetch_silesia.sh
-      - name: C-CLI frames
         run: |
-          sudo apt-get install -y -qq lz4
-          lz4 -q -f -BD -B4 testdata/silesia.tar testdata/silesia.tar.B4D.lz4
-          lz4 -q -f -BD -B7 testdata/silesia.tar testdata/silesia.tar.B7D.lz4
+          sudo apt-get install -y -qq zstd lz4
+          testdata/fetch_silesia.sh -cli
       - name: test
         run: |
           go test -run Silesia -v . ./internal/lz4block

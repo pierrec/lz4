@@ -13,9 +13,9 @@ import (
 )
 
 // The Silesia corpus is too big to commit. testdata/fetch_silesia.sh fetches
-// it as testdata/silesia.tar, the name klauspost/compress also uses, and CI
-// runs it; the tests below skip without it. CI also writes C-CLI encodings
-// of it next to it (see silesiaCFrames).
+// it as testdata/silesia.tar, the same bytes klauspost/compress tests, and CI
+// runs it; the tests below skip without it. With -cli it also writes C CLI
+// frames of it (see silesiaCFrames).
 const silesiaPath = "testdata/silesia.tar"
 
 func silesia(tb testing.TB) []byte {
@@ -109,10 +109,10 @@ func TestSilesiaBlocks(t *testing.T) {
 	}
 }
 
-// silesiaCFrames are frames of the corpus made by the C CLI, which CI
-// writes next to it: lz4 -BD -B4 and -BD -B7 (linked 64 KiB and 4 MiB
-// blocks). Decoding them exercises the linked-block paths that the Writer
-// does not produce.
+// silesiaCFrames are frames of the corpus made by the C CLI, which
+// testdata/fetch_silesia.sh -cli writes next to it: lz4 -BD -B4 and -BD -B7
+// (linked 64 KiB and 4 MiB blocks). Decoding them exercises the linked-block
+// paths that the Writer does not produce.
 var silesiaCFrames = []struct{ name, suffix string }{
 	{"cLinked64K", ".B4D.lz4"},
 	{"cLinked4M", ".B7D.lz4"},

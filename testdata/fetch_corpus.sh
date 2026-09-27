@@ -2,8 +2,8 @@
 # Build a real-world benchmark corpus for BenchmarkCorpus in DIR: the first
 # 128 MiB of each of klauspost/compress's test files, all of Silesia, and C-CLI
 # linked-block frames of each (NAME.B7D.lz4 and NAME.B4D.lz4). It is about
-# 2.5 GiB and downloads a few GiB, so it is not run in CI. Needs curl, zstd,
-# unzip and the lz4 CLI; files already in DIR are kept.
+# 2.5 GiB and downloads a few GiB, so it is not run in CI. Needs curl, zstd
+# and the lz4 CLI; files already in DIR are kept.
 #
 # Usage: testdata/fetch_corpus.sh DIR
 #        LZ4_CORPUS=DIR go test -run '^$' -bench '^BenchmarkCorpus$' .

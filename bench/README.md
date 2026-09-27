@@ -57,11 +57,12 @@ effect on compression.
 
 The corpora above are small. Two larger ones live outside the repository:
 
-- Silesia: `testdata/fetch_silesia.sh` fetches it as `testdata/silesia.tar`,
-  the file name klauspost/compress also uses, checking it against a pinned
-  SHA-256. `TestSilesia*` (round trips through every compressor, and decoding
-  C CLI frames) and `BenchmarkSilesia` use it and skip without it. CI runs
-  them on amd64 and arm64.
+- Silesia: `testdata/fetch_silesia.sh` fetches it as `testdata/silesia.tar`
+  from klauspost.com, the same bytes klauspost/compress tests, checked against
+  pinned SHA-256s; `-cli` also makes C CLI frames of it. `TestSilesia*` (round
+  trips through every compressor, and decoding the C CLI frames) and
+  `BenchmarkSilesia` use them and skip without them. CI runs them on amd64
+  and arm64.
 - Silesia plus the first 128 MiB of each of klauspost/compress's test files,
   about 2.5 GiB with C CLI encodings:
 

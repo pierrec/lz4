@@ -52,6 +52,26 @@ func fuzzSeeds(f *testing.F) {
 	f.Add(rec)
 }
 
+// FuzzCompressorCCompat checks CompressorCCompat against arbitrary input,
+// destination sizes and accelerations; see checkCCompat.
+func FuzzCompressorCCompat(f *testing.F) {
+	for _, src := range ccompatInputs(f) {
+		if len(src) > 1<<16 {
+			src = src[:1<<16]
+		}
+		f.Add(src, uint32(CompressBlockBound(len(src))), uint8(1))
+		f.Add(src, uint32(len(src)/2), uint8(3))
+	}
+	var c CompressorCCompat
+	f.Fuzz(func(t *testing.T, src []byte, dstLen uint32, accel uint8) {
+		bound := CompressBlockBound(len(src))
+		if int(dstLen) > bound {
+			dstLen = uint32(bound)
+		}
+		checkCCompat(t, &c, src, int(dstLen), int(accel))
+	})
+}
+
 func FuzzBlockRoundTrip(f *testing.F) {
 	fuzzSeeds(f)
 	for _, b := range corpusFiles(f, "../../fuzz/corpus", 64<<10) {

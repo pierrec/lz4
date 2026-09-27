@@ -17,6 +17,7 @@ func _() {
 	// Safety checks for duplicated elements.
 	var x [1]struct{}
 	_ = x[lz4block.CompressionLevel(Fast)-lz4block.Fast]
+	_ = x[lz4block.CompressionLevel(CCompatFast)-lz4block.CCompatFast]
 	_ = x[Block64Kb-BlockSize(lz4block.Block64Kb)]
 	_ = x[Block256Kb-BlockSize(lz4block.Block256Kb)]
 	_ = x[Block1Mb-BlockSize(lz4block.Block1Mb)]
@@ -91,6 +92,38 @@ func (c *Compressor) CompressBlock(src, dst []byte) (int, error) {
 // This function is deprecated. Use a Compressor instead.
 func CompressBlock(src, dst []byte, _ []int) (int, error) {
 	return lz4block.CompressBlock(src, dst)
+}
+
+// A CompressorCCompat compresses data into the LZ4 block format with the
+// reference implementation's fast algorithm, and produces the same output as
+// its LZ4_compress_fast.
+//
+// Compressor, which the default Fast level uses, is the better choice for most
+// data. CompressorCCompat is for output that must match the C implementation,
+// or for more throughput with blocks of 64kiB or more, where it is faster
+// than Compressor on most data but compresses text less. With smaller blocks,
+// or high-entropy input such as digits, it is slower than Compressor.
+//
+// A CompressorCCompat is not safe for concurrent use by multiple goroutines.
+//
+// Use a Writer with CompressionLevelOption(CCompatFast) to compress into the
+// LZ4 stream format.
+type CompressorCCompat struct {
+	// Acceleration trades compression for speed, as in LZ4_compress_fast:
+	// each increment skips more positions when no match is found.
+	// Values below 1 mean the default of 1.
+	Acceleration int
+	c            lz4block.CompressorCCompat
+}
+
+// CompressBlock compresses the source buffer src into the destination dst.
+//
+// If compression is successful, the first return value is the size of the
+// compressed data, which is always >0. If dst has length at least
+// CompressBlockBound(len(src)), compression always succeeds. Otherwise, the
+// first return value is zero if the compressed data does not fit in dst.
+func (c *CompressorCCompat) CompressBlock(src, dst []byte) (int, error) {
+	return c.c.CompressBlock(src, dst, c.Acceleration)
 }
 
 // A CompressorHC compresses data into the LZ4 block format.

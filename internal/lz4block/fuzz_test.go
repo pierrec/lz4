@@ -131,6 +131,23 @@ func FuzzDecodeBlockDifferential(f *testing.F) {
 	}
 	f.Add([]byte("\x11b\x0a\x00\x401234"), []byte("barbazquux"), uint16(10))
 	f.Add([]byte("\x1a1\x05\x00\x50abcde"), []byte("---2345"), uint16(20))
+	// Seeds for the decoders' long-copy paths: long overlapping matches at
+	// short, medium and far offsets, a long literal, and dictionary matches
+	// that end in the dictionary or continue into dst.
+	for _, m := range [][3]int{{16, 1, 60000}, {16, 3, 5000}, {40, 40, 20000}, {1000, 1000, 30000}, {20000, 20000, 40000}, {1000, 1, 4}} {
+		src, dec := buildSingleMatchBlock(m[0], m[1], m[2])
+		f.Add(src, []byte(nil), uint16(len(dec)))
+	}
+	dict := bytes.Repeat([]byte("0123456789abcdefghij"), 100)
+	for _, m := range [][2]int{{1500, 1000}, {500, 3000}} {
+		var buf bytes.Buffer
+		writeToken(&buf, 0, m[1]-minMatch)
+		buf.Write([]byte{byte(m[0]), byte(m[0] >> 8)})
+		writeExtended(&buf, m[1]-minMatch-15)
+		writeToken(&buf, 1, 0)
+		buf.WriteByte('x')
+		f.Add(buf.Bytes(), dict, uint16(m[1]+1))
+	}
 	f.Fuzz(func(t *testing.T, src, dict []byte, dstLen uint16) {
 		want, wn := guardedDecode(t, decodeBlockGo, src, dict, int(dstLen))
 		got, gn := guardedDecode(t, decodeBlock, src, dict, int(dstLen))

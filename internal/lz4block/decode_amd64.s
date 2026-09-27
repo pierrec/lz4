@@ -693,6 +693,8 @@ copy_match_stream:
 	JB   copy_match_stream_bytes
 	CMPQ CX, $64
 	JB   copy_match_stream_tail
+	CMPB ·hasAVX2(SB), $0
+	JNE  copy_match_stream64_avx2
 copy_match_stream64:
 	MOVOU (BX), X0
 	MOVOU 16(BX), X1
@@ -735,6 +737,23 @@ copy_match_stream_bytes:
 	DECQ CX
 	JNZ  copy_match_stream_bytes
 	JMP  loopcheck
+
+	// AVX2 variant of copy_match_stream64, out of line so that it moves
+	// no other code: two 32-byte loads and stores per 64 bytes.
+	PCALIGN $32
+copy_match_stream64_avx2:
+	VMOVDQU (BX), Y0
+	VMOVDQU 32(BX), Y1
+	VMOVDQU Y0, (DI)
+	VMOVDQU Y1, 32(DI)
+	ADDQ    $64, BX
+	ADDQ    $64, DI
+	SUBQ    $64, CX
+	CMPQ    CX, $64
+	JAE     copy_match_stream64_avx2
+	// The tail and the rest of the decoder use legacy SSE encodings.
+	VZEROUPPER
+	JMP     copy_match_stream_tail
 
 // tileStep[offset] = (16/offset)*offset for offsets 3, 5, 6, 7, 9..15.
 DATA tileStep<>+0(SB)/8, $0x0e0c0f100f101000

@@ -118,15 +118,20 @@ func (c *Compressor) CompressBlock(src, dst []byte) (int, error) {
 	// si: Current position of the search.
 	// anchor: Position of the current literals.
 	var si, di, anchor int
+	var r srcReader
 	sn := len(src) - mfLimit
 	if sn <= 0 {
 		goto lastLiterals
 	}
+	// All loads are within src: positions searched stop mfLimit bytes before
+	// its end, and candidates are earlier positions, as the table only holds
+	// positions stored by this call (unused entries read as zero).
+	r = newSrcReader(src)
 
 	// Fast scan strategy: the hash table only stores the last 4 bytes sequences.
 	for si < sn {
 		// Hash the next 6 bytes (sequence)...
-		match := binary.LittleEndian.Uint64(src[si:])
+		match := r.load64(src, si)
 		h := blockHash(match)
 		h2 := blockHash(match >> 8)
 
@@ -139,7 +144,7 @@ func (c *Compressor) CompressBlock(src, dst []byte) (int, error) {
 
 		offset := si - ref
 
-		if offset <= 0 || offset >= winSize || uint32(match) != binary.LittleEndian.Uint32(src[ref:]) {
+		if offset <= 0 || offset >= winSize || uint32(match) != r.load32(src, ref) {
 			// No match. Start calculating another hash.
 			// The processor can usually do this out-of-order.
 			h = blockHash(match >> 16)
@@ -149,13 +154,13 @@ func (c *Compressor) CompressBlock(src, dst []byte) (int, error) {
 			si += 1
 			offset = si - ref2
 
-			if offset <= 0 || offset >= winSize || uint32(match>>8) != binary.LittleEndian.Uint32(src[ref2:]) {
+			if offset <= 0 || offset >= winSize || uint32(match>>8) != r.load32(src, ref2) {
 				// No match. Check the third match at si+2
 				si += 1
 				offset = si - ref3
 				c.put(h, si)
 
-				if offset <= 0 || offset >= winSize || uint32(match>>16) != binary.LittleEndian.Uint32(src[ref3:]) {
+				if offset <= 0 || offset >= winSize || uint32(match>>16) != r.load32(src, ref3) {
 					// Skip one extra byte (at si+3) before we check 3 matches again.
 					si += 2 + (si-anchor)>>adaptSkipLog
 					continue
@@ -183,7 +188,7 @@ func (c *Compressor) CompressBlock(src, dst []byte) (int, error) {
 
 		// Find the longest match by looking by batches of 8 bytes.
 		for si+8 <= sn {
-			x := binary.LittleEndian.Uint64(src[si:]) ^ binary.LittleEndian.Uint64(src[si-offset:])
+			x := r.load64(src, si) ^ r.load64(src, si-offset)
 			if x == 0 {
 				si += 8
 			} else {
@@ -197,17 +202,17 @@ func (c *Compressor) CompressBlock(src, dst []byte) (int, error) {
 		if di >= len(dst) {
 			return 0, lz4errors.ErrInvalidSourceShortBuffer
 		}
+		// Token: literal length in the high nibble, match length in the low.
+		tok := byte(0xF)
 		if mLen < 0xF {
-			dst[di] = byte(mLen)
-		} else {
-			dst[di] = 0xF
+			tok = byte(mLen)
 		}
 
 		// Encode literals length.
 		if lLen < 0xF {
-			dst[di] |= byte(lLen << 4)
+			dst[di] = tok | byte(lLen<<4)
 		} else {
-			dst[di] |= 0xF0
+			dst[di] = tok | 0xF0
 			di++
 			l := lLen - 0xF
 			for ; l >= 0xFF && di < len(dst); l -= 0xFF {
@@ -252,7 +257,7 @@ func (c *Compressor) CompressBlock(src, dst []byte) (int, error) {
 			break
 		}
 		// Hash match end-2
-		h = blockHash(binary.LittleEndian.Uint64(src[si-2:]))
+		h = blockHash(r.load64(src, si-2))
 		c.put(h, si-2)
 	}
 

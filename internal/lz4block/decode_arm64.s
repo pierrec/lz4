@@ -786,3 +786,11 @@ copyDictMemmove:
 	MOVD 48(RSP), len
 	RELOAD_ENDS
 	B    copyDictDone
+
+// func decodeBlockAddr() uintptr
+//
+// decodeBlock's entry address, for TestDecodeBlockAligned.
+TEXT ·decodeBlockAddr(SB), NOSPLIT, $0-8
+	MOVD $·decodeBlock(SB), R0
+	MOVD R0, ret+0(FP)
+	RET

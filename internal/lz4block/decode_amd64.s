@@ -760,6 +760,14 @@ copy_match_stream64_avx2:
 	VZEROUPPER
 	JMP     copy_match_stream_tail
 
+// func decodeBlockAddr() uintptr
+//
+// decodeBlock's entry address, for TestDecodeBlockAligned.
+TEXT ·decodeBlockAddr(SB), NOSPLIT, $0-8
+	MOVQ $·decodeBlock(SB), AX
+	MOVQ AX, ret+0(FP)
+	RET
+
 // tileStep[offset] = (16/offset)*offset for offsets 3, 5, 6, 7, 9..15.
 DATA tileStep<>+0(SB)/8, $0x0e0c0f100f101000
 DATA tileStep<>+8(SB)/8, $0x0f0e0d0c0b0a0910

@@ -52,3 +52,25 @@ so a change that claims to keep the output identical can show it by passing.
 When a change alters the output on purpose, regenerate the file with
 `go test -run TestCompressGolden -update .`: the sizes it records show the
 effect on compression.
+
+## Real-world data
+
+The corpora above are small. Two larger ones live outside the repository:
+
+- Silesia: `testdata/fetch_silesia.sh` fetches it as `testdata/silesia.tar`,
+  the file name klauspost/compress also uses, checking it against a pinned
+  SHA-256. `TestSilesia*` (round trips through every compressor, and decoding
+  C CLI frames) and `BenchmarkSilesia` use it and skip without it. CI runs
+  them on amd64 and arm64.
+- Silesia plus the first 128 MiB of each of klauspost/compress's test files,
+  about 2.5 GiB with C CLI encodings:
+
+```sh
+testdata/fetch_corpus.sh ~/lz4-corpus
+LZ4_CORPUS=~/lz4-corpus go test -run '^$' -bench '^BenchmarkCorpus$' -benchtime 3x -count 6 .
+```
+
+`BenchmarkCorpus` decodes each file as a frame from the Go Writer and, when
+present, from `lz4 -BD -B7` and `-BD -B4` (linked 4 MiB and 64 KiB blocks).
+Individual Silesia files vary a lot between processes, so compare geomeans
+over many runs rather than single files.

@@ -90,3 +90,5 @@ Special thanks to [@Zariel](https://github.com/Zariel) for his asm implementatio
 Special thanks to [@greatroar](https://github.com/greatroar) for his work on the asm implementations of the decoder for amd64 and arm64.
 
 Special thanks to [@klauspost](https://github.com/klauspost) for his work on optimizing the code.
+
+Special thanks to [@lizthegrey](https://github.com/lizthegrey) for work on the arm64 decoder, the compressors, and fuzzing and robustness testing.

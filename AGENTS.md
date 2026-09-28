@@ -4,45 +4,15 @@ Guidance for people and coding agents changing this repository. It records
 conventions and traps learned while working on the decoders and encoders; the
 README describes the package itself.
 
-## Assembly
-
-- The assembly is hand-written: the block decoders in
-  `internal/lz4block/decode_{amd64,arm64,arm}.s` and the xxHash32 kernels in
-  `internal/xxh32/xxh32zero_{amd64,arm64,arm}.s`. Each has a pure-Go
-  equivalent (`decodeBlockGo` for the decoder), and
-  `FuzzDecodeBlockDifferential` checks the assembly decoder against it.
-- Code placement moves the hot loops by several percent, even when the
-  instructions don't change. The existing `PCALIGN`s each carry a comment
-  with what they fixed. When you pin a loop, do the same, and remember that
-  `PCALIGN $64` also raises the whole function's alignment.
-- Never put a label directly on a `PCALIGN` (emit the `PCALIGN` before the
-  label). A jump to it makes the amd64 assembler jump to the wrong place
-  (Go ≤ 1.25, golang/go#74648) or loop forever when it has to widen a branch
-  (Go ≥ 1.26, golang/go#81792).
-- When assembly calls a Go function (the amd64 and arm64 decoders call
-  `runtime·memmove`), spill every value you still need and reload it
-  afterwards. Go's ABI has no callee-saved registers: a call may overwrite
-  any register without a fixed role. Only the fixed ones survive (the stack
-  pointer, the frame pointer on amd64 and arm64, and the goroutine register),
-  and those aren't free for your own values. The declared frame must cover
-  every slot you use; on arm64 the assembler also reserves 0(RSP) for the
-  link register. Check the prologue with `go tool objdump`; tests can pass
-  by luck here.
-- Build tags:
-  - `noasm` selects the pure-Go code.
-  - `nounsafe` and `purego` select the code without `unsafe` loads.
-  - Every assembly or `unsafe` path needs a portable fallback.
-  - CI runs the default and `noasm` builds, each with and without `-race`. Test `nounsafe` yourself when you touch `unsafe` code.
-- The library doesn't use cgo. `bench/` is a separate module that uses cgo to compare against liblz4.
-
 ## Checks before sending a change
 
-- `gofmt`, then `go vet ./...` for the host, and `GOARCH=arm64` and
-  `GOARCH=arm` too when assembly changed. `go vet` caches results per package
-  and does not notice edits to files excluded by build tags; use a fresh
-  `GOCACHE` to confirm a stale-looking error.
-- `go test ./...` with and without `-tags noasm`, on amd64 and arm64 hardware
-  when assembly changed.
+- `gofmt`, `go vet ./...` and `go fix -diff ./...` (which should report
+  nothing). Code written for specific platforms must be vetted for them too:
+  run `go vet` with `GOOS`/`GOARCH` set to each platform it targets. `go vet`
+  caches results per package and does not notice edits to files excluded by
+  build tags; use a fresh `GOCACHE` to confirm a stale-looking error.
+- `go test ./...` with and without `-tags noasm`, on every architecture whose
+  assembly changed.
 - Decoder changes: run the fuzzers CI runs (`.github/workflows/ci.yml`;
   `fuzz/README.md` describes them), also with `-tags noasm`, for longer than
   CI does.
@@ -120,3 +90,27 @@ README describes the package itself.
 - Keep private or company-internal references (internal service names,
   private links, chat or agent-session URLs) out of code, commit messages and
   PR text.
+
+## Assembly
+
+- The assembly is hand-written: the block decoders in
+  `internal/lz4block/decode_{amd64,arm64,arm}.s` and the xxHash32 kernels in
+  `internal/xxh32/xxh32zero_{amd64,arm64,arm}.s`. Each has a pure-Go
+  equivalent (`decodeBlockGo` for the decoder), and
+  `FuzzDecodeBlockDifferential` checks the assembly decoder against it.
+- Code placement moves the hot loops by several percent, even when the
+  instructions don't change. The existing `PCALIGN`s each carry a comment
+  with what they fixed. When you pin a loop, do the same, and remember that
+  `PCALIGN $64` also raises the whole function's alignment.
+- Never put a label directly on a `PCALIGN` (emit the `PCALIGN` before the
+  label). A jump to it makes the amd64 assembler jump to the wrong place
+  (Go ≤ 1.25, golang/go#74648) or loop forever when it has to widen a branch
+  (Go ≥ 1.26, golang/go#81792).
+- Build tags:
+  - `noasm` selects the pure-Go code.
+  - `nounsafe` and `purego` select the code without `unsafe` loads.
+  - Every assembly or `unsafe` path needs a portable fallback.
+  - CI runs the default and `noasm` builds, each with and without `-race`.
+    Test `nounsafe` yourself when you touch `unsafe` code.
+- The library doesn't use cgo. `bench/` is a separate module that uses cgo
+  to compare against liblz4.

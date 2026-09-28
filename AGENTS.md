@@ -86,9 +86,17 @@ README describes the package itself.
     differs from yours only in whether the new path is taken, for example
     one branch inverted, so its size and layout stay the same.
   - **Check addresses:** use `go tool nm` and `go tool objdump`.
-  - **Method:** alternate the builds, pin to one core, run on an idle
-    machine, and use `benchstat` with `-count 10` or more. Individual large
-    files can be bimodal from one process to the next.
+  - **Alternate the builds:** build both variants as test binaries up
+    front, then run them in turns. Do one short `-count 1` run of A, then
+    one of B, for ten or more rounds, swapping which goes first each round
+    (AB, BA, …). Never do all the A runs, then all the B runs.
+  - **Why:** clock speed, temperature, cache and page-cache state, and
+    background load drift over a session. Alternating spreads that drift
+    over both builds instead of turning it into a difference between them.
+  - **Method:** pin to one core, use an otherwise idle machine, and compare
+    the pooled results with `benchstat`. Individual large files can be
+    bimodal from one process to the next, which is one more reason for many
+    rounds.
 - Report the number of regressed cases next to the geomean; a small win with
   no regressions is a different result from a larger one with some.
 - CPUs disagree:

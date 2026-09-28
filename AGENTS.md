@@ -56,27 +56,27 @@ README describes the package itself.
   also runs `BenchmarkFooBar` otherwise, which has produced fake gains and
   regressions.
 - Code placement alone has moved results by 2–6% with identical hot code.
-  - **Separate placement from code:** compare against a control build that
-    differs from yours only in whether the new path is taken, for example
-    one branch inverted, so its size and layout stay the same.
-  - **Check addresses:** use `go tool nm` and `go tool objdump`.
-  - **Alternate the builds:** build both variants as test binaries up
-    front, then run them in turns. Do one short `-count 1` run of A, then
-    one of B, for ten or more rounds, swapping which goes first each round
-    (AB, BA, …). Never do all the A runs, then all the B runs.
-  - **Why:** clock speed, temperature, cache and page-cache state, and
-    background load drift over a session. Alternating spreads that drift
-    over both builds instead of turning it into a difference between them.
-  - **Method:** pin to one core, use an otherwise idle machine, and compare
-    the pooled results with `benchstat`. Individual large files can be
-    bimodal from one process to the next, which is one more reason for many
-    rounds.
+  Compare against a control build that differs from yours only in whether
+  the new path is taken (for example one branch inverted), so its size and
+  layout stay the same, and check addresses with `go tool nm` and
+  `go tool objdump`.
+- Build both variants as test binaries up front, then run them in turns: one
+  short `-count 1` run of each, repeated for ten or more rounds, swapping
+  which goes first every round (AB, BA, AB, …) so neither build always gets
+  the warmer or colder slot. Never run all of A and then all of B. Clock
+  speed, temperature, cache and page-cache state, and background load drift
+  over a session; alternating spreads that drift over both builds instead of
+  turning it into a difference between them. Pin to one core, use an
+  otherwise idle machine, and compare the pooled results with `benchstat`.
+  Individual large files can be bimodal from one process to the next, which
+  is one more reason for many rounds.
 - Report the number of regressed cases next to the geomean; a small win with
   no regressions is a different result from a larger one with some.
-- CPUs disagree:
-  - **arm64:** measure a change on several Neoverse generations (N1, V1, V2, V3).
-  - **amd64:** measure on both a recent Intel server core and a recent Zen core. Wider stores, for example, helped Zen but slowed Sapphire Rapids once data left L1.
-  - **What to gate on:** CPU feature flags, never CPU models.
+- No CPU-model-specific code paths or thresholds; gate on CPU feature flags.
+  CPUs disagree, so measure a gate for arm64 on several Neoverse generations
+  (N1, V1, V2, V3), not one core, and one for amd64 on both a recent Intel
+  server core and a recent Zen core: wider stores, for example, helped Zen
+  but slowed Sapphire Rapids once data left L1.
 
 ## Pull requests
 

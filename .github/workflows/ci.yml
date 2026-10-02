@@ -34,6 +34,7 @@ jobs:
     # Round-trip and decoder tests on the Silesia corpus (testdata/silesia.tar,
     # the same bytes klauspost/compress tests), on both assembly decoders. The
     # corpus is fetched once and cached; the key is its pinned SHA-256.
+    # TestWriterCommand checks that lz4 decompresses the Writer's output.
     strategy:
       fail-fast: false
       matrix:
@@ -57,8 +58,8 @@ jobs:
           testdata/fetch_silesia.sh -cli
       - name: test
         run: |
-          go test -run Silesia -v . ./internal/lz4block
-          go test -run Silesia -v -tags noasm . ./internal/lz4block
+          go test -run 'Silesia|^TestWriterCommand$' -v . ./internal/lz4block
+          go test -run 'Silesia|^TestWriterCommand$' -v -tags noasm . ./internal/lz4block
   fuzz:
     # A short smoke test of each fuzzer; run them for longer locally, see fuzz/README.md.
     strategy:

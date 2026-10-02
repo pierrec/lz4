@@ -3,6 +3,7 @@ package lz4_test
 import (
 	"archive/tar"
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"math/rand"
@@ -437,93 +438,139 @@ func BenchmarkWriterFlush(b *testing.B) {
 	}
 }
 
-func TestWriterLegacy(t *testing.T) {
-	goldenFiles := []string{
-		"testdata/vmlinux_LZ4_19377.gz",
-		"testdata/bzImage_lz4_isolated.gz",
-	}
-
-	for _, fname := range goldenFiles {
-		t.Run(fname, func(t *testing.T) {
-			fname := fname
-			t.Parallel()
-
-			src := loadGolden(t, fname)
-
-			out := new(bytes.Buffer)
-			zw := lz4.NewWriter(out)
-			if err := zw.Apply(lz4.LegacyOption(true), lz4.CompressionLevelOption(lz4.Fast)); err != nil {
-				t.Fatal(err)
-			}
-			if _, err := io.Copy(zw, bytes.NewReader(src)); err != nil {
-				t.Fatal(err)
-			}
-			if err := zw.Close(); err != nil {
-				t.Fatal(err)
-			}
-
-			out2 := new(bytes.Buffer)
-			zr := lz4.NewReader(out)
-			if _, err := io.Copy(out2, zr); err != nil {
-				t.Fatal(err)
-			}
-
-			if len(src) != out2.Len() {
-				t.Fatalf("uncompressed output not correct size. %d != %d", len(src), out2.Len())
-			}
-
-			if !bytes.Equal(out2.Bytes(), src) {
-				t.Fatal("uncompressed compressed output different from source")
-			}
-		})
+// legacyInputs returns the inputs for the legacy writer tests. The random
+// one spans more than two 8MB blocks, each of which expands when compressed.
+func legacyInputs(t *testing.T) []struct {
+	name string
+	src  []byte
+} {
+	random := make([]byte, 2*lz4block.Block8Mb+12345)
+	_, _ = rand.New(rand.NewSource(156)).Read(random)
+	return []struct {
+		name string
+		src  []byte
+	}{
+		{"vmlinux", loadGolden(t, "testdata/vmlinux_LZ4_19377.gz")},
+		{"bzImage", loadGolden(t, "testdata/bzImage_lz4_isolated.gz")},
+		{"random", random},
 	}
 }
 
-func TestWriterLegacyCommand(t *testing.T) {
-	_, err := exec.LookPath("lz4")
+// checkLegacyBlocks fails unless frame is a legacy frame whose block sizes
+// are all at most CompressBlockBound(8MB). Legacy frames have no
+// uncompressed flag: the C decoder and the Linux kernel stop at one.
+func checkLegacyBlocks(t *testing.T, frame []byte) {
+	t.Helper()
+	const magic = 0x184C2102
+	bound := uint32(lz4block.CompressBlockBound(int(lz4block.Block8Mb)))
+	if len(frame) < 4 || binary.LittleEndian.Uint32(frame) != magic {
+		t.Fatal("missing legacy magic")
+	}
+	for b := frame[4:]; len(b) > 0; {
+		if len(b) < 4 {
+			t.Fatalf("truncated block header: %x", b)
+		}
+		size := binary.LittleEndian.Uint32(b)
+		if size > bound {
+			t.Fatalf("invalid legacy block size %#x", size)
+		}
+		if int(size) > len(b)-4 {
+			t.Fatalf("block size %d overruns the frame", size)
+		}
+		b = b[4+size:]
+	}
+}
+
+func TestWriterLegacy(t *testing.T) {
+	options := []struct {
+		name string
+		opts []lz4.Option
+	}{
+		{"Fast", []lz4.Option{lz4.CompressionLevelOption(lz4.Fast)}},
+		{"CCompatFast", []lz4.Option{lz4.CompressionLevelOption(lz4.CCompatFast)}},
+		{"Level1", []lz4.Option{lz4.CompressionLevelOption(lz4.Level1)}},
+		{"Concurrency4", []lz4.Option{lz4.ConcurrencyOption(4)}},
+	}
+	for _, in := range legacyInputs(t) {
+		for _, o := range options {
+			t.Run(in.name+"/"+o.name, func(t *testing.T) {
+				t.Parallel()
+
+				out := new(bytes.Buffer)
+				zw := lz4.NewWriter(out)
+				if err := zw.Apply(append([]lz4.Option{lz4.LegacyOption(true)}, o.opts...)...); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := io.Copy(zw, bytes.NewReader(in.src)); err != nil {
+					t.Fatal(err)
+				}
+				if err := zw.Close(); err != nil {
+					t.Fatal(err)
+				}
+				checkLegacyBlocks(t, out.Bytes())
+
+				out2 := new(bytes.Buffer)
+				zr := lz4.NewReader(out)
+				if _, err := io.Copy(out2, zr); err != nil {
+					t.Fatal(err)
+				}
+				if !bytes.Equal(out2.Bytes(), in.src) {
+					t.Fatalf("round trip mismatch: got %d bytes; want %d", out2.Len(), len(in.src))
+				}
+			})
+		}
+	}
+}
+
+// TestWriterCommand checks that the lz4 command decompresses the Writer's
+// output to the original bytes. lz4 --test exits 0 even when it stops at
+// undecodable data, so compare the output. CI runs it in the silesia job.
+func TestWriterCommand(t *testing.T) {
+	lz4cmd, err := exec.LookPath("lz4")
 	if err != nil {
 		t.Skip("no lz4 binary to test against")
 	}
-
-	goldenFiles := []string{
-		"testdata/vmlinux_LZ4_19377.gz",
-		"testdata/bzImage_lz4_isolated.gz",
+	options := []struct {
+		name string
+		opts []lz4.Option
+	}{
+		{"Fast", nil},
+		{"CCompatFast-Block64Kb", []lz4.Option{lz4.CompressionLevelOption(lz4.CCompatFast), lz4.BlockSizeOption(lz4.Block64Kb)}},
+		{"Level1-BlockChecksum", []lz4.Option{lz4.CompressionLevelOption(lz4.Level1), lz4.BlockChecksumOption(true)}},
+		{"Concurrency4-Block1Mb", []lz4.Option{lz4.ConcurrencyOption(4), lz4.BlockSizeOption(lz4.Block1Mb)}},
+		{"Legacy-Fast", []lz4.Option{lz4.LegacyOption(true)}},
+		{"Legacy-Level1", []lz4.Option{lz4.LegacyOption(true), lz4.CompressionLevelOption(lz4.Level1)}},
 	}
+	for _, in := range legacyInputs(t) {
+		for _, o := range options {
+			t.Run(in.name+"/"+o.name, func(t *testing.T) {
+				t.Parallel()
 
-	for _, fname := range goldenFiles {
-		t.Run(fname, func(t *testing.T) {
-			fname := fname
-			t.Parallel()
+				out := new(bytes.Buffer)
+				zw := lz4.NewWriter(out)
+				if err := zw.Apply(o.opts...); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := io.Copy(zw, bytes.NewReader(in.src)); err != nil {
+					t.Fatal(err)
+				}
+				if err := zw.Close(); err != nil {
+					t.Fatal(err)
+				}
 
-			src := loadGolden(t, fname)
-
-			out := new(bytes.Buffer)
-			zw := lz4.NewWriter(out)
-			if err := zw.Apply(lz4.LegacyOption(true), lz4.CompressionLevelOption(lz4.Fast)); err != nil {
-				t.Fatal(err)
-			}
-			if _, err := io.Copy(zw, bytes.NewReader(src)); err != nil {
-				t.Fatal(err)
-			}
-			if err := zw.Close(); err != nil {
-				t.Fatal(err)
-			}
-
-			// write to filesystem for further checking
-			tmp, err := os.CreateTemp("", "")
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer os.Remove(tmp.Name())
-			if _, err := tmp.Write(out.Bytes()); err != nil {
-				t.Fatal(err)
-			}
-
-			cmd := exec.Command("lz4", "--test", tmp.Name())
-			if _, err := cmd.Output(); err != nil {
-				t.Fatal(err)
-			}
-		})
+				cmd := exec.Command(lz4cmd, "-d", "-c")
+				cmd.Stdin = out
+				var stderr bytes.Buffer
+				cmd.Stderr = &stderr
+				got, err := cmd.Output()
+				if err != nil {
+					t.Fatalf("%v: %s", err, stderr.Bytes())
+				}
+				if !bytes.Equal(got, in.src) {
+					t.Fatalf("lz4 output mismatch: got %d bytes; want %d: %s", len(got), len(in.src), stderr.Bytes())
+				}
+			})
+		}
 	}
 }
 

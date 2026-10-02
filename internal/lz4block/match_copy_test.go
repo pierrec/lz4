@@ -131,7 +131,9 @@ func TestMatchCopySingle(t *testing.T) {
 // TestMatchCopyMatrix exhaustively sweeps (offset, matchlen) over the ranges
 // most likely to expose addressing-mode or threshold bugs. Each combination
 // is decoded and diffed against the naive reference built in memory.
-func TestMatchCopyMatrix(t *testing.T) {
+func TestMatchCopyMatrix(t *testing.T) { testMatchCopyMatrix(t) }
+
+func testMatchCopyMatrix(t *testing.T) {
 	// Offsets: cover 1..7 (splat/tile paths), every offset in 8..31 (the
 	// 8-byte loop and the offset-8/16/9..15/17..31 tile paths, whose
 	// prefill and tail handling depend on offset%8 and on the exact
@@ -466,7 +468,7 @@ func BenchmarkDecodeLongCopy(b *testing.B) {
 	for _, size := range []struct {
 		name string
 		n    int
-	}{{"1K", 1 << 10}, {"4K", 4 << 10}, {"64K", 64 << 10}, {"256K", 256 << 10}, {"1M", 1 << 20}, {"4M", 4 << 20}} {
+	}{{"1K", 1 << 10}, {"4K", 4 << 10}, {"16K", 16 << 10}, {"32K", 32 << 10}, {"48K", 48 << 10}, {"64K", 64 << 10}, {"256K", 256 << 10}, {"1M", 1 << 20}, {"4M", 4 << 20}} {
 		n := size.n
 		src, dec := buildSingleMatchBlock(n, 1, minMatch)
 		benches = append(benches, bench{"literal/" + size.name, src, dec})

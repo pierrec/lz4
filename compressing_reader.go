@@ -107,10 +107,9 @@ func (zrd *CompressingReader) Read(p []byte) (n int, err error) {
 			zrd.out.data = nil
 			zrd.out.dataPos = 0
 			return
-		} else {
-			zrd.state = crStateDone
-			return 0, io.EOF
 		}
+		zrd.state = crStateDone
+		return 0, io.EOF
 	}
 
 	for zrd.state == crStateReading {

@@ -34,3 +34,6 @@ cmd/*/*exe
 .idea
 
 fuzz/*.zip
+
+# Go test binaries (go test -c)
+*.test

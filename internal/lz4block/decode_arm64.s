@@ -281,10 +281,9 @@ copyMatchTry8_inline:
 	// forwarding dependency between iterations: iter N+1's LDP reads bytes
 	// at (match+16) which, since match = dst - offset, sits at
 	// dst - (offset-16). For offset >= 32 that is pre-dst, untouched by
-	// iter N's STP. Kibble columnar data (int64c/float64c/varstring.dictc/
-	// hexc) shows ~81% of matches with len >= 19 have offset >= 32, and
-	// those long matches produce ~75% of total match-copy bytes, so this
-	// is the dominant path for columnar workloads.
+	// iter N's STP. In columnar and record-oriented data, most long matches
+	// have offsets of 32 or more and carry most of the match-copy bytes, so
+	// this is the dominant path there.
 	// CCMP immediate is 5-bit unsigned (0..31); we can't encode $32 directly,
 	// so compare offset against $31 with BLS (lower or same) to match
 	// "offset < 32" exactly. The first-CMP "len < 16" case falls into BLS

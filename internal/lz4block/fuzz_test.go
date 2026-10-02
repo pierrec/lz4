@@ -46,7 +46,7 @@ func fuzzSeeds(f *testing.F) {
 	f.Add(bytes.Repeat([]byte("0123456789ab"), 60))
 	f.Add(bytes.Repeat([]byte("the quick brown fox jumps over the lazy dog. "), 40))
 	rec := make([]byte, 0, 4096)
-	for i := 0; i < 64; i++ {
+	for i := range 64 {
 		rec = append(rec, bytes.Repeat([]byte{byte(i)}, 64)...)
 	}
 	f.Add(rec)
@@ -123,10 +123,7 @@ func FuzzDecodeBlockDifferential(f *testing.F) {
 	}
 	// Blocks go-fuzz found for UncompressBlock.
 	for _, b := range corpusFiles(f, "../../fuzz/uncompress/corpus", 1<<20) {
-		n := 4 * len(b)
-		if n > 1<<16-1 {
-			n = 1<<16 - 1
-		}
+		n := min(4*len(b), 1<<16-1)
 		f.Add(b, []byte(nil), uint16(n))
 	}
 	f.Add([]byte("\x11b\x0a\x00\x401234"), []byte("barbazquux"), uint16(10))

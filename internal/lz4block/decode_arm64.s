@@ -33,20 +33,17 @@
 // Reload the registers derived from the arguments after a call to
 // runtime·memmove, which may clobber all of them.
 #define RELOAD_ENDS \
-	MOVD dst_base+0(FP), dstorig    \
-	MOVD dst_len+8(FP), dstend      \
-	ADD  dstorig, dstend, dstend    \
-	SUBS $16, dstend, dstend16      \
-	CSEL LO, ZR, dstend16, dstend16 \
-	SUBS $32, dstend, dstend32      \
-	CSEL LO, ZR, dstend32, dstend32 \
-	MOVD src_base+24(FP), tmp1      \
-	MOVD src_len+32(FP), srcend     \
-	ADD  tmp1, srcend, srcend       \
-	SUBS $16, srcend, srcend16      \
-	CSEL LO, ZR, srcend16, srcend16 \
-	MOVD dict_base+48(FP), dict     \
-	MOVD dict_len+56(FP), dictlen   \
+	LDP  dst_base+0(FP), (dstorig, dstend) \
+	ADD  dstorig, dstend                   \
+	LDP  src_base+24(FP), (tmp1, srcend)   \
+	ADD  tmp1, srcend                      \
+	SUBS $16, dstend, dstend16             \
+	CSEL LO, ZR, dstend16, dstend16        \
+	SUBS $32, dstend, dstend32             \
+	CSEL LO, ZR, dstend32, dstend32        \
+	SUBS $16, srcend, srcend16             \
+	CSEL LO, ZR, srcend16, srcend16        \
+	LDP  dict_base+48(FP), (dict, dictlen) \
 	ADD  dict, dictlen, dictend
 
 // func decodeBlock(dst, src, dict []byte) int
@@ -56,15 +53,11 @@
 // 32..48(RSP)). NOSPLIT is preserved -- memmove's own stack use is well under
 // the nosplit margin.
 TEXT ·decodeBlock(SB), NOSPLIT, $56-80
-	LDP  dst_base+0(FP), (dst, dstend)
-	ADD  dst, dstend
-	MOVD dst, dstorig
-
-	LDP src_base+24(FP), (src, srcend)
-	CBZ srcend, shortSrc
-	ADD src, srcend
-
-	// dstend16 = max(dstend-16, 0) and similarly for dstend32, srcend16.
+	LDP  dst_base+0(FP), (dstorig, dstend)
+	ADD  dstorig, dstend
+	LDP  src_base+24(FP), (src, srcend)
+	CBZ  srcend, shortSrc
+	ADD  src, srcend
 	SUBS $16, dstend, dstend16
 	CSEL LO, ZR, dstend16, dstend16
 	SUBS $32, dstend, dstend32
@@ -72,8 +65,9 @@ TEXT ·decodeBlock(SB), NOSPLIT, $56-80
 	SUBS $16, srcend, srcend16
 	CSEL LO, ZR, srcend16, srcend16
 
-	LDP dict_base+48(FP), (dict, dictlen)
-	ADD dict, dictlen, dictend
+	LDP  dict_base+48(FP), (dict, dictlen)
+	ADD  dict, dictlen, dictend
+	MOVD dstorig, dst
 
 loop:
 	// Read token; >= 0xF0 means literal length 15, slow path.

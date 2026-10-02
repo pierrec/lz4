@@ -7,6 +7,23 @@ func clamp(n int, from, to string) string {
 	return fmt.Sprintf("\tSUBS $%d, %s, %s\n\tCSEL LO, ZR, %[3]s, %[3]s\n", n, from, to)
 }
 
+// loadArgs loads dstorig, src's base pointer into srcBase and dict, and
+// computes the ends derived from them: dstend, srcend and dictend, and
+// dstend16, dstend32 and srcend16 clamped at zero. srcCheck runs with
+// srcend holding len(src).
+func loadArgs(srcBase, srcCheck string) string {
+	return fmt.Sprintf(`
+	LDP dst_base+0(FP), (dstorig, dstend)
+	ADD dstorig, dstend
+	LDP src_base+24(FP), (%[1]s, srcend)
+%[2]s	ADD %[1]s, srcend
+`, srcBase, srcCheck) +
+		clamp(16, "dstend", "dstend16") + clamp(32, "dstend", "dstend32") + clamp(16, "srcend", "srcend16") + `
+	LDP dict_base+48(FP), (dict, dictlen)
+	ADD dict, dictlen, dictend
+`
+}
+
 // readLenExt adds the bytes of an extended length (255, ..., 255, <255)
 // at src to len.
 func readLenExt(a *asm, loop string) {
@@ -209,18 +226,7 @@ func decodeARM64(a *asm) {
 
 // Reload the registers derived from the arguments after a call to
 // runtime·memmove, which may clobber all of them.`)
-	a.macro("RELOAD_ENDS", `
-	MOVD dst_base+0(FP), dstorig
-	MOVD dst_len+8(FP), dstend
-	ADD  dstorig, dstend, dstend
-`+clamp(16, "dstend", "dstend16")+clamp(32, "dstend", "dstend32")+`
-	MOVD src_base+24(FP), tmp1
-	MOVD src_len+32(FP), srcend
-	ADD  tmp1, srcend, srcend
-`+clamp(16, "srcend", "srcend16")+`
-	MOVD dict_base+48(FP), dict
-	MOVD dict_len+56(FP), dictlen
-	ADD  dict, dictlen, dictend`)
+	a.macro("RELOAD_ENDS", loadArgs("tmp1", ""))
 
 	a.I(`
 // func decodeBlock(dst, src, dict []byte) int
@@ -229,21 +235,10 @@ func decodeARM64(a *asm) {
 // copies and non-overlapping matches (arg0..arg2 at 8/16/24(RSP), spills at
 // 32..48(RSP)). NOSPLIT is preserved -- memmove's own stack use is well under
 // the nosplit margin.
-TEXT ·decodeBlock(SB), NOSPLIT, $56-80
-	LDP  dst_base+0(FP), (dst, dstend)
-	ADD  dst, dstend
-	MOVD dst, dstorig
-
-	LDP src_base+24(FP), (src, srcend)
-	CBZ srcend, shortSrc
-	ADD src, srcend
-
-	// dstend16 = max(dstend-16, 0) and similarly for dstend32, srcend16.`)
-	a.I(clamp(16, "dstend", "dstend16") + clamp(32, "dstend", "dstend32") + clamp(16, "srcend", "srcend16"))
+TEXT ·decodeBlock(SB), NOSPLIT, $56-80`)
+	a.I(loadArgs("src", "\tCBZ srcend, shortSrc\n"))
 	a.I(`
-
-	LDP dict_base+48(FP), (dict, dictlen)
-	ADD dict, dictlen, dictend
+	MOVD dstorig, dst
 
 loop:
 	// Read token; >= 0xF0 means literal length 15, slow path.

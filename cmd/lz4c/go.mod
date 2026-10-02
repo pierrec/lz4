@@ -5,7 +5,7 @@ go 1.22
 require (
 	code.cloudfoundry.org/bytefmt v0.0.0-20231017140541-3b893ed0421b
 	github.com/pierrec/cmdflag v0.0.2
-	github.com/pierrec/lz4/v4 v4.1.32
+	github.com/pierrec/lz4/v4 v4.1.33
 	github.com/schollz/progressbar/v3 v3.14.1
 )
 

@@ -24,6 +24,35 @@ jobs:
           go test ./... -v -race
           go test ./... -v -tags noasm
           go test ./... -v -race -tags noasm
+  silesia:
+    # Round-trip and decoder tests on the Silesia corpus (testdata/silesia.tar,
+    # the same bytes klauspost/compress tests), on both assembly decoders. The
+    # corpus is fetched once and cached; the key is its pinned SHA-256.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27"
+      - name: cache Silesia
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: testdata/silesia.tar
+          key: silesia-tar-fc60dca8d229df75c4e8bc8ad4c60347ea7770823b97de31cea84352cf462b32
+      - name: fetch Silesia and make C CLI frames
+        # On a cache hit this only verifies the cached file.
+        run: |
+          sudo apt-get install -y -qq zstd lz4
+          testdata/fetch_silesia.sh -cli
+      - name: test
+        run: |
+          go test -run Silesia -v . ./internal/lz4block
+          go test -run Silesia -v -tags noasm . ./internal/lz4block
   fuzz:
     # A short smoke test of each fuzzer; run them for longer locally, see fuzz/README.md.
     strategy:

@@ -34,7 +34,7 @@ var testdata = []test{
 func TestZeroBlockSize(t *testing.T) {
 	var xxh xxh32.XXHZero
 	if s := xxh.BlockSize(); s <= 0 {
-		t.Errorf("invalid BlockSizeIndex: %d", s)
+		t.Errorf("invalid BlockSize: %d", s)
 	}
 }
 

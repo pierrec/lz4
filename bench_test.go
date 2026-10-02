@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/pierrec/lz4/v4"
@@ -82,10 +83,16 @@ func benchmarkUncompressBlock(b *testing.B, raw []byte) {
 
 func BenchmarkUncompress(b *testing.B) { benchmarkUncompressBlock(b, pg1661) }
 
-// bzImage is half literal bytes, so it exercises what text skips through
-// the shortcut. Its golden .lz4 is a legacy frame with trailing data, so
-// decode it as a block.
-func BenchmarkUncompressBzImage(b *testing.B) { benchmarkUncompressBlock(b, bzImage) }
+// Kernel code is mostly literal bytes, so it exercises what text skips
+// through the shortcut. This 1 MiB window of vmlinux compresses to 73%.
+func BenchmarkUncompressKernelCode(b *testing.B) {
+	benchmarkUncompressBlock(b, vmlinux()[8<<20:9<<20])
+}
+
+// vmlinux is loaded on first use: it is 45 MB.
+var vmlinux = sync.OnceValue(func() []byte {
+	return mustLoadFile("testdata/vmlinux_LZ4_19377.gz")
+})
 
 func mustLoadFile(f string) []byte {
 	var b []byte
@@ -112,7 +119,6 @@ var (
 	twainLinkedLZ4    = mustLoadFile("testdata/Mark.Twain-Tom.Sawyer_linked.txt.lz4")
 	randomLZ4         = mustLoadFile("testdata/random.data.lz4")
 	randomAppendedLZ4 = mustLoadFile("testdata/random_appended.data.lz4")
-	bzImage           = mustLoadFile("testdata/bzImage_lz4_isolated.gz")
 )
 
 func benchmarkUncompress(b *testing.B, compressed []byte) {

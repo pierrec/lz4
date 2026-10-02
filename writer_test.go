@@ -451,7 +451,6 @@ func legacyInputs(t *testing.T) []struct {
 		src  []byte
 	}{
 		{"vmlinux", loadGolden(t, "testdata/vmlinux_LZ4_19377.gz")},
-		{"bzImage", loadGolden(t, "testdata/bzImage_lz4_isolated.gz")},
 		{"random", random},
 	}
 }

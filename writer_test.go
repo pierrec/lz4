@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -693,6 +694,58 @@ func TestWriter_ReadFromExactBlockMultiple(t *testing.T) {
 						t.Fatal("decompressed data does not match original")
 					}
 				})
+			}
+		})
+	}
+}
+
+// OnBlockDone reports each block's compressed size once, whether the data
+// arrives through Write or ReadFrom.
+func TestWriter_OnBlockDone(t *testing.T) {
+	data := bytes.Repeat([]byte("onblockdone "), 3*int(lz4.Block64Kb)/12+1000)
+	var want int
+	for _, tc := range []struct {
+		name     string
+		conc     int
+		readFrom bool
+	}{
+		{"Write", 1, false},
+		{"Write concurrent", 4, false},
+		{"ReadFrom", 1, true},
+		{"ReadFrom concurrent", 4, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var done atomic.Int64
+			buf := new(bytes.Buffer)
+			zw := lz4.NewWriter(buf)
+			err := zw.Apply(
+				lz4.BlockSizeOption(lz4.Block64Kb),
+				lz4.ConcurrencyOption(tc.conc),
+				lz4.OnBlockDoneOption(func(n int) { done.Add(int64(n)) }),
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.readFrom {
+				_, err = zw.ReadFrom(bytes.NewReader(data))
+			} else {
+				_, err = zw.Write(data)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := zw.Close(); err != nil {
+				t.Fatal(err)
+			}
+			got := int(done.Load())
+			if got <= 0 || got >= buf.Len() {
+				t.Fatalf("OnBlockDone total %d, want between 0 and the frame size %d", got, buf.Len())
+			}
+			if want == 0 {
+				want = got
+			}
+			if got != want {
+				t.Fatalf("OnBlockDone total %d, want %d as with Write", got, want)
 			}
 		})
 	}

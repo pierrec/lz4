@@ -196,14 +196,14 @@ copyLiteralShortEnd:
 	MOVD.P  8(src), tmp1
 	MOVD.P  tmp1, 8(dst)
 	TBZ     $2, len, 3(PC)
-	MOVW.P  4(src), tmp2
-	MOVW.P  tmp2, 4(dst)
+	MOVWU.P 4(src), tmp1
+	MOVW.P  tmp1, 4(dst)
 	TBZ     $1, len, 3(PC)
-	MOVH.P  2(src), tmp3
-	MOVH.P  tmp3, 2(dst)
+	MOVHU.P 2(src), tmp1
+	MOVH.P  tmp1, 2(dst)
 	TBZ     $0, len, 3(PC)
-	MOVBU.P 1(src), tmp4
-	MOVB.P  tmp4, 1(dst)
+	MOVBU.P 1(src), tmp1
+	MOVB.P  tmp1, 1(dst)
 
 copyLiteralDone:
 	// Initial part of match length.
@@ -669,8 +669,8 @@ copyMatchStreamLast:
 	ADD  match, len, tmp3
 	LDP  -16(tmp3), (tmp1, tmp2)
 	ADD  len, dst
-	STP  (tmp1, tmp2), -16(dst)
 	MOVD $0, len
+	STP  (tmp1, tmp2), -16(dst)
 	B    copyMatchDone
 
 copyMatchViaMemmove:

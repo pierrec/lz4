@@ -89,15 +89,15 @@ func (c bulk) emit(a *asm) {
 	copyLast16(a, c.from, c.n, 0, c.end, "lenRem", c.r1, c.r2, c.clearLen)
 }
 
-// copyTail15 copies the n&15 bytes at from to dst, testing one bit of n
-// per power of two. loads and regs give the load and register for 8, 4, 2
-// and 1 bytes.
-func copyTail15(a *asm, from, n string, loads, regs [4]string) {
+// copyTail15 copies the n&15 bytes at from to dst through r, testing one
+// bit of n per power of two.
+func copyTail15(a *asm, from, n, r string) {
+	loads := [4]string{"MOVD.P", "MOVWU.P", "MOVHU.P", "MOVBU.P"}
 	stores := [4]string{"MOVD.P", "MOVW.P", "MOVH.P", "MOVB.P"}
 	for i, size := range []int{8, 4, 2, 1} {
 		a.F("\tTBZ $%d, %s, 3(PC)", 3-i, n)
-		a.F("\t%s %d(%s), %s", loads[i], size, from, regs[i])
-		a.F("\t%s %s, %d(dst)", stores[i], regs[i], size)
+		a.F("\t%s %d(%s), %s", loads[i], size, from, r)
+		a.F("\t%s %s, %d(dst)", stores[i], r, size)
 	}
 }
 
@@ -353,9 +353,7 @@ copyLiteralShort:
 
 	// Safe but slow copy near the end of src, dst.
 copyLiteralShortEnd:`)
-	copyTail15(a, "src", "len",
-		[4]string{"MOVD.P", "MOVW.P", "MOVH.P", "MOVBU.P"},
-		[4]string{"tmp1", "tmp2", "tmp3", "tmp4"})
+	copyTail15(a, "src", "len", "tmp1")
 	a.I(`
 copyLiteralDone:
 	// Initial part of match length.
@@ -734,10 +732,9 @@ copyMatchStreamTail:
 	B   copyMatchStreamTail
 
 copyMatchStreamLast:`)
-	copyLast16(a, "match", "len", -16, "tmp3", "len", "tmp1", "tmp2", false)
+	copyLast16(a, "match", "len", -16, "tmp3", "len", "tmp1", "tmp2", true)
 	a.I(`
-	MOVD $0, len
-	B    copyMatchDone
+	B copyMatchDone
 
 copyMatchViaMemmove:
 	// runtime·memmove(dst, match, len). Caller must guarantee offset >= len
@@ -798,9 +795,7 @@ copyDict:
 	B copyDictDone
 
 copyDictShort:`)
-	copyTail15(a, "match", "tmp1",
-		[4]string{"MOVD.P", "MOVWU.P", "MOVHU.P", "MOVBU.P"},
-		[4]string{"tmp2", "tmp2", "tmp2", "tmp2"})
+	copyTail15(a, "match", "tmp1", "tmp2")
 	a.I(`
 
 	B copyDictDone

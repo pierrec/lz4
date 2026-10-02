@@ -3,6 +3,7 @@ package lz4_test
 import (
 	"archive/tar"
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"math/rand"
@@ -437,45 +438,87 @@ func BenchmarkWriterFlush(b *testing.B) {
 	}
 }
 
-func TestWriterLegacy(t *testing.T) {
-	goldenFiles := []string{
-		"testdata/vmlinux_LZ4_19377.gz",
-		"testdata/bzImage_lz4_isolated.gz",
+// legacyInputs returns the inputs for the legacy writer tests. The random
+// one spans more than two 8MB blocks, each of which expands when compressed.
+func legacyInputs(t *testing.T) []struct {
+	name string
+	src  []byte
+} {
+	random := make([]byte, 2*lz4block.Block8Mb+12345)
+	_, _ = rand.New(rand.NewSource(156)).Read(random)
+	return []struct {
+		name string
+		src  []byte
+	}{
+		{"vmlinux", loadGolden(t, "testdata/vmlinux_LZ4_19377.gz")},
+		{"bzImage", loadGolden(t, "testdata/bzImage_lz4_isolated.gz")},
+		{"random", random},
 	}
+}
 
-	for _, fname := range goldenFiles {
-		t.Run(fname, func(t *testing.T) {
-			fname := fname
-			t.Parallel()
+// checkLegacyBlocks fails unless frame is a legacy frame whose block sizes
+// are all at most CompressBlockBound(8MB). Legacy frames have no
+// uncompressed flag: the C decoder and the Linux kernel stop at one.
+func checkLegacyBlocks(t *testing.T, frame []byte) {
+	t.Helper()
+	const magic = 0x184C2102
+	bound := uint32(lz4block.CompressBlockBound(int(lz4block.Block8Mb)))
+	if len(frame) < 4 || binary.LittleEndian.Uint32(frame) != magic {
+		t.Fatal("missing legacy magic")
+	}
+	for b := frame[4:]; len(b) > 0; {
+		if len(b) < 4 {
+			t.Fatalf("truncated block header: %x", b)
+		}
+		size := binary.LittleEndian.Uint32(b)
+		if size > bound {
+			t.Fatalf("invalid legacy block size %#x", size)
+		}
+		if int(size) > len(b)-4 {
+			t.Fatalf("block size %d overruns the frame", size)
+		}
+		b = b[4+size:]
+	}
+}
 
-			src := loadGolden(t, fname)
+func TestWriterLegacy(t *testing.T) {
+	options := []struct {
+		name string
+		opts []lz4.Option
+	}{
+		{"Fast", []lz4.Option{lz4.CompressionLevelOption(lz4.Fast)}},
+		{"CCompatFast", []lz4.Option{lz4.CompressionLevelOption(lz4.CCompatFast)}},
+		{"Level1", []lz4.Option{lz4.CompressionLevelOption(lz4.Level1)}},
+		{"Concurrency4", []lz4.Option{lz4.ConcurrencyOption(4)}},
+	}
+	for _, in := range legacyInputs(t) {
+		for _, o := range options {
+			t.Run(in.name+"/"+o.name, func(t *testing.T) {
+				t.Parallel()
 
-			out := new(bytes.Buffer)
-			zw := lz4.NewWriter(out)
-			if err := zw.Apply(lz4.LegacyOption(true), lz4.CompressionLevelOption(lz4.Fast)); err != nil {
-				t.Fatal(err)
-			}
-			if _, err := io.Copy(zw, bytes.NewReader(src)); err != nil {
-				t.Fatal(err)
-			}
-			if err := zw.Close(); err != nil {
-				t.Fatal(err)
-			}
+				out := new(bytes.Buffer)
+				zw := lz4.NewWriter(out)
+				if err := zw.Apply(append([]lz4.Option{lz4.LegacyOption(true)}, o.opts...)...); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := io.Copy(zw, bytes.NewReader(in.src)); err != nil {
+					t.Fatal(err)
+				}
+				if err := zw.Close(); err != nil {
+					t.Fatal(err)
+				}
+				checkLegacyBlocks(t, out.Bytes())
 
-			out2 := new(bytes.Buffer)
-			zr := lz4.NewReader(out)
-			if _, err := io.Copy(out2, zr); err != nil {
-				t.Fatal(err)
-			}
-
-			if len(src) != out2.Len() {
-				t.Fatalf("uncompressed output not correct size. %d != %d", len(src), out2.Len())
-			}
-
-			if !bytes.Equal(out2.Bytes(), src) {
-				t.Fatal("uncompressed compressed output different from source")
-			}
-		})
+				out2 := new(bytes.Buffer)
+				zr := lz4.NewReader(out)
+				if _, err := io.Copy(out2, zr); err != nil {
+					t.Fatal(err)
+				}
+				if !bytes.Equal(out2.Bytes(), in.src) {
+					t.Fatalf("round trip mismatch: got %d bytes; want %d", out2.Len(), len(in.src))
+				}
+			})
+		}
 	}
 }
 

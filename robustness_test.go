@@ -457,7 +457,7 @@ func malformedCases(t testing.TB) []malformedCase {
 		{"legacy/sizeTrailerMismatch", cat(magicLegacy, compBlock(comp), le32(uint32(len(hello))+1)), hello, io.ErrUnexpectedEOF},
 		{"legacy/partialSize", cat(magicLegacy, []byte{1, 0}), nil, io.ErrUnexpectedEOF},
 		{"legacy/partialBlock", cat(magicLegacy, le32(uint32(len(comp))), comp[:3]), nil, io.ErrUnexpectedEOF},
-		{"legacy/blockTooBig", cat(magicLegacy, le32(8<<20+1)), nil, lz4.ErrOptionInvalidBlockSize},
+		{"legacy/blockTooBig", cat(magicLegacy, le32(uint32(lz4.CompressBlockBound(8<<20)+1))), nil, lz4.ErrOptionInvalidBlockSize},
 	}
 	for i := range byte(16) {
 		cases = append(cases, malformedCase{fmt.Sprintf("skippable/only%d", i), skippable(i, []byte("skip me")), nil, nil})

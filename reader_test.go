@@ -2,9 +2,11 @@ package lz4_test
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"os"
 	"reflect"
 	"runtime"
@@ -274,6 +276,76 @@ func TestReaderLegacy(t *testing.T) {
 					t.Fatal("after seek, partial read does not match original")
 				}
 			})
+		}
+	}
+}
+
+// TestReaderLegacyBlockSizes reads hand-built legacy frames of one block. A
+// compressed block may be larger than 8MB, as lz4 -l writes for
+// incompressible data; an uncompressed one, which only older versions of
+// this package wrote, must fit in 8MB.
+func TestReaderLegacyBlockSizes(t *testing.T) {
+	src := make([]byte, 8<<20)
+	_, _ = rand.New(rand.NewSource(156)).Read(src)
+	var c lz4.Compressor
+	compressed := make([]byte, lz4.CompressBlockBound(len(src)))
+	n, err := c.CompressBlock(src, compressed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compressed = compressed[:n]
+	if n <= len(src) {
+		t.Fatalf("random block compressed to %d bytes; want more than %d", n, len(src))
+	}
+
+	const uncompressed = 1 << 31
+	tests := []struct {
+		name   string
+		header uint32
+		data   []byte
+		want   []byte // nil for an error
+	}{
+		{"compressed past 8MB", uint32(n), compressed, src},
+		{"uncompressed 8MB", uncompressed | uint32(len(src)), src, src},
+		{"uncompressed past 8MB", uncompressed | uint32(n), compressed, nil},
+	}
+	reads := []struct {
+		name string
+		read func(io.Reader) ([]byte, error)
+	}{
+		{"Read", io.ReadAll},
+		{"WriteTo", func(r io.Reader) ([]byte, error) {
+			var buf bytes.Buffer
+			_, err := r.(io.WriterTo).WriteTo(&buf)
+			return buf.Bytes(), err
+		}},
+	}
+	for _, tt := range tests {
+		for _, rd := range reads {
+			for _, opts := range [][]lz4.Option{nil, _o(lz4.ConcurrencyOption(4))} {
+				t.Run(fmt.Sprintf("%s/%s/%v", tt.name, rd.name, opts), func(t *testing.T) {
+					frame := binary.LittleEndian.AppendUint32(nil, 0x184C2102)
+					frame = binary.LittleEndian.AppendUint32(frame, tt.header)
+					frame = append(frame, tt.data...)
+					zr := lz4.NewReader(bytes.NewReader(frame))
+					if err := zr.Apply(opts...); err != nil {
+						t.Fatal(err)
+					}
+					got, err := rd.read(zr)
+					if tt.want == nil {
+						if err == nil {
+							t.Fatalf("got %d bytes and no error", len(got))
+						}
+						return
+					}
+					if err != nil {
+						t.Fatal(err)
+					}
+					if !bytes.Equal(got, tt.want) {
+						t.Fatalf("got %d bytes; want %d", len(got), len(tt.want))
+					}
+				})
+			}
 		}
 	}
 }

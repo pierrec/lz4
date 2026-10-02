@@ -52,3 +52,18 @@ so a change that claims to keep the output identical can show it by passing.
 When a change alters the output on purpose, regenerate the file with
 `go test -run TestCompressGolden -update .`: the sizes it records show the
 effect on compression.
+
+## Checking C-identical output
+
+`CompressorCCompat` (the `CCompatFast` level) must produce the same bytes as
+`LZ4_compress_fast`. `TestCCompatMatchesC` checks that on the corpus, for a
+range of accelerations and for destinations of `CompressBlockBound`, exactly
+the compressed size, and one byte less; `TestFrameCCompatBlocksMatchC` checks
+that every block a `Writer` writes at `CCompatFast` matches C; and
+`FuzzCCompatMatchesC` compares the two on arbitrary input, destination size
+and acceleration:
+
+```sh
+(cd bench && go test -run CCompat .)
+(cd bench && go test -run '^$' -fuzz '^FuzzCCompatMatchesC$' -fuzztime 10m .)
+```

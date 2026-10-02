@@ -23,6 +23,8 @@ func main() {
 
 	var a asm
 	switch *arch {
+	case "amd64":
+		decodeAMD64(&a)
 	case "arm64":
 		decodeARM64(&a)
 	default:

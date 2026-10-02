@@ -91,6 +91,15 @@ README describes the package itself.
   private links, chat or agent-session URLs) out of code, commit messages and
   PR text.
 
+## Releases
+
+- `cmd/lz4c` is its own module, `github.com/pierrec/lz4/cmd/lz4c`, tagged
+  `cmd/lz4c/v1.x.y`. Its path has no `/v4`, so its tags must stay below v2.
+- Pushing a `v4.X.Y` tag runs `.github/workflows/lz4c-release.yml`, which
+  bumps `cmd/lz4c/go.mod` on v4 and tags the next lz4c patch version (see
+  `cmd/lz4c/release.sh`). Don't bump or tag lz4c by hand; rerun the
+  workflow from the Actions tab if it fails.
+
 ## Assembly
 
 - The assembly is hand-written: the block decoders in

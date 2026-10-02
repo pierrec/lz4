@@ -1,0 +1,37 @@
+name: lz4c release
+# When a v4 tag is pushed, bump cmd/lz4c to it on v4 and tag the next
+# cmd/lz4c version; see cmd/lz4c/release.sh. Run it by hand to retry a
+# release or to release against an existing tag.
+on:
+  push:
+    tags:
+      - "v4.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "lz4 tag to build lz4c against, such as v4.1.33"
+        required: true
+permissions:
+  contents: write
+concurrency:
+  group: lz4c-release
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v4
+          fetch-depth: 0 # tags, to find the last lz4c version
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27"
+      - name: release
+        env:
+          LZ4_VERSION: ${{ inputs.version || github.ref_name }}
+          GOWORK: "off"
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          sh cmd/lz4c/release.sh "$LZ4_VERSION"

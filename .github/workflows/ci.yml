@@ -24,6 +24,12 @@ jobs:
           go test ./... -v -race
           go test ./... -v -tags noasm
           go test ./... -v -race -tags noasm
+      - name: lz4c
+        # cmd/lz4c is a separate module, so ./... above skips it.
+        working-directory: cmd/lz4c
+        run: |
+          go vet ./...
+          go build ./...
   silesia:
     # Round-trip and decoder tests on the Silesia corpus (testdata/silesia.tar,
     # the same bytes klauspost/compress tests), on both assembly decoders. The

@@ -67,11 +67,12 @@ jobs:
           go-version: "1.27"
       - name: fuzz
         run: |
-          go test -run '^$' -fuzz '^FuzzBlockRoundTrip$' -fuzztime 24s ./internal/lz4block
-          go test -run '^$' -fuzz '^FuzzDecodeBlockDifferential$' -fuzztime 24s ./internal/lz4block
-          go test -run '^$' -fuzz '^FuzzCompressBlockDst$' -fuzztime 24s ./internal/lz4block
-          go test -run '^$' -fuzz '^FuzzReader$' -fuzztime 24s .
-          go test -run '^$' -fuzz '^FuzzFrameRoundTrip$' -fuzztime 24s .
+          go test -run '^$' -fuzz '^FuzzBlockRoundTrip$' -fuzztime 20s ./internal/lz4block
+          go test -run '^$' -fuzz '^FuzzDecodeBlockDifferential$' -fuzztime 20s ./internal/lz4block
+          go test -run '^$' -fuzz '^FuzzCompressBlockDst$' -fuzztime 20s ./internal/lz4block
+          go test -run '^$' -fuzz '^FuzzCompressorCCompat$' -fuzztime 20s ./internal/lz4block
+          go test -run '^$' -fuzz '^FuzzReader$' -fuzztime 20s .
+          go test -run '^$' -fuzz '^FuzzFrameRoundTrip$' -fuzztime 20s .
       - name: upload failing inputs
         if: failure()
         uses: actions/upload-artifact@v4

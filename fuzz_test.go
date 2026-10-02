@@ -74,9 +74,13 @@ func FuzzFrameRoundTrip(f *testing.F) {
 	levels := []lz4.CompressionLevel{lz4.Fast, lz4.Level1, lz4.Level5, lz4.Level9}
 	f.Fuzz(func(t *testing.T, data []byte, flags uint16, chunk uint16) {
 		legacy := flags&(1<<9) != 0
+		level := levels[flags>>2&3]
+		if flags&(1<<10) != 0 {
+			level = lz4.CCompatFast
+		}
 		opts := []lz4.Option{
 			lz4.BlockSizeOption(blockSizes[flags&3]),
-			lz4.CompressionLevelOption(levels[flags>>2&3]),
+			lz4.CompressionLevelOption(level),
 			lz4.BlockChecksumOption(flags&(1<<4) != 0),
 			lz4.ChecksumOption(flags&(1<<5) != 0),
 			lz4.ConcurrencyOption(1 + int(flags>>6&1)*3),

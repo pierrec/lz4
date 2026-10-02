@@ -131,7 +131,9 @@ func TestMatchCopySingle(t *testing.T) {
 // TestMatchCopyMatrix exhaustively sweeps (offset, matchlen) over the ranges
 // most likely to expose addressing-mode or threshold bugs. Each combination
 // is decoded and diffed against the naive reference built in memory.
-func TestMatchCopyMatrix(t *testing.T) {
+func TestMatchCopyMatrix(t *testing.T) { testMatchCopyMatrix(t) }
+
+func testMatchCopyMatrix(t *testing.T) {
 	// Offsets: cover 1..7 (splat/tile paths), every offset in 8..31 (the
 	// 8-byte loop and the offset-8/16/9..15/17..31 tile paths, whose
 	// prefill and tail handling depend on offset%8 and on the exact
@@ -141,7 +143,7 @@ func TestMatchCopyMatrix(t *testing.T) {
 	for o := 8; o <= 33; o++ {
 		offsets = append(offsets, o)
 	}
-	offsets = append(offsets, 48, 64, 127, 128, 255, 1024, 4096, 20000)
+	offsets = append(offsets, 48, 63, 64, 65, 96, 127, 128, 200, 255, 1024, 4096, 20000)
 	// Match lengths: every integer from 4..64 catches off-by-one issues in
 	// all the loops; then a few large values exercise the bulk-copy path,
 	// the unrolled 64-byte loops, and the grow-then-stream copy of long
@@ -173,6 +175,24 @@ func TestMatchCopyMatrix(t *testing.T) {
 							off, mlen, i, dst[i], want[i])
 					}
 				}
+			}
+		}
+	}
+}
+
+// TestLiteralCopyLengths sweeps every literal length through the inline
+// literal copies (16 and 32 bytes per iteration, and their tails) up to past
+// the memmove threshold. A short trailing match leaves too little dst for the
+// 16-byte overcopy, so the end-of-buffer copy is covered too.
+func TestLiteralCopyLengths(t *testing.T) {
+	for lit := 1; lit <= 300; lit++ {
+		for _, mlen := range []int{minMatch, 40} {
+			src, want := buildSingleMatchBlock(lit, 1, mlen)
+			dst := make([]byte, len(want))
+			n := decodeBlock(dst, src, nil)
+			if n != len(want) || !bytes.Equal(dst[:n], want) {
+				t.Fatalf("lit=%d mlen=%d: decode returned %d, want %d (match=%v)",
+					lit, mlen, n, len(want), bytes.Equal(dst[:n], want))
 			}
 		}
 	}
@@ -257,7 +277,7 @@ func TestMatchCopyMatrixSlack(t *testing.T) {
 	for o := 8; o <= 33; o++ {
 		offsets = append(offsets, o)
 	}
-	offsets = append(offsets, 48, 64, 127, 128, 255, 256, 1024, 4096, 20000)
+	offsets = append(offsets, 48, 63, 64, 65, 96, 127, 128, 200, 255, 256, 1024, 4096, 20000)
 	var mlens []int
 	for l := minMatch; l <= 64; l++ {
 		mlens = append(mlens, l)
@@ -448,7 +468,7 @@ func BenchmarkDecodeLongCopy(b *testing.B) {
 	for _, size := range []struct {
 		name string
 		n    int
-	}{{"1K", 1 << 10}, {"4K", 4 << 10}, {"64K", 64 << 10}, {"256K", 256 << 10}, {"1M", 1 << 20}, {"4M", 4 << 20}} {
+	}{{"1K", 1 << 10}, {"4K", 4 << 10}, {"16K", 16 << 10}, {"32K", 32 << 10}, {"48K", 48 << 10}, {"64K", 64 << 10}, {"256K", 256 << 10}, {"1M", 1 << 20}, {"4M", 4 << 20}} {
 		n := size.n
 		src, dec := buildSingleMatchBlock(n, 1, minMatch)
 		benches = append(benches, bench{"literal/" + size.name, src, dec})

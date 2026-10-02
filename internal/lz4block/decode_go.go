@@ -1,5 +1,7 @@
 package lz4block
 
+//go:generate go run -C _gen . -arch arm64 -out ../decode_arm64.s
+
 import (
 	"encoding/binary"
 )

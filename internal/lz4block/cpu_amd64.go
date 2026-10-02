@@ -1,5 +1,4 @@
 //go:build !appengine && gc && !noasm
-// +build !appengine,gc,!noasm
 
 package lz4block
 

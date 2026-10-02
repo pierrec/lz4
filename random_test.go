@@ -36,7 +36,6 @@ func generateCompressedData(size int) ([]byte, []byte, error) {
 
 func TestReaderWithRandomData(t *testing.T) {
 	for _, size := range testDataSizes {
-		size := size // capture range variable
 		t.Run(fmt.Sprintf("Size_%d_bytes", size), func(t *testing.T) {
 			compressedData, originalChecksum, err := generateCompressedData(size)
 			if err != nil {
@@ -63,7 +62,6 @@ func TestReaderWithRandomData(t *testing.T) {
 
 func TestWriterToWithRandomData(t *testing.T) {
 	for _, size := range testDataSizes {
-		size := size // capture range variable
 		t.Run(fmt.Sprintf("Size_%d_bytes", size), func(t *testing.T) {
 			compressedData, originalChecksum, err := generateCompressedData(size)
 			if err != nil {

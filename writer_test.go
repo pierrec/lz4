@@ -322,7 +322,7 @@ func TestWriterFlushRepeated(t *testing.T) {
 						t.Fatal(err)
 					}
 					rng := rand.New(rand.NewSource(192))
-					for i := 0; i < 32; i++ {
+					for i := range 32 {
 						sizes := []int{1, 4096, int(lz4.Block64Kb) - 1, int(lz4.Block64Kb), int(lz4.Block64Kb) + 1}
 						data := bytes.Repeat([]byte{byte(i)}, sizes[i%len(sizes)])
 						if i%2 == 0 {
@@ -335,7 +335,7 @@ func TestWriterFlushRepeated(t *testing.T) {
 						if i == 31 {
 							break
 						}
-						for j := 0; j < 2; j++ {
+						for range 2 {
 							if err := zw.Flush(); err != nil {
 								t.Fatal(err)
 							}
@@ -392,7 +392,7 @@ func TestWriterFlushError(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				for i := 0; i < 8; i++ {
+				for range 8 {
 					if _, err := zw.Write([]byte("next block")); err != nil {
 						t.Fatal(err)
 					}
@@ -420,7 +420,7 @@ func BenchmarkWriterFlush(b *testing.B) {
 				if err := zw.Apply(lz4.ConcurrencyOption(concurrency), lz4.BlockSizeOption(lz4.Block64Kb)); err != nil {
 					b.Fatal(err)
 				}
-				for j := 0; j < 32; j++ {
+				for range 32 {
 					if _, err := zw.Write(data); err != nil {
 						b.Fatal(err)
 					}
@@ -664,7 +664,6 @@ func TestWriter_ReadFromExactBlockMultiple(t *testing.T) {
 	for _, bs := range []lz4.BlockSize{lz4.Block64Kb, lz4.Block256Kb, lz4.Block1Mb} {
 		t.Run(fmt.Sprintf("%d", bs), func(t *testing.T) {
 			for _, blocks := range []int{1, 2, 4} {
-				blocks := blocks
 				t.Run(fmt.Sprintf("blocks=%d", blocks), func(t *testing.T) {
 					data := bytes.Repeat([]byte("abcd"), int(bs)/4*blocks)
 
@@ -707,7 +706,7 @@ func TestWriterConcurrentCloseThenReset(t *testing.T) {
 	if err := zw.Apply(lz4.ConcurrencyOption(4)); err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		buf.Reset()
 		zw.Reset(&buf)
 		if _, err := zw.Write(in); err != nil {

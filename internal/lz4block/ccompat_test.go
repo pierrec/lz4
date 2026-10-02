@@ -93,7 +93,7 @@ func TestCompressorCCompatReuse(t *testing.T) {
 	var reused CompressorCCompat
 	rnd := rand.New(rand.NewSource(2))
 	text := ccompatInputs(t)["text"]
-	for i := 0; i < 200; i++ {
+	for i := range 200 {
 		n := []int{100, 5000, ccompatU16Limit - 1, ccompatU16Limit, 300000}[rnd.Intn(5)]
 		off := rnd.Intn(len(text) - n)
 		src := text[off : off+n]

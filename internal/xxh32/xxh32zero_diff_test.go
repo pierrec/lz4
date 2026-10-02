@@ -15,7 +15,7 @@ func TestChecksumZeroVsGo(t *testing.T) {
 	backing := make([]byte, 1024)
 	rng.Read(backing)
 
-	for align := 0; align < 8; align++ {
+	for align := range 8 {
 		for n := 0; n <= 512; n++ {
 			in := backing[align : align+n]
 			if got, want := ChecksumZero(in), checksumZeroGo(in); got != want {

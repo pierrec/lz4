@@ -97,7 +97,7 @@ func refDecodeSeq(out, dict, lits []byte, off, mlen int) (_ []byte, ok bool) {
 	if off == 0 || off > len(out)+len(dict) {
 		return nil, false
 	}
-	for i := 0; i < mlen; i++ {
+	for range mlen {
 		pos := len(dict) + len(out) - off
 		if pos < len(dict) {
 			out = append(out, dict[pos])

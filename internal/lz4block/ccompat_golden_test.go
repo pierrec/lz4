@@ -53,10 +53,7 @@ func forCCompatGoldenCases(tb testing.TB, f func(name string, blocks [][]byte, d
 		for _, bs := range []int{4 << 10, 64<<10 + 10, 64<<10 + 11, 4 << 20} {
 			var blocks [][]byte
 			for b := in.data; len(b) > 0; {
-				n := bs
-				if n > len(b) {
-					n = len(b)
-				}
+				n := min(bs, len(b))
 				blocks = append(blocks, b[:n])
 				b = b[n:]
 			}

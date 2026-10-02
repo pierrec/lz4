@@ -205,7 +205,7 @@ func TestWriteToBrokenWriter(t *testing.T) {
 func TestReaderLegacy(t *testing.T) {
 	goldenFiles := []string{
 		"testdata/vmlinux_LZ4_19377.lz4",
-		"testdata/bzImage_lz4_isolated.lz4",
+		"testdata/Mark.Twain-Tom.Sawyer_legacy.txt.lz4",
 	}
 
 	for _, fname := range goldenFiles {

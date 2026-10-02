@@ -601,7 +601,7 @@ func TestReaderConcurrentResetMidStream(t *testing.T) {
 	if err := zr.Apply(lz4.ConcurrencyOption(4)); err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		zr.Reset(bytes.NewReader(compressed))
 		if _, err := io.ReadFull(zr, make([]byte, 100)); err != nil {
 			t.Fatal(err)

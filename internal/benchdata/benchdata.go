@@ -75,10 +75,7 @@ func Corpus(dir string) ([]Input, error) {
 func Blocks(b []byte, size int) [][]byte {
 	var out [][]byte
 	for len(b) > 0 {
-		n := size
-		if n > len(b) {
-			n = len(b)
-		}
+		n := min(size, len(b))
 		out = append(out, b[:n])
 		b = b[n:]
 	}

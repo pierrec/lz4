@@ -126,7 +126,7 @@ func Compress(fs *flag.FlagSet) cmdflag.Handler {
 
 			// Accumulate compressed bytes num.
 			var (
-				zsize int64
+				zsize atomic.Int64
 				size  = finfo.Size()
 			)
 			if size > 0 {
@@ -142,7 +142,7 @@ func Compress(fs *flag.FlagSet) cmdflag.Handler {
 				err = zw.Apply(
 					lz4.OnBlockDoneOption(func(n int) {
 						_ = bar.Add(1)
-						atomic.AddInt64(&zsize, int64(n))
+						zsize.Add(int64(n))
 					}),
 				)
 				if err != nil {
@@ -171,7 +171,7 @@ func Compress(fs *flag.FlagSet) cmdflag.Handler {
 			}
 
 			if size > 0 {
-				fmt.Printf("%s %.02f%%\n", zfilename, float64(zsize)*100/float64(size))
+				fmt.Printf("%s %.02f%%\n", zfilename, float64(zsize.Load())*100/float64(size))
 			}
 		}
 

@@ -243,11 +243,11 @@ func TestLongLengths(t *testing.T) {
 
 	src := make([]byte, 0, 100+n) // Just over 16MiB.
 	src = append(src, '\xf0')
-	for i := 0; i < n; i++ {
+	for range n {
 		src = append(src, 255)
 	}
 	src = append(src, 0)
-	for i := 0; i < remain; i++ {
+	for i := range remain {
 		src = append(src, 'A'+byte(i))
 	}
 

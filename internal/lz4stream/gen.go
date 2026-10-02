@@ -1,4 +1,4 @@
-//+build ignore
+//go:build ignore
 
 package main
 
@@ -49,7 +49,7 @@ func do() error {
 
 	pkg := "lz4stream"
 	buf := new(bytes.Buffer)
-	for i, t := range []interface{}{
+	for i, t := range []any{
 		DescriptorFlags{}, DataBlockSize{},
 	} {
 		if i > 0 {

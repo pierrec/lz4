@@ -201,10 +201,7 @@ func (r *Reader) read(buf []byte) (int, error) {
 	}
 	if !r.frame.Descriptor.Flags.BlockIndependence() {
 		if len(r.dict)+len(dst) > 128*1024 {
-			preserveSize := 64*1024 - len(dst)
-			if preserveSize < 0 {
-				preserveSize = 0
-			}
+			preserveSize := max(64*1024-len(dst), 0)
 			r.dict = r.dict[len(r.dict)-preserveSize:]
 		}
 		r.dict = append(r.dict, dst...)

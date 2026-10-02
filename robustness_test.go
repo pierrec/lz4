@@ -459,10 +459,10 @@ func malformedCases(t testing.TB) []malformedCase {
 		{"legacy/partialBlock", cat(magicLegacy, le32(uint32(len(comp))), comp[:3]), nil, io.ErrUnexpectedEOF},
 		{"legacy/blockTooBig", cat(magicLegacy, le32(8<<20+1)), nil, lz4.ErrOptionInvalidBlockSize},
 	}
-	for i := byte(0); i < 16; i++ {
+	for i := range byte(16) {
 		cases = append(cases, malformedCase{fmt.Sprintf("skippable/only%d", i), skippable(i, []byte("skip me")), nil, nil})
 	}
-	for idx := byte(0); idx < 8; idx++ {
+	for idx := range byte(8) {
 		c := malformedCase{fmt.Sprintf("blockSizeIndex%d", idx), cat(magic, desc(F, idx<<4), compBlock(comp), endMark), hello, nil}
 		if idx < 4 {
 			c.want, c.wantErr = nil, lz4.ErrOptionInvalidBlockSize
@@ -510,7 +510,7 @@ func TestReaderErrorIsSticky(t *testing.T) {
 					t.Fatal("no error")
 				}
 				buf := make([]byte, 16)
-				for i := 0; i < 3; i++ {
+				for i := range 3 {
 					if _, err := zr.Read(buf); err == nil || err == io.EOF {
 						t.Fatalf("Read %d after failure: err=%v", i, err)
 					}
@@ -614,7 +614,7 @@ func TestWriterEmpty(t *testing.T) {
 			if err := zw.Apply(lz4.ConcurrencyOption(conc), lz4.LegacyOption(legacy)); err != nil {
 				t.Fatal(err)
 			}
-			for i := 0; i < 3; i++ {
+			for range 3 {
 				if n, err := zw.Write(nil); n != 0 || err != nil {
 					t.Fatalf("Write(nil) = %d, %v", n, err)
 				}

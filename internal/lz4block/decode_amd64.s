@@ -594,12 +594,12 @@ memmove_match:
 	ADDQ dst_len+8(FP), R8
 	MOVQ src_base+24(FP), R9
 	ADDQ src_len+32(FP), R9
+	MOVQ dict_base+48(FP), R14
+	MOVQ dict_len+56(FP), R15
 	MOVQ R8, R12
 	SUBQ $32, R12
 	MOVQ R9, R13
 	SUBQ $16, R13
-	MOVQ dict_base+48(FP), R14
-	MOVQ dict_len+56(FP), R15
 	XORL CX, CX
 
 	// Every sequence that does not take the shortcut ends here: keep this
@@ -718,10 +718,10 @@ copy_match_stream_last:
 	JMP   loopcheck
 
 copy_match_stream_bytes:
-	MOVB (BX), R10
-	MOVB R10, (DI)
-	INCQ BX
+	MOVB (BX), AX
+	MOVB AX, (DI)
 	INCQ DI
+	INCQ BX
 	DECQ CX
 	JNZ  copy_match_stream_bytes
 	JMP  loopcheck

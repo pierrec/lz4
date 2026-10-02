@@ -15,43 +15,33 @@ func amd64ReadLenExt(a *asm, loop string) {
 }
 
 // amd64ReloadArgs rebuilds the registers derived from the arguments after
-// a call to runtime·memmove. ends12First reloads R12 and R13 before R14
-// and R15.
-func amd64ReloadArgs(a *asm, ends12First bool) {
-	ends := `
-	MOVQ R8, R12
-	SUBQ $32, R12
-	MOVQ R9, R13
-	SUBQ $16, R13`
-	dict := `
-	MOVQ dict_base+48(FP), R14
-	MOVQ dict_len+56(FP), R15`
+// a call to runtime·memmove.
+func amd64ReloadArgs(a *asm) {
 	a.I(`
 	// Recompute the registers derived from the arguments.
 	MOVQ dst_base+0(FP), R8
 	MOVQ R8, R11
 	ADDQ dst_len+8(FP), R8
 	MOVQ src_base+24(FP), R9
-	ADDQ src_len+32(FP), R9`)
-	if ends12First {
-		a.I(ends)
-		a.I(dict)
-	} else {
-		a.I(dict)
-		a.I(ends)
-	}
+	ADDQ src_len+32(FP), R9
+	MOVQ dict_base+48(FP), R14
+	MOVQ dict_len+56(FP), R15
+	MOVQ R8, R12
+	SUBQ $32, R12
+	MOVQ R9, R13
+	SUBQ $16, R13`)
 }
 
 // amd64Memmove calls runtime·memmove(DI, from, n). The call may clobber
 // every register, so DI and SI are spilled, advanced by n first if listed
-// in advance, along with spill (moved with spillOp) if set; reloadN
-// reloads n from the argument slot afterwards.
+// in advance, along with spill if set (only its low 32 bits if spill32);
+// reloadN reloads n from the argument slot afterwards.
 type amd64Memmove struct {
-	from, n        string
-	advance        []string
-	spill, spillOp string
-	reloadN        bool
-	ends12First    bool // see amd64ReloadArgs
+	from, n string
+	advance []string
+	spill   string
+	spill32 bool
+	reloadN bool
 }
 
 func (c amd64Memmove) emit(a *asm) {
@@ -65,8 +55,12 @@ func (c amd64Memmove) emit(a *asm) {
 		a.F("\tADDQ %s, %s", c.n, r)
 	}
 	a.I("\tMOVQ DI, 24(SP)\n\tMOVQ SI, 32(SP)")
+	mov := "MOVQ"
+	if c.spill32 {
+		mov = "MOVL"
+	}
 	if c.spill != "" {
-		a.F("\t%s %s, 40(SP)", c.spillOp, c.spill)
+		a.F("\t%s %s, 40(SP)", mov, c.spill)
 	}
 	a.I("\n\tCALL runtime·memmove(SB)\n")
 	if c.reloadN {
@@ -74,21 +68,21 @@ func (c amd64Memmove) emit(a *asm) {
 	}
 	a.I("\tMOVQ 24(SP), DI\n\tMOVQ 32(SP), SI")
 	if c.spill != "" {
-		a.F("\t%s 40(SP), %s", c.spillOp, c.spill)
+		a.F("\t%s 40(SP), %s", mov, c.spill)
 	}
-	amd64ReloadArgs(a, c.ends12First)
+	amd64ReloadArgs(a)
 }
 
-// amd64ByteLoop copies CX > 0 bytes from BX to DI one at a time through
-// r. dstFirst increments DI before BX.
-func amd64ByteLoop(a *asm, loop, r string, dstFirst bool) {
-	inc := "\tINCQ BX\n\tINCQ DI"
-	if dstFirst {
-		inc = "\tINCQ DI\n\tINCQ BX"
-	}
-	a.F("%s:\n\tMOVB (BX), %s\n\tMOVB %[2]s, (DI)", loop, r)
-	a.I(inc)
-	a.F("\tDECQ CX\n\tJNZ  %s", loop)
+// amd64ByteLoop copies CX > 0 bytes from BX to DI one at a time through AX.
+func amd64ByteLoop(a *asm, loop string) {
+	a.F(`
+%s:
+	MOVB (BX), AX
+	MOVB AX, (DI)
+	INCQ DI
+	INCQ BX
+	DECQ CX
+	JNZ  %[1]s`, loop)
 }
 
 // amd64Splat ends a splat setup that left a 16-byte tile in X0: the tile
@@ -384,7 +378,7 @@ copy_literal:
 
 memmove_lit:`)
 	amd64Memmove{from: "SI", n: "CX", advance: []string{"DI", "SI"},
-		spill: "DX", spillOp: "MOVL"}.emit(a)
+		spill: "DX", spill32: true}.emit(a)
 	a.I(`
 finish_lit_copy:
 	// CX := mLen
@@ -464,7 +458,7 @@ copy_match_dispatch:
 	JMP  loopcheck
 
 	// Byte copy: short overlapping matches and tails without room to overrun.`)
-	amd64ByteLoop(a, "copy_match_loop", "AX", true)
+	amd64ByteLoop(a, "copy_match_loop")
 	a.I(`
 	JMP loopcheck
 
@@ -642,7 +636,7 @@ copy_match_from_dict:
 	// AX = dict_bytes_available = copy_size
 	// BX = &dict_end - copy_size
 	// CX = match_len`)
-	amd64Memmove{from: "BX", n: "AX", spill: "CX", spillOp: "MOVQ", reloadN: true}.emit(a)
+	amd64Memmove{from: "BX", n: "AX", spill: "CX", reloadN: true}.emit(a)
 	a.I(`
 	// di+=copy_size
 	ADDQ AX, DI
@@ -656,7 +650,7 @@ copy_match_from_dict:
 	JMP  copy_match_dispatch
 
 memmove_match:`)
-	amd64Memmove{from: "BX", n: "CX", advance: []string{"DI"}, ends12First: true}.emit(a)
+	amd64Memmove{from: "BX", n: "CX", advance: []string{"DI"}}.emit(a)
 	a.I(`
 	XORL CX, CX
 
@@ -775,7 +769,7 @@ copy_match_stream_last:
 	XORL  CX, CX
 	JMP   loopcheck
 `)
-	amd64ByteLoop(a, "copy_match_stream_bytes", "R10", false)
+	amd64ByteLoop(a, "copy_match_stream_bytes")
 	a.I(`
 	JMP loopcheck
 

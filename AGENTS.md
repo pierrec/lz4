@@ -128,7 +128,9 @@ README describes the package itself.
   (Go ≥ 1.26, golang/go#81792).
 - Build tags:
   - `noasm` selects the pure-Go code.
-  - `nounsafe` and `purego` select the code without `unsafe` loads.
+  - `nounsafe` selects the code without `unsafe` loads.
+  - `purego` implies both, as elsewhere in the Go ecosystem. Gate new
+    assembly on `!noasm && !purego`.
   - Every assembly or `unsafe` path needs a portable fallback.
   - CI runs the default and `noasm` builds, each with and without `-race`.
     Test `nounsafe` yourself when you touch `unsafe` code.

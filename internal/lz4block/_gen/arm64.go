@@ -194,7 +194,7 @@ func (c memmoveCall) emit(a *asm) {
 
 func decodeARM64(a *asm) {
 	a.I(`
-//go:build gc && !noasm
+//go:build gc && !noasm && !purego
 
 // This implementation assumes that strict alignment checking is turned off.
 // The Go compiler makes the same assumption.

@@ -44,6 +44,12 @@ jobs:
           (cd internal/lz4block/_gen && go vet ./...)
           go generate ./internal/lz4block
           git diff --exit-code
+      - name: purego selects no assembly
+        run: |
+          for arch in amd64 arm64 arm; do
+            out=$(GOARCH=$arch go list -tags purego -f '{{if .SFiles}}{{.ImportPath}} {{.SFiles}}{{end}}' ./...)
+            if [ -n "$out" ]; then echo "$arch: $out"; exit 1; fi
+          done
   silesia:
     # Round-trip and decoder tests on the Silesia corpus (testdata/silesia.tar,
     # the same bytes klauspost/compress tests), on both assembly decoders. The

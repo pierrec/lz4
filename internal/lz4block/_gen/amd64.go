@@ -197,7 +197,7 @@ func amd64TileStep(a *asm) {
 
 func decodeAMD64(a *asm) {
 	a.I(`
-//go:build gc && !noasm
+//go:build gc && !noasm && !purego
 
 #include "go_asm.h"
 #include "textflag.h"

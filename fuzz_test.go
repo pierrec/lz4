@@ -2,9 +2,13 @@ package lz4_test
 
 import (
 	"bytes"
+	"encoding/binary"
+	"hash/fnv"
 	"io"
+	"math/rand"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 
 	"github.com/pierrec/lz4/v4"
@@ -56,6 +60,13 @@ func FuzzFrameRoundTrip(f *testing.F) {
 		f.Add(testData(n, true, int64(i)), uint16(i*0x1111), uint16(n/3))
 		f.Add(testData(n, false, int64(i)), uint16(0xFFFF-i), uint16(0))
 	}
+	// Frames of several blocks, raw and compressed, fed through ReadFrom.
+	for i, bs := range []uint16{0, 1, 3} {
+		f.Add(testData(1000, i%2 == 0, int64(i)), 1<<14|uint16(4+i)<<11|bs, uint16(0))
+		f.Add(testData(100, true, int64(i)), 1<<14|1<<6|7<<11|bs, uint16(0))
+		// The same frames written and flushed in chunks.
+		f.Add(testData(1000, true, int64(i)), 1<<15|1<<6|uint16(2+i)<<11|bs, uint16(300))
+	}
 	// Inputs go-fuzz collected for the frame round trip.
 	entries, err := os.ReadDir("fuzz/corpus")
 	if err != nil {
@@ -86,6 +97,21 @@ func FuzzFrameRoundTrip(f *testing.F) {
 			lz4.ConcurrencyOption(1 + int(flags>>6&1)*3),
 			lz4.LegacyOption(legacy),
 		}
+		// OnBlockDone must report each block once, by Close.
+		var reports, reported atomic.Int64
+		opts = append(opts, lz4.OnBlockDoneOption(func(size int) {
+			reports.Add(1)
+			reported.Add(int64(size))
+		}))
+		if k := int(flags >> 11 & 7); k > 0 {
+			data = growData(data, k*int(blockSizes[flags&3]), 2<<20)
+		}
+		// Write in chunks of step bytes (all at once if 0), but few of them
+		// for large inputs: a flush per tiny chunk of megabytes hangs.
+		step := int(chunk)
+		if step > 0 && len(data) > 64<<10 {
+			step = max(step, len(data)/16)
+		}
 		if flags&(1<<7) != 0 {
 			opts = append(opts, lz4.SizeOption(uint64(len(data))))
 		}
@@ -93,13 +119,9 @@ func FuzzFrameRoundTrip(f *testing.F) {
 		if flags&(1<<8) != 0 && !legacy {
 			// CompressingReader supports neither concurrency nor legacy frames.
 			zc := lz4.NewCompressingReader(io.NopCloser(bytes.NewReader(data)))
-			if err := zc.Apply(opts[:4]...); err != nil {
+			// All but the ConcurrencyOption and LegacyOption at opts[4:6].
+			if err := zc.Apply(append(opts[:4:4], opts[6:]...)...); err != nil {
 				t.Fatal(err)
-			}
-			if flags&(1<<7) != 0 {
-				if err := zc.Apply(lz4.SizeOption(uint64(len(data)))); err != nil {
-					t.Fatal(err)
-				}
 			}
 			if _, err := io.Copy(&frame, zc); err != nil {
 				t.Fatal(err)
@@ -109,16 +131,22 @@ func FuzzFrameRoundTrip(f *testing.F) {
 			if err := zw.Apply(opts...); err != nil {
 				t.Fatal(err)
 			}
-			for rest := data; len(rest) > 0; {
+			if flags&(1<<14) != 0 {
+				// io.Copy from a reader without WriteTo, as from a file or pipe.
+				if _, err := zw.ReadFrom(bytes.NewReader(data)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for rest := data; len(rest) > 0 && flags&(1<<14) == 0; {
 				n := len(rest)
-				if chunk > 0 && int(chunk) < n {
-					n = int(chunk)
+				if step > 0 && step < n {
+					n = step
 				}
 				if _, err := zw.Write(rest[:n]); err != nil {
 					t.Fatal(err)
 				}
 				rest = rest[n:]
-				if flags&(1<<10) != 0 {
+				if flags&(1<<15) != 0 {
 					if err := zw.Flush(); err != nil {
 						t.Fatal(err)
 					}
@@ -128,6 +156,10 @@ func FuzzFrameRoundTrip(f *testing.F) {
 				t.Fatal(err)
 			}
 		}
+		n, sum := frameBlocks(t, frame.Bytes(), legacy)
+		if r, s := reports.Load(), reported.Load(); r != n || s != sum {
+			t.Fatalf("OnBlockDone reported %d blocks of %d bytes; the frame has %d of %d", r, s, n, sum)
+		}
 		out, err := decodeAllModes(t, frame.Bytes())
 		if err != nil {
 			t.Fatal(err)
@@ -135,5 +167,85 @@ func FuzzFrameRoundTrip(f *testing.F) {
 		if !bytes.Equal(out, data) {
 			t.Fatalf("round trip mismatch: got %d bytes, want %d", len(out), len(data))
 		}
+		if r := reports.Load(); r != n {
+			t.Fatalf("OnBlockDone reported %d blocks after Close; the frame has %d", r-n, n)
+		}
 	})
+}
+
+// frameBlocks returns the number of data blocks in frame and the sum of
+// their sizes, as written in their headers.
+func frameBlocks(t *testing.T, frame []byte, legacy bool) (n, sum int64) {
+	t.Helper()
+	if len(frame) < 4 {
+		t.Fatalf("frame of %d bytes", len(frame))
+	}
+	b := frame[4:]
+	blockChecksum := false
+	if !legacy {
+		if len(b) < 3 {
+			t.Fatalf("truncated frame descriptor: %x", b)
+		}
+		flg := b[0]
+		blockChecksum = flg&(1<<4) != 0
+		b = b[2:] // FLG and BD
+		if flg&(1<<3) != 0 {
+			b = b[8:] // content size
+		}
+		if flg&1 != 0 {
+			b = b[4:] // dictionary ID
+		}
+		b = b[1:] // header checksum
+	}
+	for len(b) >= 4 {
+		size := int64(binary.LittleEndian.Uint32(b) &^ (1 << 31))
+		b = b[4:]
+		if size == 0 && !legacy {
+			return n, sum // end mark
+		}
+		if blockChecksum {
+			size += 4
+		}
+		if size > int64(len(b)) {
+			t.Fatalf("block of %d bytes overruns the frame", size)
+		}
+		b = b[size:]
+		if blockChecksum {
+			size -= 4
+		}
+		n++
+		sum += size
+	}
+	if !legacy || len(b) > 0 {
+		t.Fatalf("frame ends without an end mark, %d bytes left", len(b))
+	}
+	return n, sum
+}
+
+// growData returns seed grown to n bytes (at most limit, and never shorter
+// than seed): stretches of random bytes alternate with copies of seed, so
+// that a frame of it holds both stored and compressed blocks. The growth is
+// a function of seed, so a crasher reproduces.
+func growData(seed []byte, n, limit int) []byte {
+	n = max(min(n, limit), len(seed))
+	h := fnv.New64a()
+	h.Write(seed)
+	rnd := rand.New(rand.NewSource(int64(h.Sum64())))
+	out := make([]byte, len(seed), n)
+	copy(out, seed)
+	for len(out) < n {
+		l := min(1+rnd.Intn(96<<10), n-len(out))
+		if len(seed) == 0 || rnd.Intn(2) == 0 {
+			start := len(out)
+			out = out[:start+l]
+			rnd.Read(out[start:])
+			continue
+		}
+		for l > 0 {
+			c := min(l, len(seed))
+			out = append(out, seed[:c]...)
+			l -= c
+		}
+	}
+	return out
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
 
 	"github.com/pierrec/cmdflag"
 )
@@ -29,7 +30,7 @@ func main() {
 	})
 
 	if err := cli.Parse(); err != nil {
-		fmt.Println(err)
-		return
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 }

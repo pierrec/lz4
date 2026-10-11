@@ -17,6 +17,16 @@ import (
 	"github.com/pierrec/lz4/v4"
 )
 
+type writer interface {
+	io.WriteCloser
+	Apply(options ...lz4.Option) error
+	Reset(io.Writer)
+}
+
+var newWriter = func(w io.Writer) writer {
+	return lz4.NewWriter(w)
+}
+
 // Compress compresses a set of files or from stdin to stdout.
 func Compress(fs *flag.FlagSet) cmdflag.Handler {
 	var blockMaxSize string
@@ -31,39 +41,38 @@ func Compress(fs *flag.FlagSet) cmdflag.Handler {
 	fs.IntVar(&concurrency, "c", -1, "concurrency (default=all CPUs")
 	bench := fs.Int("bench", 0, "Run benchmark n times. No output will be written")
 
-	var lvl lz4.CompressionLevel
-	switch level {
-	default:
-		fallthrough
-	case 0:
-		lvl = lz4.Fast
-	case 1:
-		lvl = lz4.Level1
-	case 2:
-		lvl = lz4.Level2
-	case 3:
-		lvl = lz4.Level3
-	case 4:
-		lvl = lz4.Level4
-	case 5:
-		lvl = lz4.Level5
-	case 6:
-		lvl = lz4.Level6
-	case 7:
-		lvl = lz4.Level7
-	case 8:
-		lvl = lz4.Level8
-	case 9:
-		lvl = lz4.Level9
-	}
-
 	return func(args ...string) (int, error) {
+		var lvl lz4.CompressionLevel
+		switch level {
+		default:
+			return 0, fmt.Errorf("%w: %d", lz4.ErrOptionInvalidCompressionLevel, level)
+		case 0:
+			lvl = lz4.Fast
+		case 1:
+			lvl = lz4.Level1
+		case 2:
+			lvl = lz4.Level2
+		case 3:
+			lvl = lz4.Level3
+		case 4:
+			lvl = lz4.Level4
+		case 5:
+			lvl = lz4.Level5
+		case 6:
+			lvl = lz4.Level6
+		case 7:
+			lvl = lz4.Level7
+		case 8:
+			lvl = lz4.Level8
+		case 9:
+			lvl = lz4.Level9
+		}
 		sz, err := bytefmt.ToBytes(blockMaxSize)
 		if err != nil {
 			return 0, err
 		}
 
-		zw := lz4.NewWriter(nil)
+		zw := newWriter(nil)
 		options := []lz4.Option{
 			lz4.BlockChecksumOption(blockChecksum),
 			lz4.BlockSizeOption(lz4.BlockSize(sz)),

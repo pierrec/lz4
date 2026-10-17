@@ -1017,35 +1017,39 @@ func TestWriter_DictionaryRoundTrip(t *testing.T) {
 		t.Fatalf("decompressed data mismatch")
 	}
 
-	// Multi-block round trip.
-	var multiSrc bytes.Buffer
-	for i := range 500 {
-		fmt.Fprintf(&multiSrc, "schema:id=%d,name=User%d,status=active,payload=test_data_item_%d\n", i, i, i)
-	}
-	multiData := multiSrc.Bytes()
-
-	var multiBuf bytes.Buffer
-	zwMulti := lz4.NewWriter(&multiBuf)
+	// Multi-block round trip, twice with the same Writer so that the second
+	// frame reuses the dictionary table primed for the first.
+	zwMulti := lz4.NewWriter(nil)
 	if err := zwMulti.Apply(lz4.BlockSizeOption(lz4.Block64Kb), lz4.DictionaryOption(dict)); err != nil {
 		t.Fatalf("zwMulti Apply failed: %v", err)
 	}
-	if _, err := zwMulti.Write(multiData); err != nil {
-		t.Fatalf("zwMulti Write failed: %v", err)
-	}
-	if err := zwMulti.Close(); err != nil {
-		t.Fatalf("zwMulti Close failed: %v", err)
-	}
+	for frame := range 2 {
+		var multiSrc bytes.Buffer
+		for i := 0; multiSrc.Len() < 4*64<<10; i++ {
+			fmt.Fprintf(&multiSrc, "schema:id=%d,name=User%d,status=active,payload=frame_%d_item_%d\n", i, i, frame, i)
+		}
+		multiData := multiSrc.Bytes()
 
-	zrMulti := lz4.NewReader(bytes.NewReader(multiBuf.Bytes()))
-	if err := zrMulti.Apply(lz4.DictionaryOption(dict)); err != nil {
-		t.Fatalf("zrMulti Apply failed: %v", err)
-	}
-	multiOut, err := io.ReadAll(zrMulti)
-	if err != nil {
-		t.Fatalf("zrMulti ReadAll failed: %v", err)
-	}
-	if !bytes.Equal(multiOut, multiData) {
-		t.Fatalf("multi-block decompressed data mismatch")
+		var multiBuf bytes.Buffer
+		zwMulti.Reset(&multiBuf)
+		if _, err := zwMulti.Write(multiData); err != nil {
+			t.Fatalf("frame %d: zwMulti Write failed: %v", frame, err)
+		}
+		if err := zwMulti.Close(); err != nil {
+			t.Fatalf("frame %d: zwMulti Close failed: %v", frame, err)
+		}
+
+		zrMulti := lz4.NewReader(bytes.NewReader(multiBuf.Bytes()))
+		if err := zrMulti.Apply(lz4.DictionaryOption(dict)); err != nil {
+			t.Fatalf("frame %d: zrMulti Apply failed: %v", frame, err)
+		}
+		multiOut, err := io.ReadAll(zrMulti)
+		if err != nil {
+			t.Fatalf("frame %d: zrMulti ReadAll failed: %v", frame, err)
+		}
+		if !bytes.Equal(multiOut, multiData) {
+			t.Fatalf("frame %d: multi-block decompressed data mismatch", frame)
+		}
 	}
 }
 

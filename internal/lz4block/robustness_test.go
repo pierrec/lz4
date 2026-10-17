@@ -264,14 +264,17 @@ func compressionInputs() map[string][]byte {
 // Compressors must not panic or overrun dst whatever its size, must always
 // succeed with CompressBlockBound, and must produce decodable output.
 func TestCompressBlockDstBoundaries(t *testing.T) {
+	dict := []byte("the quick brown fox jumps over the lazy dog 0123456789")
 	compressors := []struct {
 		name string
 		fn   func(src, dst []byte) (int, error)
+		dict []byte
 	}{
-		{"fast", CompressBlock},
-		{"hc1", func(src, dst []byte) (int, error) { return CompressBlockHC(src, dst, 1<<9) }},
-		{"hc9", func(src, dst []byte) (int, error) { return CompressBlockHC(src, dst, 1<<17) }},
-		{"hc0", func(src, dst []byte) (int, error) { return CompressBlockHC(src, dst, 0) }},
+		{"fast", CompressBlock, nil},
+		{"fast+dict", func(src, dst []byte) (int, error) { return CompressBlockWithDict(src, dst, dict) }, dict},
+		{"hc1", func(src, dst []byte) (int, error) { return CompressBlockHC(src, dst, 1<<9) }, nil},
+		{"hc9", func(src, dst []byte) (int, error) { return CompressBlockHC(src, dst, 1<<17) }, nil},
+		{"hc0", func(src, dst []byte) (int, error) { return CompressBlockHC(src, dst, 0) }, nil},
 	}
 	for name, src := range compressionInputs() {
 		for _, c := range compressors {
@@ -305,11 +308,28 @@ func TestCompressBlockDstBoundaries(t *testing.T) {
 					continue
 				}
 				dec := make([]byte, len(src))
-				dn, err := UncompressBlock(buf[:n], dec, nil)
+				dn, err := UncompressBlock(buf[:n], dec, c.dict)
 				if err != nil || !bytes.Equal(dec[:dn], src) {
 					t.Fatalf("%s %s dst=%d: round trip failed: %v", c.name, name, dstLen, err)
 				}
 			}
+		}
+	}
+}
+
+// CompressBlockWithDict reports incompressible input to a short dst the way
+// CompressBlock does: (0, nil) rather than an error.
+func TestCompressBlockWithDictIncompressible(t *testing.T) {
+	src := make([]byte, 1000)
+	rand.New(rand.NewSource(4)).Read(src)
+	copy(src, "abcdefghabcdefgh") // one early match
+	dict := []byte("zzzzzzzzzzzzzzzzzzzz")
+	for _, dstLen := range []int{len(src) - 1, len(src), len(src) + 1, len(src) + 5} {
+		var c Compressor
+		n0, err0 := c.CompressBlock(src, make([]byte, dstLen))
+		n1, err1 := c.CompressBlockWithDict(src, make([]byte, dstLen), dict)
+		if (err0 == nil) != (err1 == nil) || (n0 == 0) != (n1 == 0) {
+			t.Errorf("dst=%d: CompressBlock n=%d err=%v, CompressBlockWithDict n=%d err=%v", dstLen, n0, err0, n1, err1)
 		}
 	}
 }

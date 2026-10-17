@@ -52,11 +52,6 @@ func UncompressBlock(src, dst, dict []byte) (int, error) {
 	return 0, lz4errors.ErrInvalidSourceShortBuffer
 }
 
-type dictData struct {
-	table [htSize]uint16
-	inUse [htSize / 32]uint32
-}
-
 type Compressor struct {
 	// Offsets are at most 64kiB, so we can store only the lower 16 bits of
 	// match positions: effectively, an offset from some 64kiB block boundary.
@@ -73,6 +68,7 @@ type Compressor struct {
 	// without having to zero everything.
 	inUse [htSize / 32]uint32
 
+	// Dictionary state, used only by CompressBlockWithDict (see block_dict.go).
 	dict     []byte
 	dictData *dictData
 }
@@ -102,65 +98,6 @@ func (c *Compressor) put(h uint32, si int) {
 
 func (c *Compressor) reset() { c.inUse = [htSize / 32]uint32{} }
 
-func (c *Compressor) initDict(dict []byte) {
-	if len(dict) > winSize {
-		dict = dict[len(dict)-winSize:]
-	}
-	if len(dict) == 0 {
-		if len(c.dict) > 0 {
-			c.dict = nil
-			if c.dictData != nil {
-				c.dictData.inUse = [htSize / 32]uint32{}
-			}
-		}
-		return
-	}
-	if len(c.dict) == len(dict) && &c.dict[0] == &dict[0] {
-		return
-	}
-	c.dict = dict
-	if c.dictData == nil {
-		c.dictData = new(dictData)
-	} else {
-		c.dictData.table = [htSize]uint16{}
-		c.dictData.inUse = [htSize / 32]uint32{}
-	}
-	for j := 0; j <= len(dict)-4; j += 3 {
-		var m uint64
-		if j+8 <= len(dict) {
-			m = binary.LittleEndian.Uint64(dict[j:])
-		} else {
-			var buf [8]byte
-			copy(buf[:], dict[j:])
-			m = binary.LittleEndian.Uint64(buf[:])
-		}
-		h := blockHash(m)
-		c.dictData.table[h] = uint16(j)
-		c.dictData.inUse[h/32] |= 1 << (h % 32)
-	}
-}
-
-func (c *Compressor) dictMatch(offset *int, h uint32, si int, match32 uint32) bool {
-	if c.dictData == nil {
-		return false
-	}
-	h &= htSize - 1
-	if c.dictData.inUse[h/32]&(1<<(h%32)) == 0 {
-		return false
-	}
-	dictPos := int(c.dictData.table[h])
-	dictLen := len(c.dict)
-	off := si + dictLen - dictPos
-	if off <= 0 || off >= winSize {
-		return false
-	}
-	if match32 != binary.LittleEndian.Uint32(c.dict[dictPos:]) {
-		return false
-	}
-	*offset = off
-	return true
-}
-
 var compressorPool = sync.Pool{New: func() any { return new(Compressor) }}
 
 func CompressBlock(src, dst []byte) (int, error) {
@@ -170,31 +107,7 @@ func CompressBlock(src, dst []byte) (int, error) {
 	return n, err
 }
 
-func CompressBlockWithDict(src, dst, dict []byte) (int, error) {
-	c := compressorPool.Get().(*Compressor)
-	n, err := c.CompressBlockWithDict(src, dst, dict)
-	c.dict = nil
-	c.dictData = nil
-	compressorPool.Put(c)
-	return n, err
-}
-
 func (c *Compressor) CompressBlock(src, dst []byte) (int, error) {
-	if len(c.dict) > 0 {
-		c.dict = nil
-		if c.dictData != nil {
-			c.dictData.inUse = [htSize / 32]uint32{}
-		}
-	}
-	return c.compressBlock(src, dst)
-}
-
-func (c *Compressor) CompressBlockWithDict(src, dst, dict []byte) (int, error) {
-	c.initDict(dict)
-	return c.compressBlock(src, dst)
-}
-
-func (c *Compressor) compressBlock(src, dst []byte) (int, error) {
 	// Zero out reused table to avoid non-deterministic output (issue #65).
 	c.reset()
 
@@ -234,40 +147,28 @@ func (c *Compressor) compressBlock(src, dst []byte) (int, error) {
 		c.put(h2, si+1)
 
 		offset := si - ref
-		var inDict bool
 
 		if offset <= 0 || offset >= winSize || uint32(match) != r.load32(src, ref) {
-			if len(c.dict) == 0 || !c.dictMatch(&offset, h, si, uint32(match)) {
-				// No match. Start calculating another hash.
-				// The processor can usually do this out-of-order.
-				h = blockHash(match >> 16)
-				ref3 := c.get(h, si+2)
+			// No match. Start calculating another hash.
+			// The processor can usually do this out-of-order.
+			h = blockHash(match >> 16)
+			ref3 := c.get(h, si+2)
 
-				// Check the second match at si+1
+			// Check the second match at si+1
+			si += 1
+			offset = si - ref2
+
+			if offset <= 0 || offset >= winSize || uint32(match>>8) != r.load32(src, ref2) {
+				// No match. Check the third match at si+2
 				si += 1
-				offset = si - ref2
+				offset = si - ref3
+				c.put(h, si)
 
-				if offset <= 0 || offset >= winSize || uint32(match>>8) != r.load32(src, ref2) {
-					if len(c.dict) == 0 || !c.dictMatch(&offset, h2, si, uint32(match>>8)) {
-						// No match. Check the third match at si+2
-						si += 1
-						offset = si - ref3
-						c.put(h, si)
-
-						if offset <= 0 || offset >= winSize || uint32(match>>16) != r.load32(src, ref3) {
-							if len(c.dict) == 0 || !c.dictMatch(&offset, h, si, uint32(match>>16)) {
-								// Skip one extra byte (at si+3) before we check 3 matches again.
-								si += 2 + (si-anchor)>>adaptSkipLog
-								continue
-							}
-							inDict = true
-						}
-					} else {
-						inDict = true
-					}
+				if offset <= 0 || offset >= winSize || uint32(match>>16) != r.load32(src, ref3) {
+					// Skip one extra byte (at si+3) before we check 3 matches again.
+					si += 2 + (si-anchor)>>adaptSkipLog
+					continue
 				}
-			} else {
-				inDict = true
 			}
 		}
 
@@ -276,76 +177,32 @@ func (c *Compressor) compressBlock(src, dst []byte) (int, error) {
 		// We already matched 4 bytes.
 		mLen := 4
 
-		if !inDict {
-			// Extend backwards if we can, reducing literals.
-			tOff := si - offset - 1
-			for lLen > 0 && tOff >= 0 && src[si-1] == src[tOff] {
-				si--
-				tOff--
-				lLen--
-				mLen++
-			}
-
-			// Add the match length, so we continue search at the end.
-			// Use mLen to store the offset base.
-			si, mLen = si+mLen, si+minMatch
-
-			// Find the longest match by looking by batches of 8 bytes.
-			for si+8 <= sn {
-				x := r.load64(src, si) ^ r.load64(src, si-offset)
-				if x == 0 {
-					si += 8
-				} else {
-					// Stop is first non-zero byte.
-					si += bits.TrailingZeros64(x) >> 3
-					break
-				}
-			}
-
-			mLen = si - mLen
-		} else {
-			dictLen := len(c.dict)
-			dictPos := si + dictLen - offset
-			dOff := dictPos - 1
-			for lLen > 0 && dOff >= 0 && src[si-1] == c.dict[dOff] {
-				si--
-				dOff--
-				lLen--
-				mLen++
-			}
-			dictPos = dOff + 1
-
-			curMatchLen := mLen
-			for dictPos+curMatchLen+8 <= dictLen && si+curMatchLen+8 <= sn {
-				diff := binary.LittleEndian.Uint64(c.dict[dictPos+curMatchLen:]) ^ binary.LittleEndian.Uint64(src[si+curMatchLen:])
-				if diff == 0 {
-					curMatchLen += 8
-				} else {
-					curMatchLen += bits.TrailingZeros64(diff) >> 3
-					goto matchDictDone
-				}
-			}
-			for dictPos+curMatchLen < dictLen && si+curMatchLen < sn && c.dict[dictPos+curMatchLen] == src[si+curMatchLen] {
-				curMatchLen++
-			}
-			if dictPos+curMatchLen == dictLen && si+curMatchLen < sn {
-				for si+curMatchLen+8 <= sn {
-					diff := r.load64(src, si+curMatchLen) ^ r.load64(src, si+curMatchLen-offset)
-					if diff == 0 {
-						curMatchLen += 8
-					} else {
-						curMatchLen += bits.TrailingZeros64(diff) >> 3
-						goto matchDictDone
-					}
-				}
-				for si+curMatchLen < sn && src[si+curMatchLen] == src[si+curMatchLen-offset] {
-					curMatchLen++
-				}
-			}
-		matchDictDone:
-			mLen = curMatchLen - minMatch
-			si += curMatchLen
+		// Extend backwards if we can, reducing literals.
+		tOff := si - offset - 1
+		for lLen > 0 && tOff >= 0 && src[si-1] == src[tOff] {
+			si--
+			tOff--
+			lLen--
+			mLen++
 		}
+
+		// Add the match length, so we continue search at the end.
+		// Use mLen to store the offset base.
+		si, mLen = si+mLen, si+minMatch
+
+		// Find the longest match by looking by batches of 8 bytes.
+		for si+8 <= sn {
+			x := r.load64(src, si) ^ r.load64(src, si-offset)
+			if x == 0 {
+				si += 8
+			} else {
+				// Stop is first non-zero byte.
+				si += bits.TrailingZeros64(x) >> 3
+				break
+			}
+		}
+
+		mLen = si - mLen
 		if di >= len(dst) {
 			return 0, lz4errors.ErrInvalidSourceShortBuffer
 		}

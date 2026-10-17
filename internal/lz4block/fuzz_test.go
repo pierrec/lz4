@@ -38,18 +38,21 @@ func corpusFiles(tb testing.TB, dir string, max int) [][]byte {
 }
 
 func fuzzSeeds(f *testing.F) {
-	f.Add([]byte(""))
-	f.Add([]byte("a"))
-	f.Add(bytes.Repeat([]byte("a"), 300))
-	f.Add(bytes.Repeat([]byte("ab"), 300))
-	f.Add(bytes.Repeat([]byte("abcdefgh"), 100))
-	f.Add(bytes.Repeat([]byte("0123456789ab"), 60))
-	f.Add(bytes.Repeat([]byte("the quick brown fox jumps over the lazy dog. "), 40))
+	f.Add([]byte(""), []byte(nil))
+	f.Add([]byte("a"), []byte(nil))
+	f.Add(bytes.Repeat([]byte("a"), 300), []byte(nil))
+	f.Add(bytes.Repeat([]byte("ab"), 300), []byte(nil))
+	f.Add(bytes.Repeat([]byte("abcdefgh"), 100), []byte(nil))
+	f.Add(bytes.Repeat([]byte("0123456789ab"), 60), []byte(nil))
+	f.Add(bytes.Repeat([]byte("the quick brown fox jumps over the lazy dog. "), 40), []byte(nil))
 	rec := make([]byte, 0, 4096)
 	for i := range 64 {
 		rec = append(rec, bytes.Repeat([]byte{byte(i)}, 64)...)
 	}
-	f.Add(rec)
+	f.Add(rec, []byte(nil))
+	dict := bytes.Repeat([]byte("0123456789abcdefghij"), 100)
+	f.Add([]byte("0123456789abcdefghij"), dict)
+	f.Add([]byte("the quick brown fox jumps over the lazy dog. "), []byte("the quick brown fox "))
 }
 
 // FuzzCompressorCCompat checks CompressorCCompat against arbitrary input,
@@ -75,12 +78,12 @@ func FuzzCompressorCCompat(f *testing.F) {
 func FuzzBlockRoundTrip(f *testing.F) {
 	fuzzSeeds(f)
 	for _, b := range corpusFiles(f, "../../fuzz/corpus", 64<<10) {
-		f.Add(b)
+		f.Add(b, []byte(nil))
 	}
-	f.Fuzz(func(t *testing.T, data []byte) {
+	f.Fuzz(func(t *testing.T, data, dict []byte) {
 		comp := make([]byte, CompressBlockBound(len(data)))
 		var c Compressor
-		n, err := c.CompressBlock(data, comp)
+		n, err := c.CompressBlockWithDict(data, comp, dict)
 		if err != nil {
 			t.Fatalf("compress: %v", err)
 		}
@@ -95,7 +98,7 @@ func FuzzBlockRoundTrip(f *testing.F) {
 			for i := range dst {
 				dst[i] = 0xA5
 			}
-			got := decodeBlock(dst[:len(data)+slack], comp, nil)
+			got := decodeBlock(dst[:len(data)+slack], comp, dict)
 			if got != len(data) {
 				t.Fatalf("slack %d: decodeBlock returned %d, want %d", slack, got, len(data))
 			}

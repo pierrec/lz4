@@ -28,15 +28,17 @@ func NewWriter(w io.Writer) *Writer {
 
 // Writer allows writing an LZ4 stream.
 type Writer struct {
-	state   _State
-	src     io.Writer                 // destination writer
-	level   lz4block.CompressionLevel // how hard to try
-	num     int                       // concurrency level
-	frame   *lz4stream.Frame          // frame being built
-	data    []byte                    // pending data
-	idx     int                       // size of pending data
-	handler func(int)
-	legacy  bool
+	state      _State
+	src        io.Writer                 // destination writer
+	level      lz4block.CompressionLevel // how hard to try
+	num        int                       // concurrency level
+	frame      *lz4stream.Frame          // frame being built
+	data       []byte                    // pending data
+	idx        int                       // size of pending data
+	handler    func(int)
+	legacy     bool
+	dict       []byte
+	compressor *lz4block.Compressor
 }
 
 func (*Writer) private() {}
@@ -65,6 +67,12 @@ func (w *Writer) isNotConcurrent() bool {
 
 // init sets up the Writer when in newState. It does not change the Writer state.
 func (w *Writer) init() error {
+	if len(w.dict) > 0 {
+		w.num = 1
+		if w.compressor == nil {
+			w.compressor = new(lz4block.Compressor)
+		}
+	}
 	if !w.legacy && !w.frame.Descriptor.Flags.BlockSizeIndex().IsValid() {
 		// Block8Mb is only valid in legacy frames, and LegacyOption may be
 		// applied after BlockSizeOption.
@@ -132,7 +140,7 @@ func (w *Writer) Write(buf []byte) (n int, err error) {
 func (w *Writer) write(data []byte, safe bool) error {
 	if w.isNotConcurrent() {
 		block := w.frame.Blocks.Block
-		err := block.Compress(w.frame, data, w.level).Write(w.frame, w.src)
+		err := block.CompressWithDict(w.frame, data, w.level, w.compressor, w.dict).Write(w.frame, w.src)
 		w.handler(len(block.Data))
 		return err
 	}

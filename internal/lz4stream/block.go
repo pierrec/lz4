@@ -279,6 +279,11 @@ func (b *FrameDataBlock) Close(f *Frame) {
 
 // Block compression errors are ignored since the buffer is sized appropriately.
 func (b *FrameDataBlock) Compress(f *Frame, src []byte, level lz4block.CompressionLevel) *FrameDataBlock {
+	return b.CompressWithDict(f, src, level, nil, nil)
+}
+
+// CompressWithDict compresses src using dictionary dict if provided.
+func (b *FrameDataBlock) CompressWithDict(f *Frame, src []byte, level lz4block.CompressionLevel, c *lz4block.Compressor, dict []byte) *FrameDataBlock {
 	data := b.data
 	if f.isLegacy() {
 		data = data[:cap(data)]
@@ -288,7 +293,15 @@ func (b *FrameDataBlock) Compress(f *Frame, src []byte, level lz4block.Compressi
 	var n int
 	switch level {
 	case lz4block.Fast:
-		n, _ = lz4block.CompressBlock(src, data)
+		if len(dict) > 0 {
+			if c != nil {
+				n, _ = c.CompressBlockWithDict(src, data, dict)
+			} else {
+				n, _ = lz4block.CompressBlockWithDict(src, data, dict)
+			}
+		} else {
+			n, _ = lz4block.CompressBlock(src, data)
+		}
 	case lz4block.CCompatFast:
 		n, _ = lz4block.CompressBlockCCompat(src, data)
 	default:

@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -967,5 +968,138 @@ func TestWriterZeroBlockChecksum(t *testing.T) {
 	}
 	if want := append(zero, rest...); !bytes.Equal(out, want) {
 		t.Fatalf("got % x, want % x", out, want)
+	}
+}
+
+func TestWriter_DictionaryRoundTrip(t *testing.T) {
+	dict := []byte("schema:id,name,email,timestamp,event,status,metadata,payload,response")
+	src := []byte("schema:id=1001,name=Alice,email=alice@example.com,timestamp=1690000000,event=login,status=ok\n" +
+		"schema:id=1002,name=Bob,email=bob@example.com,timestamp=1690000001,event=logout,status=ok\n")
+
+	// Compress with dictionary.
+	var bufWithDict bytes.Buffer
+	zwWithDict := lz4.NewWriter(&bufWithDict)
+	if err := zwWithDict.Apply(lz4.DictionaryOption(dict)); err != nil {
+		t.Fatalf("zwWithDict Apply DictionaryOption failed: %v", err)
+	}
+	if _, err := zwWithDict.Write(src); err != nil {
+		t.Fatalf("zwWithDict Write failed: %v", err)
+	}
+	if err := zwWithDict.Close(); err != nil {
+		t.Fatalf("zwWithDict Close failed: %v", err)
+	}
+
+	// Compress without dictionary.
+	var bufNoDict bytes.Buffer
+	zwNoDict := lz4.NewWriter(&bufNoDict)
+	if _, err := zwNoDict.Write(src); err != nil {
+		t.Fatalf("zwNoDict Write failed: %v", err)
+	}
+	if err := zwNoDict.Close(); err != nil {
+		t.Fatalf("zwNoDict Close failed: %v", err)
+	}
+
+	if bufWithDict.Len() >= bufNoDict.Len() {
+		t.Fatalf("expected dictionary-compressed frame (%d bytes) to be smaller than no-dict (%d bytes)",
+			bufWithDict.Len(), bufNoDict.Len())
+	}
+
+	// Decompress with dictionary.
+	zr := lz4.NewReader(bytes.NewReader(bufWithDict.Bytes()))
+	if err := zr.Apply(lz4.DictionaryOption(dict)); err != nil {
+		t.Fatalf("zr Apply DictionaryOption failed: %v", err)
+	}
+	decompressed, err := io.ReadAll(zr)
+	if err != nil {
+		t.Fatalf("zr ReadAll failed: %v", err)
+	}
+	if !bytes.Equal(decompressed, src) {
+		t.Fatalf("decompressed data mismatch")
+	}
+
+	// Multi-block round trip, twice with the same Writer so that the second
+	// frame reuses the dictionary table primed for the first.
+	zwMulti := lz4.NewWriter(nil)
+	if err := zwMulti.Apply(lz4.BlockSizeOption(lz4.Block64Kb), lz4.DictionaryOption(dict)); err != nil {
+		t.Fatalf("zwMulti Apply failed: %v", err)
+	}
+	for frame := range 2 {
+		var multiSrc bytes.Buffer
+		for i := 0; multiSrc.Len() < 4*64<<10; i++ {
+			fmt.Fprintf(&multiSrc, "schema:id=%d,name=User%d,status=active,payload=frame_%d_item_%d\n", i, i, frame, i)
+		}
+		multiData := multiSrc.Bytes()
+
+		var multiBuf bytes.Buffer
+		zwMulti.Reset(&multiBuf)
+		if _, err := zwMulti.Write(multiData); err != nil {
+			t.Fatalf("frame %d: zwMulti Write failed: %v", frame, err)
+		}
+		if err := zwMulti.Close(); err != nil {
+			t.Fatalf("frame %d: zwMulti Close failed: %v", frame, err)
+		}
+
+		zrMulti := lz4.NewReader(bytes.NewReader(multiBuf.Bytes()))
+		if err := zrMulti.Apply(lz4.DictionaryOption(dict)); err != nil {
+			t.Fatalf("frame %d: zrMulti Apply failed: %v", frame, err)
+		}
+		multiOut, err := io.ReadAll(zrMulti)
+		if err != nil {
+			t.Fatalf("frame %d: zrMulti ReadAll failed: %v", frame, err)
+		}
+		if !bytes.Equal(multiOut, multiData) {
+			t.Fatalf("frame %d: multi-block decompressed data mismatch", frame)
+		}
+	}
+}
+
+func TestWriter_DictionaryOptionsValidation(t *testing.T) {
+	dict := []byte("test dictionary content")
+	zw := lz4.NewWriter(io.Discard)
+
+	// Non-Fast level with dictionary should return ErrOptionNotApplicable.
+	if err := zw.Apply(lz4.CompressionLevelOption(lz4.Level1), lz4.DictionaryOption(dict)); !errors.Is(err, lz4.ErrOptionNotApplicable) {
+		t.Fatalf("expected ErrOptionNotApplicable for Level1 with dict, got %v", err)
+	}
+
+	zw2 := lz4.NewWriter(io.Discard)
+	if err := zw2.Apply(lz4.DictionaryOption(dict), lz4.CompressionLevelOption(lz4.CCompatFast)); !errors.Is(err, lz4.ErrOptionNotApplicable) {
+		t.Fatalf("expected ErrOptionNotApplicable for CCompatFast after dict, got %v", err)
+	}
+
+	// Caller slice mutation and spare capacity do not affect dictionary compression/decompression.
+	rawDict := make([]byte, len(dict), len(dict)+64)
+	copy(rawDict, dict)
+	opt := lz4.DictionaryOption(rawDict)
+
+	var compressed bytes.Buffer
+	zw3 := lz4.NewWriter(&compressed)
+	if err := zw3.Apply(opt); err != nil {
+		t.Fatalf("zw3 Apply failed: %v", err)
+	}
+	src := []byte("test dictionary content repeated payload for round trip check")
+	if _, err := zw3.Write(src); err != nil {
+		t.Fatalf("zw3 Write failed: %v", err)
+	}
+	if err := zw3.Close(); err != nil {
+		t.Fatalf("zw3 Close failed: %v", err)
+	}
+
+	// Mutate caller slice and its spare capacity.
+	for i := range rawDict {
+		rawDict[i] = 0xAA
+	}
+	_ = append(rawDict, "polluted spare capacity bytes"...)
+
+	zr := lz4.NewReader(bytes.NewReader(compressed.Bytes()))
+	if err := zr.Apply(opt); err != nil {
+		t.Fatalf("zr Apply failed: %v", err)
+	}
+	decompressed, err := io.ReadAll(zr)
+	if err != nil {
+		t.Fatalf("zr ReadAll failed: %v", err)
+	}
+	if !bytes.Equal(decompressed, src) {
+		t.Fatalf("decoded output mismatch after mutating caller dictionary")
 	}
 }

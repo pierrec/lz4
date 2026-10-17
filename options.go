@@ -1,9 +1,11 @@
 package lz4
 
 import (
+	"bytes"
 	"fmt"
 	"reflect"
 	"runtime"
+	"slices"
 
 	"github.com/pierrec/lz4/v4/internal/lz4block"
 	"github.com/pierrec/lz4/v4/internal/lz4errors"
@@ -183,6 +185,9 @@ func CompressionLevelOption(level CompressionLevel) Option {
 			default:
 				return fmt.Errorf("%w: %d", lz4errors.ErrOptionInvalidCompressionLevel, level)
 			}
+			if len(w.dict) > 0 && level != Fast {
+				return lz4errors.ErrOptionNotApplicable
+			}
 			w.level = lz4block.CompressionLevel(level)
 			return nil
 		case *CompressingReader:
@@ -190,6 +195,9 @@ func CompressionLevelOption(level CompressionLevel) Option {
 			case Fast, CCompatFast, Level1, Level2, Level3, Level4, Level5, Level6, Level7, Level8, Level9:
 			default:
 				return fmt.Errorf("%w: %d", lz4errors.ErrOptionInvalidCompressionLevel, level)
+			}
+			if len(w.dict) > 0 && level != Fast {
+				return lz4errors.ErrOptionNotApplicable
 			}
 			w.level = lz4block.CompressionLevel(level)
 			return nil
@@ -245,6 +253,50 @@ func LegacyOption(legacy bool) Option {
 			return lz4errors.Error(s)
 		case *Writer:
 			rw.legacy = legacy
+			return nil
+		}
+		return lz4errors.ErrOptionNotApplicable
+	}
+}
+
+// DictionaryOption defines the dictionary to use for compression and decompression.
+// Concurrency is disabled for Writer and Reader when a dictionary is set.
+func DictionaryOption(dict []byte) Option {
+	dict = slices.Clip(bytes.Clone(dict))
+	return func(a applier) error {
+		switch rw := a.(type) {
+		case nil:
+			s := fmt.Sprintf("DictionaryOption(%d bytes)", len(dict))
+			return lz4errors.Error(s)
+		case *Writer:
+			if len(dict) > 0 && rw.level != lz4block.Fast {
+				return lz4errors.ErrOptionNotApplicable
+			}
+			rw.dict = dict
+			if len(dict) > 0 {
+				if rw.compressor == nil {
+					rw.compressor = new(lz4block.Compressor)
+				}
+			} else {
+				rw.compressor = nil
+			}
+			return nil
+		case *Reader:
+			rw.presetDict = slices.Clip(bytes.Clone(dict))
+			rw.dict = rw.presetDict
+			return nil
+		case *CompressingReader:
+			if len(dict) > 0 && rw.level != lz4block.Fast {
+				return lz4errors.ErrOptionNotApplicable
+			}
+			rw.dict = dict
+			if len(dict) > 0 {
+				if rw.compressor == nil {
+					rw.compressor = new(lz4block.Compressor)
+				}
+			} else {
+				rw.compressor = nil
+			}
 			return nil
 		}
 		return lz4errors.ErrOptionNotApplicable

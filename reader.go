@@ -269,7 +269,6 @@ func (r *Reader) WriteTo(w io.Writer) (n int64, err error) {
 			dst = r.data
 			bn = len(dst)
 		} else {
-			lz4block.Put(dst)
 			dst = <-r.reads
 			bn = len(dst)
 			if bn == 0 {
@@ -302,6 +301,9 @@ func (r *Reader) WriteTo(w io.Writer) (n int64, err error) {
 		}
 		r.handler(bn)
 		bn, err = w.Write(dst)
+		if !r.isNotConcurrent() {
+			lz4block.Put(dst)
+		}
 		n += int64(bn)
 		if err != nil {
 			return

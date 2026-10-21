@@ -435,6 +435,37 @@ func TestReader_WriteTo(t *testing.T) {
 	}
 }
 
+func TestReader_WriteToResetAfterDestinationError(t *testing.T) {
+	compressed := writeFrame(t, pg1661, lz4.BlockSizeOption(lz4.Block64Kb))
+	for _, concurrency := range []int{1, 2, 4} {
+		for _, prefix := range []int{0, 17} {
+			for _, limit := range []int{0, 23, 65536 + 23} {
+				t.Run(fmt.Sprintf("concurrency=%d/prefix=%d/limit=%d", concurrency, prefix, limit), func(t *testing.T) {
+					zr := lz4.NewReader(bytes.NewReader(compressed))
+					if err := zr.Apply(lz4.ConcurrencyOption(concurrency)); err != nil {
+						t.Fatal(err)
+					}
+					if _, err := io.ReadFull(zr, make([]byte, prefix)); err != nil {
+						t.Fatal(err)
+					}
+					destination := brokenWriter(limit)
+					if n, err := zr.WriteTo(&destination); n != int64(limit) || err == nil || err.Error() != "broken" {
+						t.Fatalf("WriteTo = %d, %v; want %d, broken", n, err, limit)
+					}
+					zr.Reset(bytes.NewReader(compressed))
+					var out bytes.Buffer
+					if n, err := zr.WriteTo(&out); n != int64(len(pg1661)) || err != nil {
+						t.Fatalf("WriteTo after Reset = %d, %v", n, err)
+					}
+					if !bytes.Equal(out.Bytes(), pg1661) {
+						t.Fatal("WriteTo after Reset differs from input")
+					}
+				})
+			}
+		}
+	}
+}
+
 func TestReader_WriteToAfterPartialRead(t *testing.T) {
 	for _, conc := range []int{1, 4} {
 		zr := lz4.NewReader(bytes.NewReader(pg1661LZ4))

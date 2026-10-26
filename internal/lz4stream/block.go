@@ -175,8 +175,10 @@ func (b *Blocks) initR(f *Frame, num int, src io.Reader) (chan []byte, error) {
 			blocks <- c
 			go func() {
 				defer block.Close(f)
-				buf, err := block.Uncompress(f, size.Get(), nil, false)
+				dst := size.Get()
+				buf, err := block.Uncompress(f, dst, nil, false)
 				if err != nil {
+					lz4block.Put(dst)
 					r.fail(err)
 					// Close the block channel to indicate an error.
 					close(c)
@@ -216,6 +218,7 @@ func (b *Blocks) initR(f *Frame, num int, src io.Reader) (chan []byte, error) {
 			}
 			if skipBlocks {
 				// A previous error has occurred, skipping remaining channels.
+				lz4block.Put(buf)
 				continue
 			}
 			// Perform checksum now as the blocks are received in order.

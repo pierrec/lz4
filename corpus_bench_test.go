@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -47,16 +48,24 @@ func BenchmarkCorpus(b *testing.B) {
 		} {
 			b.Run(name+"/"+enc.tag, func(b *testing.B) {
 				comp := enc.comp(b)
-				r := bytes.NewReader(comp)
-				zr := lz4.NewReader(r)
-				b.SetBytes(int64(len(raw)))
-				b.ResetTimer()
-				for i := 0; i < b.N; i++ {
-					r.Reset(comp)
-					zr.Reset(r)
-					if n, err := io.Copy(io.Discard, zr); err != nil || n != int64(len(raw)) {
-						b.Fatalf("decoded %d of %d bytes: %v", n, len(raw), err)
-					}
+				for _, concurrency := range []int{1, 4} {
+					b.Run("concurrency="+strconv.Itoa(concurrency), func(b *testing.B) {
+						r := bytes.NewReader(comp)
+						zr := lz4.NewReader(r)
+						if err := zr.Apply(lz4.ConcurrencyOption(concurrency)); err != nil {
+							b.Fatal(err)
+						}
+						b.SetBytes(int64(len(raw)))
+						b.ReportAllocs()
+						b.ResetTimer()
+						for i := 0; i < b.N; i++ {
+							r.Reset(comp)
+							zr.Reset(r)
+							if n, err := io.Copy(io.Discard, zr); err != nil || n != int64(len(raw)) {
+								b.Fatalf("decoded %d of %d bytes: %v", n, len(raw), err)
+							}
+						}
+					})
 				}
 			})
 		}

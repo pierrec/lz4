@@ -435,6 +435,76 @@ func TestReader_WriteTo(t *testing.T) {
 	}
 }
 
+func TestReader_WriteToResetAfterDestinationError(t *testing.T) {
+	compressed := writeFrame(t, pg1661, lz4.BlockSizeOption(lz4.Block64Kb))
+	for _, concurrency := range []int{1, 2, 4} {
+		for _, prefix := range []int{0, 17} {
+			for _, limit := range []int{0, 23, 65536 + 23} {
+				t.Run(fmt.Sprintf("concurrency=%d/prefix=%d/limit=%d", concurrency, prefix, limit), func(t *testing.T) {
+					zr := lz4.NewReader(bytes.NewReader(compressed))
+					if err := zr.Apply(lz4.ConcurrencyOption(concurrency)); err != nil {
+						t.Fatal(err)
+					}
+					if _, err := io.ReadFull(zr, make([]byte, prefix)); err != nil {
+						t.Fatal(err)
+					}
+					destination := brokenWriter(limit)
+					if n, err := zr.WriteTo(&destination); n != int64(limit) || err == nil || err.Error() != "broken" {
+						t.Fatalf("WriteTo = %d, %v; want %d, broken", n, err, limit)
+					}
+					zr.Reset(bytes.NewReader(compressed))
+					var out bytes.Buffer
+					if n, err := zr.WriteTo(&out); n != int64(len(pg1661)) || err != nil {
+						t.Fatalf("WriteTo after Reset = %d, %v", n, err)
+					}
+					if !bytes.Equal(out.Bytes(), pg1661) {
+						t.Fatal("WriteTo after Reset differs from input")
+					}
+				})
+			}
+		}
+	}
+}
+
+// seenWriter keeps every buffer it is given, which io.Writer forbids, so that
+// a buffer Reader.WriteTo hands it twice is detectable.
+type seenWriter struct {
+	seen    map[*byte]bool
+	reused  bool
+	written int
+}
+
+func (w *seenWriter) Write(p []byte) (int, error) {
+	if len(p) > 0 {
+		if w.seen[&p[0]] {
+			w.reused = true
+		}
+		w.seen[&p[0]] = true
+	}
+	w.written += len(p)
+	return len(p), nil
+}
+
+func TestReader_WriteToConcurrentRecyclesBlocks(t *testing.T) {
+	raw := bytes.Repeat(pg1661, 4)
+	compressed := writeFrame(t, raw, lz4.BlockSizeOption(lz4.Block64Kb))
+	zr := lz4.NewReader(bytes.NewReader(compressed))
+	if err := zr.Apply(lz4.ConcurrencyOption(4)); err != nil {
+		t.Fatal(err)
+	}
+	w := &seenWriter{seen: map[*byte]bool{}}
+	if _, err := zr.WriteTo(w); err != nil {
+		t.Fatal(err)
+	}
+	if w.written != len(raw) {
+		t.Fatalf("wrote %d bytes, want %d", w.written, len(raw))
+	}
+	// Some Puts are dropped under -race, but not all of about 40.
+	if !w.reused {
+		t.Errorf("no block buffer reused across %d writes", len(w.seen))
+	}
+}
+
 func TestReader_WriteToAfterPartialRead(t *testing.T) {
 	for _, conc := range []int{1, 4} {
 		zr := lz4.NewReader(bytes.NewReader(pg1661LZ4))

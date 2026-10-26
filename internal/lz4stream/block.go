@@ -22,10 +22,11 @@ type Blocks struct {
 // abandon it mid-stream; it has its own error and its own copy of the
 // frame so that it cannot affect the next read.
 type asyncReader struct {
-	mu    sync.Mutex
-	err   error
-	data  chan []byte // uncompressed blocks, in order
-	frame Frame       // copy of the frame: an abandoned reader must not touch the next frame's scratch space, flags, or checksum
+	mu      sync.Mutex
+	err     error
+	data    chan []byte   // uncompressed blocks, in order
+	stopped chan struct{} // closed once the read loop no longer uses the source
+	frame   Frame         // copy of the frame: an abandoned reader must not touch the next frame's scratch space, flags, or checksum
 }
 
 // fail keeps the first error; the read loop stops once one is set.
@@ -92,14 +93,21 @@ func (b *Blocks) initW(f *Frame, dst io.Writer, num int) {
 	}()
 }
 
-func (b *Blocks) close(f *Frame, num int) error {
+// StopR abandons a concurrent read and waits until its goroutines no longer
+// use the source, so the caller may reuse it.
+func (b *Blocks) StopR() {
 	if r := b.reader; r != nil {
-		// abandon the read: fail stops the read loop at its next block,
+		// fail stops the read loop at its next block,
 		// drain unblocks the goroutines and returns their buffers
 		b.reader = nil
 		r.fail(errAbandoned)
 		go r.drain()
+		<-r.stopped
 	}
+}
+
+func (b *Blocks) close(f *Frame, num int) error {
+	b.StopR()
 	if num == 1 {
 		if b.Block != nil {
 			b.Block.Close(f)
@@ -147,7 +155,7 @@ func (b *Blocks) initR(f *Frame, num int, src io.Reader) (chan []byte, error) {
 	blocks := make(chan chan []byte, num)
 	// data receives the uncompressed blocks.
 	data := make(chan []byte)
-	r := &asyncReader{data: data, frame: *f}
+	r := &asyncReader{data: data, stopped: make(chan struct{}), frame: *f}
 	r.frame.Blocks = Blocks{}
 	b.reader = r
 	f = &r.frame
@@ -187,6 +195,7 @@ func (b *Blocks) initR(f *Frame, num int, src io.Reader) (chan []byte, error) {
 				}
 			}()
 		}
+		close(r.stopped)
 		// End the collection loop and the data channel.
 		c := make(chan []byte)
 		blocks <- c

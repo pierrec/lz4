@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -502,6 +503,102 @@ func TestReader_WriteToConcurrentRecyclesBlocks(t *testing.T) {
 	// Some Puts are dropped under -race, but not all of about 40.
 	if !w.reused {
 		t.Errorf("no block buffer reused across %d writes", len(w.seen))
+	}
+}
+
+// gatedSource blocks reads at gateAt until gate is closed.
+type gatedSource struct {
+	r       *bytes.Reader
+	gateAt  int64
+	gate    chan struct{}
+	waiting atomic.Bool
+}
+
+func (s *gatedSource) Read(p []byte) (int, error) {
+	off := s.r.Size() - int64(s.r.Len())
+	if off >= s.gateAt {
+		s.waiting.Store(true)
+		<-s.gate
+	} else if rest := s.gateAt - off; int64(len(p)) > rest {
+		p = p[:rest]
+	}
+	return s.r.Read(p)
+}
+
+func TestReaderConcurrentStopsReadingSource(t *testing.T) {
+	var hdr bytes.Buffer
+	zw := lz4.NewWriter(&hdr)
+	if err := zw.Apply(lz4.BlockSizeOption(lz4.Block64Kb), lz4.ChecksumOption(false)); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	stored := func(n int) []byte {
+		b := binary.LittleEndian.AppendUint32(nil, uint32(n)|1<<31)
+		return append(b, bytes.Repeat([]byte("a"), n)...)
+	}
+	frame := append([]byte(nil), hdr.Bytes()[:hdr.Len()-4]...) // without the end mark
+	frame = append(frame, stored(100)...)
+	// Two blocks that decode to nothing, then one that fails to decode.
+	frame = append(frame, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0x10)
+	gateAt := len(frame)
+	frame = append(frame, stored(100)...)
+	frame = append(frame, 0, 0, 0, 0)
+
+	for _, tc := range []struct {
+		name string
+		call func(zr *lz4.Reader) error
+	}{
+		{"Read", func(zr *lz4.Reader) error { _, err := io.ReadAll(zr); return err }},
+		{"WriteTo", func(zr *lz4.Reader) error { _, err := zr.WriteTo(io.Discard); return err }},
+		{"WriteTo/broken", func(zr *lz4.Reader) error {
+			var w brokenWriter
+			_, err := zr.WriteTo(&w)
+			return err
+		}},
+		{"Reset", func(zr *lz4.Reader) error {
+			zr.Reset(bytes.NewReader(nil))
+			return errors.New("broken")
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			src := &gatedSource{r: bytes.NewReader(frame), gateAt: int64(gateAt), gate: make(chan struct{})}
+			zr := lz4.NewReader(src)
+			if err := zr.Apply(lz4.ConcurrencyOption(4)); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := zr.Read(make([]byte, 1)); err != nil {
+				t.Fatal(err)
+			}
+			for deadline := time.Now().Add(5 * time.Second); !src.waiting.Load(); time.Sleep(time.Millisecond) {
+				if time.Now().After(deadline) {
+					t.Fatal("the read-ahead did not reach the gate")
+				}
+			}
+			// Let the worker for the bad block fail first.
+			time.Sleep(10 * time.Millisecond)
+			returned := make(chan struct{})
+			var err error
+			go func() {
+				err = tc.call(zr)
+				close(returned)
+			}()
+			select {
+			case <-returned:
+				t.Error("returned while a read of the source was in progress")
+			case <-time.After(20 * time.Millisecond):
+			}
+			close(src.gate)
+			select {
+			case <-returned:
+				if err == nil {
+					t.Error("no error from a frame with a bad block")
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("did not return once the source read completed")
+			}
+		})
 	}
 }
 

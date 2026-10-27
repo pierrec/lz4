@@ -122,9 +122,11 @@ func (r *Reader) Read(buf []byte) (n int, err error) {
 				bn, err = r.read(buf)
 			} else {
 				lz4block.Put(r.data)
-				r.data = <-r.reads
-				if len(r.data) == 0 {
-					// No uncompressed data: something went wrong or we are done.
+				var ok bool
+				r.data, ok = <-r.reads
+				if !ok {
+					// The read loop has exited: something went wrong or we are done.
+					// An empty block is not a signal, as it may precede an error.
 					err = r.frame.Blocks.ErrorR()
 				}
 			}
@@ -218,6 +220,8 @@ func (r *Reader) read(buf []byte) (int, error) {
 // Reset clears the state of the Reader r such that it is equivalent to its
 // initial state from NewReader, but instead reading from reader.
 // No access to reader is performed.
+// With concurrency, Reset waits for a read of the previous source that is in
+// progress to return; the previous source is then no longer used.
 func (r *Reader) Reset(reader io.Reader) {
 	lz4block.Put(r.data)
 	r.data = nil
@@ -246,6 +250,13 @@ func (r *Reader) WriteTo(w io.Writer) (n int64, err error) {
 		return 0, r.state.fail()
 	}
 	defer r.state.nextd(&err)
+	defer func() {
+		if err != nil {
+			// Don't leave a concurrent read-ahead using the source, as
+			// after a failed write to w.
+			r.frame.Blocks.StopR()
+		}
+	}()
 
 	if r.idx > 0 {
 		// A previous Read left part of the current block unconsumed.
@@ -269,10 +280,11 @@ func (r *Reader) WriteTo(w io.Writer) (n int64, err error) {
 			dst = r.data
 			bn = len(dst)
 		} else {
-			dst = <-r.reads
+			var ok bool
+			dst, ok = <-r.reads
 			bn = len(dst)
-			if bn == 0 {
-				// No uncompressed data: something went wrong or we are done.
+			if !ok {
+				// The read loop has exited: something went wrong or we are done.
 				err = r.frame.Blocks.ErrorR()
 			}
 		}

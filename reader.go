@@ -3,6 +3,7 @@ package lz4
 import (
 	"bytes"
 	"io"
+	"slices"
 
 	"github.com/pierrec/lz4/v4/internal/lz4block"
 	"github.com/pierrec/lz4/v4/internal/lz4errors"
@@ -32,16 +33,17 @@ func newReader(r io.Reader, legacy bool) *Reader {
 
 // Reader allows reading an LZ4 stream.
 type Reader struct {
-	state   _State
-	src     io.Reader        // source reader
-	num     int              // concurrency level
-	frame   *lz4stream.Frame // frame being read
-	data    []byte           // block buffer allocated in non-concurrent mode
-	reads   chan []byte      // pending data
-	idx     int              // size of pending data
-	handler func(int)
-	cum     uint32
-	dict    []byte
+	state      _State
+	src        io.Reader        // source reader
+	num        int              // concurrency level
+	frame      *lz4stream.Frame // frame being read
+	data       []byte           // block buffer allocated in non-concurrent mode
+	reads      chan []byte      // pending data
+	idx        int              // size of pending data
+	handler    func(int)
+	cum        uint32
+	dict       []byte
+	presetDict []byte
 }
 
 func (*Reader) private() {}
@@ -79,6 +81,9 @@ func (r *Reader) isNotConcurrent() bool {
 }
 
 func (r *Reader) init() error {
+	if len(r.dict) > 0 {
+		r.num = 1
+	}
 	err := r.frame.ParseHeaders(r.src)
 	if err != nil {
 		return err
@@ -229,6 +234,7 @@ func (r *Reader) Reset(reader io.Reader) {
 	r.state.reset()
 	r.src = reader
 	r.reads = nil
+	r.dict = slices.Clip(bytes.Clone(r.presetDict))
 }
 
 // WriteTo efficiently uncompresses the data from the Reader underlying source to w.

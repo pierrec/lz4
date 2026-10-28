@@ -2,6 +2,7 @@ package lz4_test
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -67,5 +68,38 @@ func TestCompressingReader(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestCompressingReader_Dictionary(t *testing.T) {
+	dict := []byte("schema:id,name,email,timestamp,event,status,metadata,payload,response")
+	src := []byte("schema:id=1001,name=Alice,email=alice@example.com,timestamp=1690000000,event=login,status=ok\n" +
+		"schema:id=1002,name=Bob,email=bob@example.com,timestamp=1690000001,event=logout,status=ok\n")
+
+	cr := lz4.NewCompressingReader(io.NopCloser(bytes.NewReader(src)))
+	if err := cr.Apply(lz4.DictionaryOption(dict)); err != nil {
+		t.Fatalf("cr Apply DictionaryOption failed: %v", err)
+	}
+	compressed, err := io.ReadAll(cr)
+	if err != nil {
+		t.Fatalf("cr ReadAll failed: %v", err)
+	}
+
+	zr := lz4.NewReader(bytes.NewReader(compressed))
+	if err := zr.Apply(lz4.DictionaryOption(dict)); err != nil {
+		t.Fatalf("zr Apply DictionaryOption failed: %v", err)
+	}
+	out, err := io.ReadAll(zr)
+	if err != nil {
+		t.Fatalf("zr ReadAll failed: %v", err)
+	}
+	if !bytes.Equal(out, src) {
+		t.Fatalf("CompressingReader roundtrip mismatch")
+	}
+
+	// Non-Fast level with dictionary should return ErrOptionNotApplicable.
+	cr2 := lz4.NewCompressingReader(io.NopCloser(bytes.NewReader(src)))
+	if err := cr2.Apply(lz4.CompressionLevelOption(lz4.Level1), lz4.DictionaryOption(dict)); !errors.Is(err, lz4.ErrOptionNotApplicable) {
+		t.Fatalf("expected ErrOptionNotApplicable, got %v", err)
 	}
 }

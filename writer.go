@@ -217,6 +217,7 @@ func (w *Writer) Reset(writer io.Writer) {
 // ReadFrom efficiently reads from r and compressed into the Writer destination.
 func (w *Writer) ReadFrom(r io.Reader) (n int64, err error) {
 	switch w.state.state {
+	case writeState:
 	case closedState:
 		return 0, lz4errors.ErrWriterClosed
 	case errorState:
@@ -229,6 +230,11 @@ func (w *Writer) ReadFrom(r io.Reader) (n int64, err error) {
 		return 0, w.state.fail()
 	}
 	defer w.state.check(&err)
+
+	// Write buffered input before reading new blocks from r.
+	if err = w.Flush(); err != nil {
+		return
+	}
 
 	size := w.frame.BlockSizeIndex()
 	var done bool

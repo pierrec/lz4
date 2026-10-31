@@ -969,3 +969,98 @@ func TestWriterZeroBlockChecksum(t *testing.T) {
 		t.Fatalf("got % x, want % x", out, want)
 	}
 }
+
+func TestWriterReadFromAfterWrite(t *testing.T) {
+	const block = int(lz4.Block64Kb)
+	for _, concurrency := range []int{1, 4} {
+		for _, prefixSize := range []int{0, 1, block, block + 1} {
+			for _, tc := range []struct {
+				name       string
+				readPrefix bool
+				flush      bool
+				middle     string
+			}{
+				{name: "Write-ReadFrom", middle: "ReadFrom"},
+				{name: "ReadFrom-ReadFrom", readPrefix: true, middle: "ReadFrom"},
+				{name: "Write-CopyN", middle: "CopyN"},
+				{name: "Write-Flush-ReadFrom", flush: true, middle: "ReadFrom"},
+				{name: "ReadFrom-Write", readPrefix: true, middle: "Write"},
+				{name: "Write-Write", middle: "Write"},
+			} {
+				t.Run(fmt.Sprintf("concurrency=%d/prefix=%d/%s", concurrency, prefixSize, tc.name), func(t *testing.T) {
+					prefix := bytes.Repeat([]byte("p"), prefixSize)
+					middle := bytes.Repeat([]byte("m"), block+17)
+					suffix := []byte("trailer")
+					var frame bytes.Buffer
+					zw := lz4.NewWriter(&frame)
+					if err := zw.Apply(lz4.ConcurrencyOption(concurrency), lz4.BlockSizeOption(lz4.Block64Kb)); err != nil {
+						t.Fatal(err)
+					}
+					var n int64
+					var err error
+					if tc.readPrefix {
+						n, err = zw.ReadFrom(bytes.NewReader(prefix))
+					} else {
+						var written int
+						written, err = zw.Write(prefix)
+						n = int64(written)
+					}
+					if err != nil || n != int64(len(prefix)) {
+						t.Fatalf("prefix: n=%d, err=%v; want %d, nil", n, err, len(prefix))
+					}
+					if tc.flush {
+						if err := zw.Flush(); err != nil {
+							t.Fatal(err)
+						}
+					}
+					switch tc.middle {
+					case "ReadFrom":
+						n, err = zw.ReadFrom(bytes.NewReader(middle))
+					case "CopyN":
+						n, err = io.CopyN(zw, bytes.NewReader(middle), int64(len(middle)))
+					case "Write":
+						var written int
+						written, err = zw.Write(middle)
+						n = int64(written)
+					}
+					if err != nil || n != int64(len(middle)) {
+						t.Fatalf("middle: n=%d, err=%v; want %d, nil", n, err, len(middle))
+					}
+					if _, err := zw.Write(suffix); err != nil {
+						t.Fatal(err)
+					}
+					if err := zw.Close(); err != nil {
+						t.Fatal(err)
+					}
+					out, err := io.ReadAll(lz4.NewReader(bytes.NewReader(frame.Bytes())))
+					if err != nil {
+						t.Fatal(err)
+					}
+					want := append(append(prefix, middle...), suffix...)
+					if !bytes.Equal(out, want) {
+						t.Fatalf("round trip: got %d bytes, want %d in original order", len(out), len(want))
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestWriterReadFromFlushError(t *testing.T) {
+	zw := lz4.NewWriter(&flushErrorWriter{failAt: 2})
+	if err := zw.Apply(lz4.ConcurrencyOption(1)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := zw.Write([]byte("buffered prefix")); err != nil {
+		t.Fatal(err)
+	}
+	src := bytes.NewReader([]byte("unread body"))
+	n, err := zw.ReadFrom(src)
+	if n != 0 || err != io.ErrClosedPipe {
+		t.Fatalf("ReadFrom: n=%d, err=%v; want 0, %v", n, err, io.ErrClosedPipe)
+	}
+	if src.Len() != len("unread body") {
+		t.Fatal("ReadFrom consumed input after failing to flush the prefix")
+	}
+	zw.Reset(io.Discard)
+}

@@ -233,7 +233,7 @@ func (w *Writer) ReadFrom(r io.Reader) (n int64, err error) {
 
 	// Write buffered input before reading new blocks from r.
 	if err = w.Flush(); err != nil {
-		return
+		return n, err
 	}
 
 	size := w.frame.BlockSizeIndex()

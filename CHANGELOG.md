@@ -53,7 +53,10 @@ These ship in the `cmd/lz4c` release that follows this tag.
 
 ## v4.1.32 (2026-10-02)
 
-This tag is not on the `v4` branch; everything in it is also in v4.1.33.
+This tag points at commits that never reached the `v4` branch, so `v4`'s history
+does not pass through it. They were rebased onto `v4` for v4.1.33 after #273
+landed: four cleanups carried over unchanged, and #273 superseded the tag's
+`go fix` and `lz4c` `go mod tidy` commits.
 
 - amd64: long overlapping matches are copied with AVX2 when available (#269).
 - arm64: long overlapping matches are copied 64 bytes at a time through NEON

@@ -6,6 +6,22 @@ issues in this repository.
 
 ## v4.1.34 (unreleased)
 
+### Retracted
+
+- v4.1.23 through v4.1.29: `Reader.WriteTo`, which `io.Copy` uses, silently
+  drops data after a partial `Read`; fixed in v4.1.30. v4.1.26 also leaves the
+  frame unfinished when `io.Copy` into a `Writer` reads an empty or whole-block
+  source; fixed in v4.1.27 (#295).
+
+### Added
+
+- `DictionaryOption` sets a preset dictionary for `Writer`, `CompressingReader`
+  and `Reader`, and `CompressBlockWithDict`, as a function and a `Compressor`
+  method, compresses a block with one. Compressing with a dictionary supports
+  only the `Fast` level and non-legacy frames, uses the last 64 KiB of the
+  dictionary, and turns off concurrency. Frames do not record a dictionary ID,
+  so the reader needs the same dictionary (#286).
+
 ### Fixed
 
 - With concurrency, `Reader.Read` and `Reader.WriteTo` no longer return while

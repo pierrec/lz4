@@ -87,10 +87,21 @@ func FuzzBlockRoundTrip(f *testing.F) {
 		if err != nil {
 			t.Fatalf("compress: %v", err)
 		}
-		comp = comp[:n]
 		if n == 0 {
-			// n == 0 means incompressible.
-			return
+			// Only a dst shorter than CompressBlockBound may give up.
+			t.Fatal("compress: n == 0 with a CompressBlockBound dst")
+		}
+		comp = comp[:n]
+		// Compressing again, reusing c's index of dict, and through the
+		// pool must give the same output.
+		again := make([]byte, CompressBlockBound(len(data)))
+		for name, compress := range map[string]func() (int, error){
+			"reused": func() (int, error) { return c.CompressBlockWithDict(data, again, dict) },
+			"pooled": func() (int, error) { return CompressBlockWithDict(data, again, dict) },
+		} {
+			if n2, err := compress(); err != nil || !bytes.Equal(again[:n2], comp) {
+				t.Fatalf("%s compress differs: n=%d err=%v", name, n2, err)
+			}
 		}
 		const guard = 64
 		for _, slack := range []int{0, 1, 15, 16, 17, 31, 32, 33, 64, 1024} {

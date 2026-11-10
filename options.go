@@ -264,6 +264,9 @@ func LegacyOption(legacy bool) Option {
 
 // DictionaryOption defines the dictionary to use for compression and decompression.
 // Concurrency is disabled for Writer and Reader when a dictionary is set.
+// Compression with a dictionary supports only the Fast level and non-legacy
+// frames: with any other CompressionLevelOption, or LegacyOption(true), on a
+// Writer or CompressingReader, either option returns ErrOptionNotApplicable.
 func DictionaryOption(dict []byte) Option {
 	dict = slices.Clip(bytes.Clone(dict))
 	return func(a applier) error {

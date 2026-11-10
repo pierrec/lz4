@@ -1,10 +1,6 @@
 package lz4block
 
-import (
-	"encoding/binary"
-
-	"github.com/pierrec/lz4/v4/internal/lz4errors"
-)
+import "encoding/binary"
 
 // dictData indexes the dictionary for CompressBlockWithDict.
 type dictData struct {
@@ -42,9 +38,8 @@ func (c *Compressor) initDict(dict []byte) {
 func CompressBlockWithDict(src, dst, dict []byte) (int, error) {
 	c := compressorPool.Get().(*Compressor)
 	n, err := c.CompressBlockWithDict(src, dst, dict)
-	// Keep dictData, so that later calls reuse its table, but not the
-	// caller's dictionary. A Compressor reused with the same dictionary
-	// also skips indexing it again.
+	// Don't keep the caller's dictionary alive. dictData's allocation is
+	// reused, but the next call indexes its dictionary again.
 	c.dict = nil
 	compressorPool.Put(c)
 	return n, err
@@ -52,6 +47,7 @@ func CompressBlockWithDict(src, dst, dict []byte) (int, error) {
 
 // CompressBlockWithDict is like CompressBlock, but matches may also refer to
 // the last 64 KiB of dict, as for UncompressBlock with the same dict.
+// Calling it again with the same dict slice reuses the dictionary's index.
 //
 // It uses its own loop so that CompressBlock, the common case, does not pay
 // for the dictionary.
@@ -79,14 +75,17 @@ func (c *Compressor) dictPos(h uint32, si int, x uint32) (int, bool) {
 
 // compressBlockDict compresses src with matches in src or in c.dict. It
 // follows CompressBlock, with one candidate per position and no unsafe loads.
-func (c *Compressor) compressBlockDict(src, dst []byte) (int, error) {
+func (c *Compressor) compressBlockDict(src, dst []byte) (_ int, err error) {
+	// As in compressBlockHC, a short dst is caught by bounds checks and
+	// recovered here. Cap it so that copies cannot reslice past its length.
+	defer recoverBlock(&err)
+	dst = dst[:len(dst):len(dst)]
 	c.reset()
 	isNotCompressible := len(dst) < CompressBlockBound(len(src))
 	const adaptSkipLog = 7
 	dict := c.dict
 
 	var si, di, anchor int
-	var err error
 	sn := len(src) - mfLimit
 	for si < sn {
 		match := binary.LittleEndian.Uint64(src[si:])
@@ -95,7 +94,7 @@ func (c *Compressor) compressBlockDict(src, dst []byte) (int, error) {
 		c.put(h, si)
 
 		lLen := si - anchor
-		var offset, mLen int
+		var offset, n int
 		if off := si - ref; ref >= 0 && off < winSize && uint32(match) == binary.LittleEndian.Uint32(src[ref:]) {
 			offset = off
 			for lLen > 0 && ref > 0 && src[si-1] == src[ref-1] {
@@ -103,11 +102,7 @@ func (c *Compressor) compressBlockDict(src, dst []byte) (int, error) {
 				ref--
 				lLen--
 			}
-			n := minMatch
-			for si+n < sn && src[si+n] == src[ref+n] {
-				n++
-			}
-			si, mLen = si+n, n-minMatch
+			n = minMatch + matchLength(src, ref+minMatch, si+minMatch, sn)
 		} else if p, ok := c.dictPos(h, si, uint32(match)); ok {
 			offset = si + len(dict) - p
 			for lLen > 0 && p > 0 && src[si-1] == dict[p-1] {
@@ -115,25 +110,21 @@ func (c *Compressor) compressBlockDict(src, dst []byte) (int, error) {
 				p--
 				lLen--
 			}
-			n := minMatch
+			n = minMatch
 			for p+n < len(dict) && si+n < sn && src[si+n] == dict[p+n] {
 				n++
 			}
 			if p+n == len(dict) {
-				// The match continues into src, offset bytes back.
-				for si+n < sn && src[si+n] == src[si+n-offset] {
-					n++
-				}
+				// The match continues into src, offset bytes back: at src[0].
+				n += matchLength(src, 0, si+n, sn)
 			}
-			si, mLen = si+n, n-minMatch
 		} else {
 			si += 1 + lLen>>adaptSkipLog
 			continue
 		}
 
-		if di, err = writeSequence(dst, di, src[anchor:anchor+lLen], offset, mLen); err != nil {
-			return 0, err
-		}
+		di = writeSequence(dst, di, src[anchor:si], offset, n-minMatch)
+		si += n
 		anchor = si
 		if si < sn {
 			c.put(blockHash(binary.LittleEndian.Uint64(src[si-2:])), si-2)
@@ -146,83 +137,37 @@ func (c *Compressor) compressBlockDict(src, dst []byte) (int, error) {
 	}
 	// As in CompressBlock, give up before the last literals if the output
 	// is no smaller than the input consumed so far.
-	if di, err = writeLastLiteralsLen(dst, di, len(src)-anchor); err != nil {
-		return 0, err
-	}
+	lLen := len(src) - anchor
+	dst[di] = byte(min(lLen, 0xF) << 4)
+	di = writeLenExt(dst, di+1, lLen)
 	if isNotCompressible && di >= anchor {
 		// Incompressible.
 		return 0, nil
 	}
-	if di+len(src)-anchor > len(dst) {
-		return 0, lz4errors.ErrInvalidSourceShortBuffer
-	}
-	return di + copy(dst[di:], src[anchor:]), nil
+	return di + copy(dst[di:di+lLen], src[anchor:]), nil
 }
 
 // writeSequence writes the literals lit and a match of length mLen+minMatch
 // at offset to dst at di, and returns the new position in dst.
-func writeSequence(dst []byte, di int, lit []byte, offset, mLen int) (int, error) {
+func writeSequence(dst []byte, di int, lit []byte, offset, mLen int) int {
 	lLen := len(lit)
-	if di >= len(dst) {
-		return 0, lz4errors.ErrInvalidSourceShortBuffer
-	}
-	tok := byte(min(mLen, 0xF))
-	if lLen < 0xF {
-		dst[di] = tok | byte(lLen<<4)
-	} else {
-		dst[di] = tok | 0xF0
-		di++
-		l := lLen - 0xF
-		for ; l >= 0xFF && di < len(dst); l -= 0xFF {
-			dst[di] = 0xFF
-			di++
-		}
-		if di >= len(dst) {
-			return 0, lz4errors.ErrInvalidSourceShortBuffer
-		}
-		dst[di] = byte(l)
-	}
-	di++
-	if di+lLen+2 > len(dst) {
-		return 0, lz4errors.ErrInvalidSourceShortBuffer
-	}
-	di += copy(dst[di:], lit)
+	dst[di] = byte(min(lLen, 0xF)<<4 | min(mLen, 0xF))
+	di = writeLenExt(dst, di+1, lLen)
+	di += copy(dst[di:di+lLen], lit)
 	dst[di], dst[di+1] = byte(offset), byte(offset>>8)
-	di += 2
-	if mLen >= 0xF {
-		for mLen -= 0xF; mLen >= 0xFF && di < len(dst); mLen -= 0xFF {
-			dst[di] = 0xFF
-			di++
-		}
-		if di >= len(dst) {
-			return 0, lz4errors.ErrInvalidSourceShortBuffer
-		}
-		dst[di] = byte(mLen)
-		di++
-	}
-	return di, nil
+	return writeLenExt(dst, di+2, mLen)
 }
 
-// writeLastLiteralsLen writes the token and length of the final lLen
-// literals to dst at di, and returns the new position in dst.
-func writeLastLiteralsLen(dst []byte, di int, lLen int) (int, error) {
-	if di >= len(dst) {
-		return 0, lz4errors.ErrInvalidSourceShortBuffer
+// writeLenExt writes the bytes extending a literal or match length n that
+// does not fit in its token nibble, and returns the new position in dst.
+func writeLenExt(dst []byte, di, n int) int {
+	if n < 0xF {
+		return di
 	}
-	if lLen < 0xF {
-		dst[di] = byte(lLen << 4)
-	} else {
-		dst[di] = 0xF0
+	for n -= 0xF; n >= 0xFF; n -= 0xFF {
+		dst[di] = 0xFF
 		di++
-		l := lLen - 0xF
-		for ; l >= 0xFF && di < len(dst); l -= 0xFF {
-			dst[di] = 0xFF
-			di++
-		}
-		if di >= len(dst) {
-			return 0, lz4errors.ErrInvalidSourceShortBuffer
-		}
-		dst[di] = byte(l)
 	}
-	return di + 1, nil
+	dst[di] = byte(n)
+	return di + 1
 }

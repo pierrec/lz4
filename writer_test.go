@@ -1055,16 +1055,21 @@ func TestWriter_DictionaryRoundTrip(t *testing.T) {
 
 func TestWriter_DictionaryOptionsValidation(t *testing.T) {
 	dict := []byte("test dictionary content")
-	zw := lz4.NewWriter(io.Discard)
 
-	// Non-Fast level with dictionary should return ErrOptionNotApplicable.
-	if err := zw.Apply(lz4.CompressionLevelOption(lz4.Level1), lz4.DictionaryOption(dict)); !errors.Is(err, lz4.ErrOptionNotApplicable) {
-		t.Fatalf("expected ErrOptionNotApplicable for Level1 with dict, got %v", err)
-	}
-
-	zw2 := lz4.NewWriter(io.Discard)
-	if err := zw2.Apply(lz4.DictionaryOption(dict), lz4.CompressionLevelOption(lz4.CCompatFast)); !errors.Is(err, lz4.ErrOptionNotApplicable) {
-		t.Fatalf("expected ErrOptionNotApplicable for CCompatFast after dict, got %v", err)
+	// A dictionary only works with the Fast level and non-legacy frames,
+	// whichever option is applied first.
+	for _, tc := range []struct {
+		name string
+		opts []lz4.Option
+	}{
+		{"level then dict", []lz4.Option{lz4.CompressionLevelOption(lz4.Level1), lz4.DictionaryOption(dict)}},
+		{"dict then level", []lz4.Option{lz4.DictionaryOption(dict), lz4.CompressionLevelOption(lz4.CCompatFast)}},
+		{"legacy then dict", []lz4.Option{lz4.LegacyOption(true), lz4.DictionaryOption(dict)}},
+		{"dict then legacy", []lz4.Option{lz4.DictionaryOption(dict), lz4.LegacyOption(true)}},
+	} {
+		if err := lz4.NewWriter(io.Discard).Apply(tc.opts...); !errors.Is(err, lz4.ErrOptionNotApplicable) {
+			t.Errorf("%s: got %v, want ErrOptionNotApplicable", tc.name, err)
+		}
 	}
 
 	// Caller slice mutation and spare capacity do not affect dictionary compression/decompression.

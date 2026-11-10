@@ -282,7 +282,8 @@ func (b *FrameDataBlock) Compress(f *Frame, src []byte, level lz4block.Compressi
 	return b.CompressWithDict(f, src, level, nil, nil)
 }
 
-// CompressWithDict compresses src using dictionary dict if provided.
+// CompressWithDict compresses src with dict, if set, using c, which must then
+// be non-nil and is reused across blocks so that dict is indexed once.
 func (b *FrameDataBlock) CompressWithDict(f *Frame, src []byte, level lz4block.CompressionLevel, c *lz4block.Compressor, dict []byte) *FrameDataBlock {
 	data := b.data
 	if f.isLegacy() {
@@ -294,11 +295,7 @@ func (b *FrameDataBlock) CompressWithDict(f *Frame, src []byte, level lz4block.C
 	switch level {
 	case lz4block.Fast:
 		if len(dict) > 0 {
-			if c != nil {
-				n, _ = c.CompressBlockWithDict(src, data, dict)
-			} else {
-				n, _ = lz4block.CompressBlockWithDict(src, data, dict)
-			}
+			n, _ = c.CompressBlockWithDict(src, data, dict)
 		} else {
 			n, _ = lz4block.CompressBlock(src, data)
 		}

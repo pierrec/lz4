@@ -252,6 +252,9 @@ func LegacyOption(legacy bool) Option {
 			s := fmt.Sprintf("LegacyOption(%v)", legacy)
 			return lz4errors.Error(s)
 		case *Writer:
+			if legacy && len(rw.dict) > 0 {
+				return lz4errors.ErrOptionNotApplicable
+			}
 			rw.legacy = legacy
 			return nil
 		}
@@ -269,7 +272,7 @@ func DictionaryOption(dict []byte) Option {
 			s := fmt.Sprintf("DictionaryOption(%d bytes)", len(dict))
 			return lz4errors.Error(s)
 		case *Writer:
-			if len(dict) > 0 && rw.level != lz4block.Fast {
+			if len(dict) > 0 && (rw.level != lz4block.Fast || rw.legacy) {
 				return lz4errors.ErrOptionNotApplicable
 			}
 			rw.dict = dict

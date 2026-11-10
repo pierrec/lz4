@@ -73,6 +73,9 @@ func (c *Compressor) CompressBlock(src, dst []byte) (int, error) {
 }
 
 // CompressBlockWithDict compresses the source buffer src into the destination dst using a dictionary.
+// Only the last 64 KiB of dict is used; decompress with UncompressBlockWithDict
+// and the same dict. Calling it again with the same dict slice reuses the
+// Compressor's index of the dictionary.
 //
 // If compression is successful, the first return value is the size of the
 // compressed data, which is always >0.
@@ -96,7 +99,10 @@ func CompressBlock(src, dst []byte, _ []int) (int, error) {
 }
 
 // CompressBlockWithDict compresses the source buffer into the destination one using a
-// dictionary, and returns the compressed size.
+// dictionary, and returns the compressed size. Only the last 64 KiB of dict is
+// used; decompress with UncompressBlockWithDict and the same dict. Use a
+// Compressor to compress several blocks with the same dict without indexing it
+// each time.
 //
 // If compression is successful, the first return value is the size of the
 // compressed data, which is always >0.

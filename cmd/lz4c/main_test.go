@@ -176,3 +176,195 @@ func TestCLI_SuccessRoundTrip(t *testing.T) {
 		t.Fatalf("uncompressed content mismatch:\ngot  %q\nwant %q", uncompressedOutput, string(origContent))
 	}
 }
+
+func TestCLI_OverwriteFiles(t *testing.T) {
+	for _, command := range []string{"compress", "uncompress"} {
+		for _, content := range []string{"", "shorter content"} {
+			for _, oldSize := range []int{-1, 11000} {
+				t.Run(fmt.Sprintf("%s/%s/%d", command, content, oldSize), func(t *testing.T) {
+					code, compressed, stderr := runCLI(t, []byte(content), "compress")
+					if code != 0 {
+						t.Fatalf("failed to prepare compressed input: %s", stderr)
+					}
+					input, want := []byte(content), []byte(compressed)
+					filename := filepath.Join(t.TempDir(), "data")
+					output := filename + lz4Extension
+					if command == "uncompress" {
+						filename, output = output, filename
+						input, want = want, input
+					}
+					if err := os.WriteFile(filename, input, 0o640); err != nil {
+						t.Fatal(err)
+					}
+					if oldSize < 0 {
+						oldSize = len(want)
+					}
+					if err := os.WriteFile(output, bytes.Repeat([]byte("x"), oldSize), 0o600); err != nil {
+						t.Fatal(err)
+					}
+					code, _, stderr = runCLI(t, nil, command, filename)
+					if code != 0 {
+						t.Errorf("exit code = %d, want 0: %s", code, stderr)
+					}
+					got, err := os.ReadFile(output)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if !bytes.Equal(got, want) {
+						t.Errorf("output contents differ: got %d bytes, want %d", len(got), len(want))
+					}
+					got, err = os.ReadFile(filename)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if !bytes.Equal(got, input) {
+						t.Error("input contents changed")
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestCLI_UncompressErrorTruncatesOutput(t *testing.T) {
+	content := []byte("content decoded before the truncated checksum")
+	code, compressed, stderr := runCLI(t, content, "compress", "-sc")
+	if code != 0 {
+		t.Fatalf("failed to prepare compressed input: %s", stderr)
+	}
+	for _, tc := range []struct {
+		name  string
+		input []byte
+		want  []byte
+	}{
+		{"invalid header", []byte("invalid compressed data"), nil},
+		{"truncated checksum", []byte(compressed[:len(compressed)-1]), content},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			output := filepath.Join(t.TempDir(), "data")
+			filename := output + lz4Extension
+			if err := os.WriteFile(filename, tc.input, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(output, bytes.Repeat([]byte("x"), 11000), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			code, _, stderr := runCLI(t, nil, "uncompress", filename)
+			if code != 1 {
+				t.Errorf("exit code = %d, want 1: %s", code, stderr)
+			}
+			got, err := os.ReadFile(output)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(got, tc.want) {
+				t.Errorf("output contents differ: got %d bytes, want %d", len(got), len(tc.want))
+			}
+			got, err = os.ReadFile(filename)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(got, tc.input) {
+				t.Error("input contents changed")
+			}
+		})
+	}
+}
+
+func TestCLI_OutputDevices(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("requires Linux device and proc files")
+	}
+	for _, command := range []string{"compress", "uncompress"} {
+		for _, target := range []string{os.DevNull, "/proc/self/comm"} {
+			t.Run(command+"/"+target, func(t *testing.T) {
+				input := []byte("device output")
+				filename := filepath.Join(t.TempDir(), "data")
+				output := filename + lz4Extension
+				if command == "uncompress" {
+					code, compressed, stderr := runCLI(t, input, "compress")
+					if code != 0 {
+						t.Fatalf("failed to prepare compressed input: %s", stderr)
+					}
+					input = []byte(compressed)
+					filename, output = output, filename
+				}
+				if err := os.WriteFile(filename, input, 0o600); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(target, output); err != nil {
+					t.Fatal(err)
+				}
+				code, _, stderr := runCLI(t, nil, command, filename)
+				if code != 0 {
+					t.Errorf("exit code = %d, want 0: %s", code, stderr)
+				}
+				got, err := os.ReadFile(filename)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !bytes.Equal(got, input) {
+					t.Error("input contents changed")
+				}
+			})
+		}
+	}
+}
+
+func TestCLI_RejectInputAsOutput(t *testing.T) {
+	tests := []struct {
+		command string
+		alias   string
+	}{
+		{"uncompress", "same path"},
+		{"uncompress", "hard link"},
+		{"uncompress", "symlink"},
+		{"compress", "hard link"},
+		{"compress", "symlink"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.command+"/"+tc.alias, func(t *testing.T) {
+			input := []byte("content that must not be overwritten")
+			filename := filepath.Join(t.TempDir(), "data")
+			output := filename + lz4Extension
+			if tc.command == "uncompress" {
+				code, compressed, stderr := runCLI(t, input, "compress")
+				if code != 0 {
+					t.Fatalf("failed to prepare compressed input: %s", stderr)
+				}
+				input = []byte(compressed)
+				if tc.alias == "same path" {
+					output = filename
+				} else {
+					filename, output = output, filename
+				}
+			}
+			if err := os.WriteFile(filename, input, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			var err error
+			switch tc.alias {
+			case "hard link":
+				err = os.Link(filename, output)
+			case "symlink":
+				err = os.Symlink(filename, output)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			code, _, stderr := runCLI(t, nil, tc.command, filename)
+			if code != 1 {
+				t.Errorf("exit code = %d, want 1: %s", code, stderr)
+			}
+			for _, name := range []string{filename, output} {
+				got, err := os.ReadFile(name)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !bytes.Equal(got, input) {
+					t.Errorf("input contents changed through %s", name)
+				}
+			}
+		})
+	}
+}

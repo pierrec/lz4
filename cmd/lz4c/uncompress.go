@@ -65,12 +65,12 @@ func Uncompress(fs *flag.FlagSet) cmdflag.Handler {
 			if err != nil {
 				return fidx, err
 			}
-			mode := zinfo.Mode() // use the same mode for the output file
 
 			// Output file.
 			filename := strings.TrimSuffix(zfilename, lz4Extension)
-			file, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY, mode)
+			file, err := openOutputFile(filename, zinfo)
 			if err != nil {
+				zfile.Close()
 				return fidx, err
 			}
 			zr.Reset(zfile)

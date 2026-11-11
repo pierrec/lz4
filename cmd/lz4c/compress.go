@@ -131,7 +131,6 @@ func Compress(fs *flag.FlagSet) cmdflag.Handler {
 			if err != nil {
 				return fidx, err
 			}
-			mode := finfo.Mode() // use the same mode for the output file
 
 			// Accumulate compressed bytes num.
 			var (
@@ -161,8 +160,9 @@ func Compress(fs *flag.FlagSet) cmdflag.Handler {
 
 			// Output file.
 			zfilename := fmt.Sprintf("%s%s", filename, lz4Extension)
-			zfile, err := os.OpenFile(zfilename, os.O_CREATE|os.O_WRONLY, mode)
+			zfile, err := openOutputFile(zfilename, finfo)
 			if err != nil {
+				file.Close()
 				return fidx, err
 			}
 			zw.Reset(zfile)

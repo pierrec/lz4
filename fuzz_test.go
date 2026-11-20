@@ -66,6 +66,8 @@ func FuzzFrameRoundTrip(f *testing.F) {
 		f.Add(testData(100, true, int64(i)), 1<<14|1<<6|7<<11|bs, uint16(0))
 		// The same frames written and flushed in chunks.
 		f.Add(testData(1000, true, int64(i)), 1<<15|1<<6|uint16(2+i)<<11|bs, uint16(300))
+		// The same frames fed through a mix of io.CopyN and Write.
+		f.Add(testData(1000, true, int64(i)), 1<<14|uint16(i)<<6|uint16(2+i)<<11|bs, uint16(5000))
 	}
 	// Inputs go-fuzz collected for the frame round trip.
 	entries, err := os.ReadDir("fuzz/corpus")
@@ -131,18 +133,18 @@ func FuzzFrameRoundTrip(f *testing.F) {
 			if err := zw.Apply(opts...); err != nil {
 				t.Fatal(err)
 			}
-			if flags&(1<<14) != 0 {
-				// io.Copy from a reader without WriteTo, as from a file or pipe.
-				if _, err := zw.ReadFrom(bytes.NewReader(data)); err != nil {
-					t.Fatal(err)
-				}
-			}
-			for rest := data; len(rest) > 0 && flags&(1<<14) == 0; {
+			for k, rest := 0, data; len(rest) > 0; k++ {
 				n := len(rest)
 				if step > 0 && step < n {
 					n = step
 				}
-				if _, err := zw.Write(rest[:n]); err != nil {
+				// With bit 14, feed the first chunk and those starting with an
+				// even byte through io.CopyN (ReadFrom), as from a file or pipe.
+				if flags&(1<<14) != 0 && (k == 0 || rest[0]&1 == 0) {
+					if _, err := io.CopyN(zw, bytes.NewReader(rest[:n]), int64(n)); err != nil {
+						t.Fatal(err)
+					}
+				} else if _, err := zw.Write(rest[:n]); err != nil {
 					t.Fatal(err)
 				}
 				rest = rest[n:]

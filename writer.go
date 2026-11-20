@@ -222,9 +222,12 @@ func (w *Writer) Reset(writer io.Writer) {
 	w.src = writer
 }
 
-// ReadFrom efficiently reads from r and compressed into the Writer destination.
+// ReadFrom reads from r until EOF or an error and compresses the data into the
+// Writer destination. As with Write, data that does not fill a block stays
+// buffered until the next Write, ReadFrom, Flush or Close.
 func (w *Writer) ReadFrom(r io.Reader) (n int64, err error) {
 	switch w.state.state {
+	case writeState:
 	case closedState:
 		return 0, lz4errors.ErrWriterClosed
 	case errorState:
@@ -239,35 +242,24 @@ func (w *Writer) ReadFrom(r io.Reader) (n int64, err error) {
 	defer w.state.check(&err)
 
 	size := w.frame.BlockSizeIndex()
-	var done bool
-	var rn int
-	data := size.Get()
-	if w.isNotConcurrent() {
-		// Keep the same buffer for the whole process.
-		defer lz4block.Put(data)
-	}
-	for !done {
-		rn, err = io.ReadFull(r, data)
+	for {
+		var rn int
+		rn, err = io.ReadFull(r, w.data[w.idx:])
+		n += int64(rn)
+		w.idx += rn
 		switch err {
 		case nil:
-		case io.EOF, io.ErrUnexpectedEOF: // read may be partial
-			err = nil
-			done = true
+		case io.EOF, io.ErrUnexpectedEOF:
+			return n, nil
 		default:
 			return
 		}
-		n += int64(rn)
-		if rn > 0 {
-			err = w.write(data[:rn], true)
-			if err != nil {
-				return
-			}
+		if err = w.write(w.data, true); err != nil {
+			return
 		}
-		if !done && !w.isNotConcurrent() {
-			// The buffer will be returned automatically by go routines (safe=true)
-			// so get a new one for the next round.
-			data = size.Get()
+		if !w.isNotConcurrent() {
+			w.data = size.Get()
 		}
+		w.idx = 0
 	}
-	return
 }

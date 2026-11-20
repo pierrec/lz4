@@ -24,6 +24,12 @@ issues in this repository.
 
 ### Fixed
 
+- `Writer.ReadFrom`, which `io.Copy` and `io.CopyN` use, works after `Write` or
+  an earlier `ReadFrom`; it failed with `unhandled state[writeState]`. Like
+  `Write`, it now keeps a partial block buffered until the next call, `Flush`
+  or `Close`, so repeated `io.CopyN` calls produce the same frame as `Write`
+  instead of one short block per call. Its byte count includes a partial read
+  that ends in an error (#300).
 - With concurrency, `Reader.Read` and `Reader.WriteTo` no longer return while
   the read-ahead is still reading the source, and `Reader.Reset` and `WriteTo`
   after a failed write wait until the read-ahead has stopped using the source,
@@ -38,12 +44,20 @@ issues in this repository.
 
 ### `lz4c`
 
-These ship in the `cmd/lz4c` release that follows this tag.
+These ship in `cmd/lz4c` v1.0.1, which follows this tag. `cmd/lz4c` v1.0.0,
+the first tagged `lz4c` release, builds against v4.1.33.
 
 - `-l` now sets the compression level; it was always `Fast`. Levels above 9 are
   rejected instead of silently falling back to `Fast` (#285).
 - Errors go to stderr with exit status 1, instead of to stdout with status 0
   (#288).
+- `compress` and `uncompress` refuse an output that is the input file, which
+  they used to destroy, and truncate an existing output before writing it, so
+  no stale tail of a longer earlier file remains. Replacing an existing output
+  can therefore be slower; an error can still leave an empty or partial output
+  (#297).
+- `compress` with several files no longer fails on every file after the first
+  with `cannot apply options on closed or in error object` (#299).
 
 ### Internal
 

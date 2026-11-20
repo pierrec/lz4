@@ -132,6 +132,16 @@ func Compress(fs *flag.FlagSet) cmdflag.Handler {
 				return fidx, err
 			}
 
+			// Output file.
+			zfilename := fmt.Sprintf("%s%s", filename, lz4Extension)
+			zfile, err := openOutputFile(zfilename, finfo)
+			if err != nil {
+				file.Close()
+				return fidx, err
+			}
+			// Reset before applying per-file options after Close.
+			zw.Reset(zfile)
+
 			// Accumulate compressed bytes num.
 			var (
 				zsize atomic.Int64
@@ -157,15 +167,6 @@ func Compress(fs *flag.FlagSet) cmdflag.Handler {
 					return 0, err
 				}
 			}
-
-			// Output file.
-			zfilename := fmt.Sprintf("%s%s", filename, lz4Extension)
-			zfile, err := openOutputFile(zfilename, finfo)
-			if err != nil {
-				file.Close()
-				return fidx, err
-			}
-			zw.Reset(zfile)
 
 			// Compress.
 			_, err = io.Copy(zw, file)

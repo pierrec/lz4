@@ -177,6 +177,56 @@ func TestCLI_SuccessRoundTrip(t *testing.T) {
 	}
 }
 
+func TestCLI_CompressFiles(t *testing.T) {
+	for _, first := range []string{"first input file\n", ""} {
+		t.Run(fmt.Sprintf("firstSize=%d", len(first)), func(t *testing.T) {
+			contents := [][]byte{
+				bytes.Repeat([]byte(first), 256),
+				bytes.Repeat([]byte("different second input\n"), 256),
+			}
+			dir := t.TempDir()
+			var files []string
+			for i, content := range contents {
+				name := filepath.Join(dir, fmt.Sprintf("input%d", i))
+				if err := os.WriteFile(name, content, 0o600); err != nil {
+					t.Fatal(err)
+				}
+				files = append(files, name)
+			}
+			args := []string{"compress", "-c=1", "-size=64K", "-bc"}
+			code, _, stderr := runCLI(t, nil, append(args, files[1])...)
+			if code != 0 {
+				t.Fatalf("compress single file: exit code = %d, want 0: %s", code, stderr)
+			}
+			single, err := os.ReadFile(files[1] + lz4Extension)
+			if err != nil {
+				t.Fatal(err)
+			}
+			code, _, stderr = runCLI(t, nil, append(args, files...)...)
+			if code != 0 {
+				t.Fatalf("compress files: exit code = %d, want 0: %s", code, stderr)
+			}
+			for i, name := range files {
+				compressed, err := os.ReadFile(name + lz4Extension)
+				if err != nil {
+					t.Fatal(err)
+				}
+				// Compare FLG, BD and the header checksum after the frame magic.
+				if i == 1 && (len(single) < 7 || len(compressed) < 7 || !bytes.Equal(compressed[4:7], single[4:7])) {
+					t.Fatal("second file frame descriptor differs from single-file output")
+				}
+				code, output, stderr := runCLI(t, compressed, "uncompress")
+				if code != 0 {
+					t.Fatalf("uncompress %s: exit code = %d, want 0: %s", name, code, stderr)
+				}
+				if !bytes.Equal([]byte(output), contents[i]) {
+					t.Fatalf("uncompressed %s differs from input", name)
+				}
+			}
+		})
+	}
+}
+
 func TestCLI_OverwriteFiles(t *testing.T) {
 	for _, command := range []string{"compress", "uncompress"} {
 		for _, content := range []string{"", "shorter content"} {

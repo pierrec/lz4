@@ -76,7 +76,7 @@ func Compress(fs *flag.FlagSet) cmdflag.Handler {
 		options := []lz4.Option{
 			lz4.BlockChecksumOption(blockChecksum),
 			lz4.BlockSizeOption(lz4.BlockSize(sz)),
-			lz4.ChecksumOption(streamChecksum),
+			lz4.ChecksumOption(!streamChecksum),
 			lz4.CompressionLevelOption(lvl),
 			lz4.ConcurrencyOption(concurrency),
 		}

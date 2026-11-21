@@ -47,6 +47,9 @@ uncompress [arguments] [<file name> ...]
 
 ```
 
+The stream checksum is enabled by default; `-sc` disables it. Earlier lz4c
+releases interpreted this flag in reverse. Correcting the default adds a
+4-byte content checksum per frame; use `-sc` to keep checksum-free output.
 
 ## Example
 

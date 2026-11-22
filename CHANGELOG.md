@@ -4,7 +4,9 @@ Notable changes to `github.com/pierrec/lz4/v4`, newest first. Entries before
 v4.1.34 were reconstructed from the git history; numbers are pull requests or
 issues in this repository.
 
-## v4.1.34 (unreleased)
+## Unreleased
+
+## v4.1.34
 
 ### Retracted
 

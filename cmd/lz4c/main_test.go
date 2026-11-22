@@ -278,7 +278,7 @@ func TestCLI_OverwriteFiles(t *testing.T) {
 
 func TestCLI_UncompressErrorTruncatesOutput(t *testing.T) {
 	content := []byte("content decoded before the truncated checksum")
-	code, compressed, stderr := runCLI(t, content, "compress")
+	code, compressed, stderr := runCLI(t, content, "compress", "-sc")
 	if code != 0 {
 		t.Fatalf("failed to prepare compressed input: %s", stderr)
 	}
@@ -420,14 +420,18 @@ func TestCLI_RejectInputAsOutput(t *testing.T) {
 }
 
 func TestCLI_StreamChecksum(t *testing.T) {
+	_, _, help := runCLI(t, nil, "compress", "-h")
+	if !strings.Contains(help, "-sc\n    \tenable stream checksum") {
+		t.Errorf("stream checksum help does not describe enabling: %s", help)
+	}
 	content := []byte("checksum switch input\n")
 	for _, tc := range []struct {
 		name     string
 		flags    []string
 		checksum bool
 	}{
-		{"default", nil, true},
-		{"disabled", []string{"-sc"}, false},
+		{"default", nil, false},
+		{"enabled", []string{"-sc"}, true},
 	} {
 		for _, mode := range []string{"stdin", "file"} {
 			t.Run(tc.name+"/"+mode, func(t *testing.T) {

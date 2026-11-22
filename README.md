@@ -38,7 +38,7 @@ compress [arguments] [<file name> ...]
   -l int
         compression level (0=fastest)
   -sc
-        disable stream checksum
+        enable stream checksum
   -size string
         block max size [64K,256K,1M,4M] (default "4M")
 
@@ -47,9 +47,6 @@ uncompress [arguments] [<file name> ...]
 
 ```
 
-The stream checksum is enabled by default; `-sc` disables it. Earlier lz4c
-releases interpreted this flag in reverse. Correcting the default adds a
-4-byte content checksum per frame; use `-sc` to keep checksum-free output.
 
 ## Example
 

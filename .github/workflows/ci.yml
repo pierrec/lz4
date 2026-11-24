@@ -50,6 +50,13 @@ jobs:
             out=$(GOARCH=$arch go list -tags purego -f '{{if .SFiles}}{{.ImportPath}} {{.SFiles}}{{end}}' ./...)
             if [ -n "$out" ]; then echo "$arch: $out"; exit 1; fi
           done
+      - name: assembly builds for dynamic linking
+        # -buildmode=plugin and -buildmode=shared assemble with -dynlink, which
+        # on amd64 clobbers R15 at each global variable access.
+        run: |
+          for arch in amd64 arm64 arm 386; do
+            GOARCH=$arch go build -asmflags=all=-dynlink -gcflags=all=-dynlink ./...
+          done
   silesia:
     # Round-trip and decoder tests on the Silesia corpus (testdata/silesia.tar,
     # the same bytes klauspost/compress tests), on both assembly decoders. The

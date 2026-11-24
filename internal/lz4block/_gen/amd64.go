@@ -732,7 +732,10 @@ copy_match_stream:
 	JB   copy_match_stream_bytes
 	CMPQ CX, $64
 	JB   copy_match_stream_tail
+	// With -dynlink the assembler loads a global's address into R15, so
+	// reload len(dict) after each one. MOVQ leaves the flags alone.
 	CMPB ·hasAVX2(SB), $0
+	MOVQ dict_len+56(FP), R15
 	JNE  copy_match_stream64_avx2
 
 copy_match_stream64:
@@ -793,6 +796,7 @@ copy_match_stream64_avx2:
 	CMPQ CX, $AVX2_PREFETCH_MIN
 	JB   copy_match_stream64_avx2_loop
 	CMPB ·hasPrefetchW(SB), $0
+	MOVQ dict_len+56(FP), R15
 	JNE  copy_match_stream64_avx2_pfw
 	JMP  copy_match_stream64_avx2_loop
 

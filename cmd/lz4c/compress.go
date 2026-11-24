@@ -34,7 +34,7 @@ func Compress(fs *flag.FlagSet) cmdflag.Handler {
 	var blockChecksum bool
 	fs.BoolVar(&blockChecksum, "bc", false, "enable block checksum")
 	var streamChecksum bool
-	fs.BoolVar(&streamChecksum, "sc", false, "disable stream checksum")
+	fs.BoolVar(&streamChecksum, "sc", false, "enable stream checksum")
 	var level uint
 	fs.UintVar(&level, "l", 0, "compression level (0=fastest)")
 	var concurrency int

@@ -418,3 +418,57 @@ func TestCLI_RejectInputAsOutput(t *testing.T) {
 		})
 	}
 }
+
+func TestCLI_StreamChecksum(t *testing.T) {
+	_, _, help := runCLI(t, nil, "compress", "-h")
+	if !strings.Contains(help, "-sc\n    \tenable stream checksum") {
+		t.Errorf("stream checksum help does not describe enabling: %s", help)
+	}
+	content := []byte("checksum switch input\n")
+	for _, tc := range []struct {
+		name     string
+		flags    []string
+		checksum bool
+	}{
+		{"default", nil, false},
+		{"enabled", []string{"-sc"}, true},
+	} {
+		for _, mode := range []string{"stdin", "file"} {
+			t.Run(tc.name+"/"+mode, func(t *testing.T) {
+				args := append([]string{"compress"}, tc.flags...)
+				input := content
+				var filename string
+				if mode == "file" {
+					filename = filepath.Join(t.TempDir(), "input")
+					if err := os.WriteFile(filename, content, 0o600); err != nil {
+						t.Fatal(err)
+					}
+					args = append(args, filename)
+					input = nil
+				}
+				code, frame, stderr := runCLI(t, input, args...)
+				if code != 0 {
+					t.Fatalf("compress failed: %s", stderr)
+				}
+				if mode == "file" {
+					data, err := os.ReadFile(filename + lz4Extension)
+					if err != nil {
+						t.Fatal(err)
+					}
+					frame = string(data)
+				}
+				if len(frame) < 7 || frame[:4] != "\x04\x22\x4d\x18" {
+					t.Fatalf("invalid frame header: %x", frame)
+				}
+				// FLG bit 2 signals the content checksum in an LZ4 frame.
+				if got := frame[4]&0x04 != 0; got != tc.checksum {
+					t.Errorf("content checksum = %v, want %v (FLG=%02x)", got, tc.checksum, frame[4])
+				}
+				code, decoded, stderr := runCLI(t, []byte(frame), "uncompress")
+				if code != 0 || decoded != string(content) {
+					t.Errorf("round trip: exit=%d, output=%q, stderr=%q", code, decoded, stderr)
+				}
+			})
+		}
+	}
+}

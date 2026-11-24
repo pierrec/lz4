@@ -38,7 +38,7 @@ compress [arguments] [<file name> ...]
   -l int
         compression level (0=fastest)
   -sc
-        disable stream checksum
+        enable stream checksum
   -size string
         block max size [64K,256K,1M,4M] (default "4M")
 

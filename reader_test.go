@@ -563,18 +563,31 @@ func TestReaderConcurrentStopsReadingSource(t *testing.T) {
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			src := &gatedSource{r: bytes.NewReader(frame), gateAt: int64(gateAt), gate: make(chan struct{})}
-			zr := lz4.NewReader(src)
-			if err := zr.Apply(lz4.ConcurrencyOption(4)); err != nil {
-				t.Fatal(err)
-			}
-			if _, err := zr.Read(make([]byte, 1)); err != nil {
-				t.Fatal(err)
-			}
-			for deadline := time.Now().Add(5 * time.Second); !src.waiting.Load(); time.Sleep(time.Millisecond) {
-				if time.Now().After(deadline) {
+			// The read-ahead stops once a block fails to decode, which can
+			// happen before it reads past the bad block; start over then.
+			var src *gatedSource
+			var zr *lz4.Reader
+			for attempt := 0; ; attempt++ {
+				if attempt == 50 {
 					t.Fatal("the read-ahead did not reach the gate")
 				}
+				src = &gatedSource{r: bytes.NewReader(frame), gateAt: int64(gateAt), gate: make(chan struct{})}
+				zr = lz4.NewReader(src)
+				if err := zr.Apply(lz4.ConcurrencyOption(4)); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := zr.Read(make([]byte, 1)); err != nil {
+					t.Fatal(err)
+				}
+				deadline := time.Now().Add(100 * time.Millisecond)
+				for !src.waiting.Load() && time.Now().Before(deadline) {
+					time.Sleep(time.Millisecond)
+				}
+				if src.waiting.Load() {
+					break
+				}
+				close(src.gate) // Reset waits for a read-ahead that is only slow
+				zr.Reset(bytes.NewReader(nil))
 			}
 			// Let the worker for the bad block fail first.
 			time.Sleep(10 * time.Millisecond)

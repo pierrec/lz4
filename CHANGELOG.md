@@ -6,6 +6,19 @@ issues in this repository.
 
 ## Unreleased
 
+### Fixed
+
+- The amd64 block decoder assembles again for dynamic linking
+  (`-buildmode=plugin` and `-buildmode=shared` on linux/amd64); since v4.1.32
+  the build failed with `R15 is clobbered by a global variable access`. CI now
+  builds the module with `-dynlink` (#305).
+
+### `lz4c`
+
+- The help for `compress -sc` said that it disables the stream checksum; the
+  flag has always enabled it, and the help now says so. Without `-sc`, frames
+  still have no stream checksum (#302).
+
 ## v4.1.34
 
 ### Retracted

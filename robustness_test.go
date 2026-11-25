@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"slices"
 	"sync"
 	"testing"
 
@@ -312,6 +313,7 @@ const (
 	flgCntCk = 0x04
 	flgDict  = 0x01
 	bd64K    = 4 << 4
+	bd4M     = 7 << 4
 )
 
 func le32(x uint32) []byte { return binary.LittleEndian.AppendUint32(nil, x) }
@@ -357,6 +359,102 @@ func compressBlock(t testing.TB, data []byte) []byte {
 		t.Fatalf("CompressBlock: n=%d err=%v", n, err)
 	}
 	return comp[:n]
+}
+
+// linkedFrame returns a frame of data in dependent blocks of the given sizes,
+// repeated in turn, each compressed against the 64 KiB before it. dict, if
+// set, comes before the first block.
+func linkedFrame(t testing.TB, bd byte, dict, data []byte, sizes ...int) []byte {
+	t.Helper()
+	frame := cat(magic, desc(flgV1, bd))
+	hist := append(bytes.Clone(dict), data...)
+	comp := make([]byte, lz4.CompressBlockBound(slices.Max(sizes)))
+	for i, off := 0, len(dict); off < len(hist); i++ {
+		end := min(off+sizes[i%len(sizes)], len(hist))
+		n, err := lz4.CompressBlockWithDict(hist[off:end], comp, hist[max(off-64<<10, 0):off])
+		if err != nil || n == 0 {
+			t.Fatalf("CompressBlockWithDict: n=%d err=%v", n, err)
+		}
+		frame = append(frame, compBlock(comp[:n])...)
+		off = end
+	}
+	return append(frame, endMark...)
+}
+
+// linkedData repeats 60000 random bytes, so that it only compresses with
+// matches that reach almost 64 KiB back, into the blocks before.
+func linkedData(n int) (period, data []byte) {
+	period = testData(60000, false, 3)
+	for len(data) < n {
+		data = append(data, period...)
+	}
+	return period, data[:n]
+}
+
+// The Reader keeps the last 64 KiB of output for the blocks that follow to
+// refer to, however the frame is cut into blocks.
+func TestReaderLinkedBlocks(t *testing.T) {
+	_, data := linkedData(400000)
+	for _, tc := range []struct {
+		name  string
+		bd    byte
+		sizes []int
+	}{
+		{"full", bd64K, []int{64 << 10}},
+		{"small", bd64K, []int{4000}},
+		{"tiny", bd64K, []int{100, 1, 250}},
+		{"mixed", bd64K, []int{1, 70, 30000, 64 << 10, 5, 64<<10 - 1, 12345}},
+		{"large", bd4M, []int{300000, 100, 70000}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			frame := linkedFrame(t, tc.bd, nil, data, tc.sizes...)
+			if len(frame) > len(data)/2 {
+				t.Fatalf("frame is %d bytes of %d: blocks do not refer to earlier ones", len(frame), len(data))
+			}
+			for _, m := range decodeModes {
+				out, err := decodeWith(m, frame)
+				if err != nil {
+					t.Fatalf("%s: %v", m.name, err)
+				}
+				if !bytes.Equal(out, data) {
+					t.Fatalf("%s: output differs at byte %d of %d (got %d bytes)", m.name, firstDiff(out, data), len(data), len(out))
+				}
+			}
+		})
+	}
+}
+
+// Reading linked blocks must leave the preset dictionary as it was, for the
+// next frame.
+func TestReaderLinkedBlocksKeepDictionary(t *testing.T) {
+	period, data := linkedData(200000)
+	// Larger than the 64 KiB that the Reader keeps.
+	dict := cat(testData(10000, false, 4), period)
+	frame := linkedFrame(t, bd64K, dict, data, 64<<10)
+	if len(frame) > len(data)/10 {
+		t.Fatalf("frame is %d bytes of %d: the first block does not refer to the dictionary", len(frame), len(data))
+	}
+	stream := cat(frame, frame)
+	want := cat(data, data)
+
+	r := bytes.NewReader(stream)
+	zr := lz4.NewReader(r)
+	if err := zr.Apply(lz4.DictionaryOption(dict)); err != nil {
+		t.Fatal(err)
+	}
+	for _, reset := range []bool{false, true, true} {
+		if reset {
+			r.Reset(stream)
+			zr.Reset(r)
+		}
+		got, err := io.ReadAll(zr)
+		if err != nil {
+			t.Fatalf("reset=%v: %v", reset, err)
+		}
+		if !bytes.Equal(got, want) {
+			t.Fatalf("reset=%v: output differs at byte %d of %d (got %d bytes)", reset, firstDiff(got, want), len(want), len(got))
+		}
+	}
 }
 
 type malformedCase struct {

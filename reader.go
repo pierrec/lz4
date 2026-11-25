@@ -3,7 +3,6 @@ package lz4
 import (
 	"bytes"
 	"io"
-	"slices"
 
 	"github.com/pierrec/lz4/v4/internal/lz4block"
 	"github.com/pierrec/lz4/v4/internal/lz4errors"
@@ -42,7 +41,7 @@ type Reader struct {
 	idx        int              // size of pending data
 	handler    func(int)
 	cum        uint32
-	dict       []byte
+	dict       []byte // what the next block can refer to; see slideWindow
 	presetDict []byte
 }
 
@@ -207,11 +206,7 @@ func (r *Reader) read(buf []byte) (int, error) {
 		return 0, err
 	}
 	if !r.frame.Descriptor.Flags.BlockIndependence() {
-		if len(r.dict)+len(dst) > 128*1024 {
-			preserveSize := max(64*1024-len(dst), 0)
-			r.dict = r.dict[len(r.dict)-preserveSize:]
-		}
-		r.dict = append(r.dict, dst...)
+		r.dict = slideWindow(r.dict, dst)
 	}
 	r.cum += uint32(len(dst))
 	if direct {
@@ -220,6 +215,24 @@ func (r *Reader) read(buf []byte) (int, error) {
 	}
 	r.data = dst
 	return 0, nil
+}
+
+// winSize is how far back a match can reach, so how much of the output a
+// linked block can refer to.
+const winSize = 64 << 10
+
+// slideWindow appends block to window, keeping at least its last winSize
+// bytes. It moves them to the front once window holds 2*winSize, so that
+// window stops growing and a block copies at most winSize bytes.
+func slideWindow(window, block []byte) []byte {
+	if len(block) >= winSize {
+		return append(window[:0], block[len(block)-winSize:]...)
+	}
+	if len(window)+len(block) > 2*winSize {
+		keep := winSize - len(block)
+		window = window[:copy(window, window[len(window)-keep:])]
+	}
+	return append(window, block...)
 }
 
 // Reset clears the state of the Reader r such that it is equivalent to its
@@ -234,7 +247,13 @@ func (r *Reader) Reset(reader io.Reader) {
 	r.state.reset()
 	r.src = reader
 	r.reads = nil
-	r.dict = slices.Clip(bytes.Clone(r.presetDict))
+	r.resetDict()
+}
+
+// resetDict starts the window as a copy of the preset dictionary: reading
+// linked blocks overwrites r.dict, and reuses its buffer.
+func (r *Reader) resetDict() {
+	r.dict = append(r.dict[:0], r.presetDict...)
 }
 
 // WriteTo efficiently uncompresses the data from the Reader underlying source to w.

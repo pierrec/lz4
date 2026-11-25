@@ -15,6 +15,8 @@ issues in this repository.
 
 ### `lz4c`
 
+- `lz4c` requires Go 1.27; the library still requires Go 1.22. CI runs its
+  tests, and tests the library on Go 1.22 and with the `nounsafe` tag (#309).
 - The help for `compress -sc` said that it disables the stream checksum; the
   flag has always enabled it, and the help now says so. Without `-sc`, frames
   still have no stream checksum (#302).

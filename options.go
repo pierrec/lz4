@@ -289,7 +289,7 @@ func DictionaryOption(dict []byte) Option {
 			return nil
 		case *Reader:
 			rw.presetDict = slices.Clip(bytes.Clone(dict))
-			rw.dict = rw.presetDict
+			rw.dict = append(rw.dict[:0], rw.presetDict...) // a copy: reading overwrites rw.dict
 			return nil
 		case *CompressingReader:
 			if len(dict) > 0 && rw.level != lz4block.Fast {

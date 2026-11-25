@@ -36,6 +36,8 @@ func FuzzReader(f *testing.F) {
 		f.Add(encode(f, testData(1000, true, 1), opts...))
 	}
 	f.Add(encode(f, testData(3*int(lz4.Block64Kb)/2, false, 2), lz4.BlockSizeOption(lz4.Block64Kb)))
+	_, linked := linkedData(150000)
+	f.Add(linkedFrame(f, bd64K, nil, linked, 64<<10, 100, 30000))
 	// Small golden files from the reference implementation.
 	golden, _ := filepath.Glob("testdata/*.lz4")
 	for _, name := range golden {

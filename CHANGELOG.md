@@ -6,6 +6,13 @@ issues in this repository.
 
 ## Unreleased
 
+### Changed
+
+- `Reader` decodes frames with linked blocks, such as `lz4 -BD` writes, without
+  allocating: it keeps the last 64 KiB of output instead of copying every block
+  into a new buffer. Decoding the Silesia corpus is about 30% faster from
+  64 KiB blocks and 13% faster from 4 MiB blocks on a Zen 3 core (#308).
+
 ### Fixed
 
 - The amd64 block decoder assembles again for dynamic linking

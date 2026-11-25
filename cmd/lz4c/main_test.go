@@ -54,8 +54,7 @@ func runCLI(t *testing.T, stdin []byte, args ...string) (int, string, string) {
 		return 0, stdout.String(), stderr.String()
 	}
 
-	var exitErr *exec.ExitError
-	if errors.As(err, &exitErr) {
+	if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 		return exitErr.ExitCode(), stdout.String(), stderr.String()
 	}
 	t.Fatalf("failed to execute %v: %v", args, err)

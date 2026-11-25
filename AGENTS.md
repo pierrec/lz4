@@ -132,7 +132,7 @@ README describes the package itself.
   - `purego` implies both, as elsewhere in the Go ecosystem. Gate new
     assembly on `!noasm && !purego`.
   - Every assembly or `unsafe` path needs a portable fallback.
-  - CI runs the default and `noasm` builds, each with and without `-race`.
-    Test `nounsafe` yourself when you touch `unsafe` code.
+  - CI runs the default and `noasm` builds, each with and without `-race`,
+    and `nounsafe` once.
 - The library doesn't use cgo. `bench/` is a separate module that uses cgo
   to compare against liblz4.

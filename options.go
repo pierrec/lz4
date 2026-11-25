@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"reflect"
 	"runtime"
-	"slices"
 
 	"github.com/pierrec/lz4/v4/internal/lz4block"
 	"github.com/pierrec/lz4/v4/internal/lz4errors"
@@ -268,7 +267,7 @@ func LegacyOption(legacy bool) Option {
 // frames: with any other CompressionLevelOption, or LegacyOption(true), on a
 // Writer or CompressingReader, either option returns ErrOptionNotApplicable.
 func DictionaryOption(dict []byte) Option {
-	dict = slices.Clip(bytes.Clone(dict))
+	dict = bytes.Clone(dict) // never modified, so shared by all it is applied to
 	return func(a applier) error {
 		switch rw := a.(type) {
 		case nil:
@@ -288,8 +287,8 @@ func DictionaryOption(dict []byte) Option {
 			}
 			return nil
 		case *Reader:
-			rw.presetDict = slices.Clip(bytes.Clone(dict))
-			rw.dict = append(rw.dict[:0], rw.presetDict...) // a copy: reading overwrites rw.dict
+			rw.presetDict = dict
+			rw.resetDict()
 			return nil
 		case *CompressingReader:
 			if len(dict) > 0 && rw.level != lz4block.Fast {

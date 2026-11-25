@@ -247,6 +247,12 @@ func (r *Reader) Reset(reader io.Reader) {
 	r.state.reset()
 	r.src = reader
 	r.reads = nil
+	r.resetDict()
+}
+
+// resetDict starts the window as a copy of the preset dictionary: reading
+// linked blocks overwrites r.dict, and reuses its buffer.
+func (r *Reader) resetDict() {
 	r.dict = append(r.dict[:0], r.presetDict...)
 }
 

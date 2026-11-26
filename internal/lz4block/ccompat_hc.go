@@ -1,3 +1,7 @@
+// This file is a port of lib/lz4hc.c from lz4 1.10.0,
+// Copyright (C) 2011-2020, Yann Collet, under the BSD 2-Clause License in
+// LICENSE-lz4 at the root of this repository.
+
 package lz4block
 
 import (

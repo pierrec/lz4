@@ -195,6 +195,15 @@ func (c *CompressorHC) CompressBlock(src, dst []byte) (int, error) {
 	return c.c.CompressBlock(src, dst, lz4block.CompressionLevel(c.Level))
 }
 
+// CompressBlockWithDict is like CompressBlock, but uses a dictionary. Only
+// the last 64 KiB of dict is used; decompress with UncompressBlockWithDict
+// and the same dict. Calling it again with the same, unmodified dict slice
+// reuses the CompressorHC's index of the dictionary; modifying dict in place
+// between calls only reduces compression.
+func (c *CompressorHC) CompressBlockWithDict(src, dst, dict []byte) (int, error) {
+	return c.c.CompressBlockWithDict(src, dst, dict, lz4block.CompressionLevel(c.Level))
+}
+
 // CompressBlockHC is equivalent to CompressorHC.CompressBlock.
 // The final two arguments are ignored and should be set to nil.
 //

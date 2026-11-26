@@ -72,8 +72,9 @@ func FuzzFrameRoundTrip(f *testing.F) {
 		f.Add(testData(1000, true, int64(i)), 1<<14|uint16(i)<<6|uint16(2+i)<<11|bs, uint16(5000), []byte(nil))
 	}
 	// Frames of several blocks with a dictionary, with and without
-	// concurrency, through Writer and CompressingReader.
-	for i, flags := range []uint16{0, 1 << 6, 1 << 8, 1<<6 | 1<<15} {
+	// concurrency, through Writer and CompressingReader, at Fast and HC
+	// levels.
+	for i, flags := range []uint16{0, 1 << 6, 1 << 8, 1<<6 | 1<<15, 1 << 2, 3<<2 | 1<<6, 2<<2 | 1<<8} {
 		d := testData(4000, true, int64(i))
 		f.Add(d[1000:], flags|uint16(i)<<11, uint16(700), d[:1000])
 	}
@@ -99,8 +100,8 @@ func FuzzFrameRoundTrip(f *testing.F) {
 		if flags&(1<<10) != 0 {
 			level = lz4.CCompatFast
 		}
-		if level != lz4.Fast || legacy {
-			dict = nil // a dictionary requires both
+		if level == lz4.CCompatFast || legacy {
+			dict = nil // neither supports a dictionary
 		}
 		opts := []lz4.Option{
 			lz4.BlockSizeOption(blockSizes[flags&3]),

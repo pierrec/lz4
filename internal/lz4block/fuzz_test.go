@@ -2,6 +2,7 @@ package lz4block
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -103,26 +104,54 @@ func FuzzBlockRoundTrip(f *testing.F) {
 				t.Fatalf("%s compress differs: n=%d err=%v", name, n2, err)
 			}
 		}
-		const guard = 64
-		for _, slack := range []int{0, 1, 15, 16, 17, 31, 32, 33, 64, 1024} {
-			dst := make([]byte, len(data)+slack+guard)
-			for i := range dst {
-				dst[i] = 0xA5
+		checkBlockDecodes(t, "fast", comp, data, dict)
+
+		// The same with CompressorHC: reusing its index of dict gives the
+		// same output, and so does CompressBlock afterwards, without dict,
+		// as with a fresh CompressorHC.
+		var hc CompressorHC
+		for _, depth := range []CompressionLevel{2, 9} {
+			hcComp := make([]byte, CompressBlockBound(len(data)))
+			n, err := hc.CompressBlockWithDict(data, hcComp, dict, depth)
+			if err != nil || n == 0 {
+				t.Fatalf("HC %d compress: n=%d err=%v", depth, n, err)
 			}
-			got := decodeBlock(dst[:len(data)+slack], comp, dict)
-			if got != len(data) {
-				t.Fatalf("slack %d: decodeBlock returned %d, want %d", slack, got, len(data))
+			if n2, err := hc.CompressBlockWithDict(data, again, dict, depth); err != nil || !bytes.Equal(again[:n2], hcComp[:n]) {
+				t.Fatalf("HC %d reused compress differs: n=%d err=%v", depth, n2, err)
 			}
-			if !bytes.Equal(dst[:got], data) {
-				t.Fatalf("slack %d: round trip mismatch", slack)
-			}
-			for i := len(data) + slack; i < len(dst); i++ {
-				if dst[i] != 0xA5 {
-					t.Fatalf("slack %d: guard byte %d overwritten", slack, i-len(data)-slack)
-				}
-			}
+			checkBlockDecodes(t, fmt.Sprintf("HC %d", depth), hcComp[:n], data, dict)
+		}
+		n2, err := hc.CompressBlock(data, again, 9)
+		n3, err3 := new(CompressorHC).CompressBlock(data, comp[:cap(comp)], 9)
+		if err != nil || err3 != nil || !bytes.Equal(again[:n2], comp[:n3]) {
+			t.Fatalf("HC CompressBlock after CompressBlockWithDict differs: %d, %v; fresh %d, %v", n2, err, n3, err3)
 		}
 	})
+}
+
+// checkBlockDecodes checks that comp decodes to data with dict into
+// destinations with spare room, which must be left untouched.
+func checkBlockDecodes(t *testing.T, name string, comp, data, dict []byte) {
+	t.Helper()
+	const guard = 64
+	for _, slack := range []int{0, 1, 15, 16, 17, 31, 32, 33, 64, 1024} {
+		dst := make([]byte, len(data)+slack+guard)
+		for i := range dst {
+			dst[i] = 0xA5
+		}
+		got := decodeBlock(dst[:len(data)+slack], comp, dict)
+		if got != len(data) {
+			t.Fatalf("%s slack %d: decodeBlock returned %d, want %d", name, slack, got, len(data))
+		}
+		if !bytes.Equal(dst[:got], data) {
+			t.Fatalf("%s slack %d: round trip mismatch", name, slack)
+		}
+		for i := len(data) + slack; i < len(dst); i++ {
+			if dst[i] != 0xA5 {
+				t.Fatalf("%s slack %d: guard byte %d overwritten", name, slack, i-len(data)-slack)
+			}
+		}
+	}
 }
 
 // FuzzDecodeBlockDifferential checks the assembly decoder against the Go one

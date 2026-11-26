@@ -1128,7 +1128,7 @@ func TestWriter_DictionaryRoundTrip(t *testing.T) {
 }
 
 // TestWriter_DictionaryConcurrency checks that a Writer with a dictionary
-// compresses concurrently, writing the same frame as without concurrency, as
+// compresses concurrently, at Fast and HC levels, writing the same frame as without concurrency, as
 // each block refers only to the dictionary, and that the Reader decodes it
 // concurrently.
 func TestWriter_DictionaryConcurrency(t *testing.T) {
@@ -1139,43 +1139,45 @@ func TestWriter_DictionaryConcurrency(t *testing.T) {
 	}
 	data := src.Bytes()
 
-	var frames [][]byte
-	for _, conc := range []int{1, 4} {
-		var blocks atomic.Int64
-		var buf bytes.Buffer
-		zw := lz4.NewWriter(&buf)
-		if err := zw.Apply(lz4.BlockSizeOption(lz4.Block64Kb), lz4.ConcurrencyOption(conc),
-			lz4.DictionaryOption(dict), lz4.OnBlockDoneOption(func(int) { blocks.Add(1) })); err != nil {
-			t.Fatal(err)
-		}
-		// Two frames with the same Writer, so that the second reuses the
-		// Compressors that indexed the dictionary.
-		for range 2 {
-			buf.Reset()
-			zw.Reset(&buf)
-			if _, err := zw.Write(data); err != nil {
+	for _, level := range []lz4.CompressionLevel{lz4.Fast, lz4.Level2, lz4.Level9} {
+		var frames [][]byte
+		for _, conc := range []int{1, 4} {
+			var blocks atomic.Int64
+			var buf bytes.Buffer
+			zw := lz4.NewWriter(&buf)
+			if err := zw.Apply(lz4.BlockSizeOption(lz4.Block64Kb), lz4.ConcurrencyOption(conc), lz4.CompressionLevelOption(level),
+				lz4.DictionaryOption(dict), lz4.OnBlockDoneOption(func(int) { blocks.Add(1) })); err != nil {
 				t.Fatal(err)
 			}
-			if err := zw.Close(); err != nil {
+			// Two frames with the same Writer, so that the second reuses the
+			// Compressors that indexed the dictionary.
+			for range 2 {
+				buf.Reset()
+				zw.Reset(&buf)
+				if _, err := zw.Write(data); err != nil {
+					t.Fatal(err)
+				}
+				if err := zw.Close(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if want := int64(2 * ((len(data) + 64<<10 - 1) / (64 << 10))); blocks.Load() != want {
+				t.Fatalf("%s: concurrency %d: %d blocks, want %d", level, conc, blocks.Load(), want)
+			}
+			frames = append(frames, bytes.Clone(buf.Bytes()))
+		}
+		if !bytes.Equal(frames[0], frames[1]) {
+			t.Fatalf("%s: concurrent Writer wrote a different frame", level)
+		}
+		for _, conc := range []int{1, 4} {
+			zr := lz4.NewReader(bytes.NewReader(frames[1]))
+			if err := zr.Apply(lz4.ConcurrencyOption(conc), lz4.DictionaryOption(dict)); err != nil {
 				t.Fatal(err)
 			}
-		}
-		if want := int64(2 * ((len(data) + 64<<10 - 1) / (64 << 10))); blocks.Load() != want {
-			t.Fatalf("concurrency %d: %d blocks, want %d", conc, blocks.Load(), want)
-		}
-		frames = append(frames, bytes.Clone(buf.Bytes()))
-	}
-	if !bytes.Equal(frames[0], frames[1]) {
-		t.Fatal("concurrent Writer wrote a different frame")
-	}
-	for _, conc := range []int{1, 4} {
-		zr := lz4.NewReader(bytes.NewReader(frames[1]))
-		if err := zr.Apply(lz4.ConcurrencyOption(conc), lz4.DictionaryOption(dict)); err != nil {
-			t.Fatal(err)
-		}
-		out, err := io.ReadAll(zr)
-		if err != nil || !bytes.Equal(out, data) {
-			t.Fatalf("Reader concurrency %d: %d bytes, %v", conc, len(out), err)
+			out, err := io.ReadAll(zr)
+			if err != nil || !bytes.Equal(out, data) {
+				t.Fatalf("%s: Reader concurrency %d: %d bytes, %v", level, conc, len(out), err)
+			}
 		}
 	}
 }
@@ -1183,13 +1185,13 @@ func TestWriter_DictionaryConcurrency(t *testing.T) {
 func TestWriter_DictionaryOptionsValidation(t *testing.T) {
 	dict := []byte("test dictionary content")
 
-	// A dictionary only works with the Fast level and non-legacy frames,
-	// whichever option is applied first.
+	// A dictionary works with every level but CCompatFast, and only in
+	// non-legacy frames, whichever option is applied first.
 	for _, tc := range []struct {
 		name string
 		opts []lz4.Option
 	}{
-		{"level then dict", []lz4.Option{lz4.CompressionLevelOption(lz4.Level1), lz4.DictionaryOption(dict)}},
+		{"level then dict", []lz4.Option{lz4.CompressionLevelOption(lz4.CCompatFast), lz4.DictionaryOption(dict)}},
 		{"dict then level", []lz4.Option{lz4.DictionaryOption(dict), lz4.CompressionLevelOption(lz4.CCompatFast)}},
 		{"legacy then dict", []lz4.Option{lz4.LegacyOption(true), lz4.DictionaryOption(dict)}},
 		{"dict then legacy", []lz4.Option{lz4.DictionaryOption(dict), lz4.LegacyOption(true)}},

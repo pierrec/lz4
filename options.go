@@ -186,7 +186,7 @@ func CompressionLevelOption(level CompressionLevel) Option {
 			default:
 				return fmt.Errorf("%w: %d", lz4errors.ErrOptionInvalidCompressionLevel, level)
 			}
-			if len(w.dict) > 0 && level != Fast {
+			if len(w.dict) > 0 && level == CCompatFast {
 				return lz4errors.ErrOptionNotApplicable
 			}
 			w.level = lz4block.CompressionLevel(level)
@@ -197,7 +197,7 @@ func CompressionLevelOption(level CompressionLevel) Option {
 			default:
 				return fmt.Errorf("%w: %d", lz4errors.ErrOptionInvalidCompressionLevel, level)
 			}
-			if len(w.dict) > 0 && level != Fast {
+			if len(w.dict) > 0 && level == CCompatFast {
 				return lz4errors.ErrOptionNotApplicable
 			}
 			w.level = lz4block.CompressionLevel(level)
@@ -264,9 +264,10 @@ func LegacyOption(legacy bool) Option {
 }
 
 // DictionaryOption defines the dictionary to use for compression and decompression.
-// Compression with a dictionary supports only the Fast level and non-legacy
-// frames: with any other CompressionLevelOption, or LegacyOption(true), on a
-// Writer or CompressingReader, either option returns ErrOptionNotApplicable.
+// Compression with a dictionary supports every level but CCompatFast, and
+// only non-legacy frames: with CompressionLevelOption(CCompatFast), or
+// LegacyOption(true), on a Writer or CompressingReader, either option returns
+// ErrOptionNotApplicable.
 func DictionaryOption(dict []byte) Option {
 	dict = bytes.Clone(dict) // never modified, so shared by all it is applied to
 	return func(a applier) error {
@@ -275,13 +276,13 @@ func DictionaryOption(dict []byte) Option {
 			s := fmt.Sprintf("DictionaryOption(%d bytes)", len(dict))
 			return lz4errors.Error(s)
 		case *Writer:
-			if len(dict) > 0 && (rw.level != lz4block.Fast || rw.legacy) {
+			if len(dict) > 0 && (rw.level == lz4block.CCompatFast || rw.legacy) {
 				return lz4errors.ErrOptionNotApplicable
 			}
 			rw.dict = dict
 			if len(dict) > 0 {
 				if rw.compressor == nil {
-					rw.compressor = new(lz4block.Compressor)
+					rw.compressor = new(lz4block.DictCompressor)
 				}
 			} else {
 				rw.compressor = nil
@@ -293,13 +294,13 @@ func DictionaryOption(dict []byte) Option {
 			rw.resetDict()
 			return nil
 		case *CompressingReader:
-			if len(dict) > 0 && rw.level != lz4block.Fast {
+			if len(dict) > 0 && rw.level == lz4block.CCompatFast {
 				return lz4errors.ErrOptionNotApplicable
 			}
 			rw.dict = dict
 			if len(dict) > 0 {
 				if rw.compressor == nil {
-					rw.compressor = new(lz4block.Compressor)
+					rw.compressor = new(lz4block.DictCompressor)
 				}
 			} else {
 				rw.compressor = nil

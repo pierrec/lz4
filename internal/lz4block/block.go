@@ -320,6 +320,7 @@ type CompressorHC struct {
 	large *hcTables[int32] // Allocated on first use.
 	// Whether the tables have been used and need to be reset before reuse.
 	smallDirty, largeDirty bool
+	dict                   *hcDict // for CompressBlockWithDict
 }
 
 type hcPosition interface {
@@ -334,6 +335,9 @@ type hcTables[T hcPosition] struct {
 	// position is inserted, before it can be read, so it never needs to be
 	// reset.
 	chainTable [winSize]T
+	// start is where compression starts in the source; what precedes it is
+	// a dictionary. Always 0 in the small tables.
+	start int
 }
 
 // findRunMatch returns the same match as the chain walk in compressBlockHC,
@@ -482,9 +486,14 @@ func (c *CompressorHC) CompressBlock(src, dst []byte, depth CompressionLevel) (i
 		c.large.hashTable = [htSize]int32{}
 	}
 	c.largeDirty = true
+	c.large.start = 0
 	return compressBlockHC(c.large, src, dst, depth)
 }
 
+// compressBlockHC compresses src[t.start:]. Matches may refer to
+// src[:t.start], a dictionary, whose positions must already be in t.
+// t.start is a field rather than an argument so that it does not take a
+// register in the loop.
 func compressBlockHC[T hcPosition](t *hcTables[T], src, dst []byte, depth CompressionLevel) (_ int, err error) {
 	defer recoverBlock(&err)
 	// Short destinations are caught by bounds checks, recovered above. Cap dst
@@ -492,16 +501,16 @@ func compressBlockHC[T hcPosition](t *hcTables[T], src, dst []byte, depth Compre
 	dst = dst[:len(dst):len(dst)]
 
 	// Return 0, nil only if the destination buffer size is < CompressBlockBound.
-	isNotCompressible := len(dst) < CompressBlockBound(len(src))
+	isNotCompressible := len(dst) < CompressBlockBound(len(src)-t.start)
 
 	// adaptSkipLog sets how quickly the compressor begins skipping blocks when data is incompressible.
 	// This significantly speeds up incompressible data and usually has very small impact on compression.
 	// bytes to skip =  1 + (bytes since last match >> adaptSkipLog)
 	const adaptSkipLog = 7
 
-	var si, di, anchor int
+	si, di, anchor := t.start, 0, t.start
 	sn := len(src) - mfLimit
-	if sn <= 0 {
+	if sn <= si {
 		goto lastLiterals
 	}
 
@@ -637,7 +646,7 @@ func compressBlockHC[T hcPosition](t *hcTables[T], src, dst []byte, depth Compre
 		}
 	}
 
-	if isNotCompressible && anchor == 0 {
+	if isNotCompressible && di == 0 { // no sequence written
 		// Incompressible.
 		return 0, nil
 	}
@@ -660,7 +669,7 @@ lastLiterals:
 	di++
 
 	// Write the last literals.
-	if isNotCompressible && di >= anchor {
+	if isNotCompressible && di >= anchor-t.start {
 		// Incompressible.
 		return 0, nil
 	}

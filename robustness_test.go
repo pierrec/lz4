@@ -492,6 +492,9 @@ func malformedCases(t testing.TB) []malformedCase {
 		{"valid/max64KRawBlock", cat(hdr, rawBlock(max64K), endMark), max64K, nil},
 		{"contentSize/ok", cat(withSize(uint64(len(hello))), compBlock(comp), endMark), hello, nil},
 		{"contentSize/zero", cat(withSize(0), endMark), nil, nil},
+		// 0 means unknown, as in C, so frames that releases up to v4.1.30
+		// wrote with a size of 0 still read.
+		{"contentSize/zeroMeansUnknown", cat(withSize(0), compBlock(comp), endMark), hello, nil},
 		{"contentSize/tooBig", cat(withSize(uint64(len(hello))+1), compBlock(comp), endMark), hello, lz4.ErrInvalidContentSize},
 		{"contentSize/tooSmall", cat(withSize(uint64(len(hello))-1), compBlock(comp), endMark), hello, lz4.ErrInvalidContentSize},
 		{"contentSize/huge", cat(withSize(1<<63), compBlock(comp), endMark), hello, lz4.ErrInvalidContentSize},

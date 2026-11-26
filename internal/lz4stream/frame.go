@@ -169,6 +169,7 @@ func (f *Frame) CloseR(src io.Reader) (err error) {
 type FrameDescriptor struct {
 	Flags       DescriptorFlags
 	ContentSize uint64
+	DictID      uint32 // read from the descriptor if Flags.DictID()
 	Checksum    uint8
 }
 
@@ -219,7 +220,7 @@ func (fd *FrameDescriptor) initR(f *Frame, src io.Reader) error {
 	if fd.Flags.Size() {
 		extra += 8
 	}
-	if fd.Flags.dictID() {
+	if fd.Flags.DictID() {
 		extra += 4
 	}
 	if extra > 0 {
@@ -243,10 +244,9 @@ func (fd *FrameDescriptor) initR(f *Frame, src io.Reader) error {
 	if fd.Flags&descriptorReserved != 0 {
 		return fmt.Errorf("%w: reserved bits %#04x set", lz4errors.ErrInvalidFrameDescriptor, uint16(fd.Flags&descriptorReserved))
 	}
-	if fd.Flags.dictID() {
-		// Frame dictionaries are not supported: decoding without one would
-		// produce garbage.
-		return fmt.Errorf("%w: dictionary ID %#x", lz4errors.ErrInvalidFrameDescriptor, binary.LittleEndian.Uint32(buf[len(buf)-4:]))
+	fd.DictID = 0
+	if fd.Flags.DictID() {
+		fd.DictID = binary.LittleEndian.Uint32(buf[len(buf)-4:])
 	}
 	if idx := fd.Flags.BlockSizeIndex(); !idx.IsValid() {
 		return lz4errors.ErrOptionInvalidBlockSize
@@ -262,7 +262,8 @@ const (
 	descriptorDictID   DescriptorFlags = 1 << 0
 )
 
-func (x DescriptorFlags) dictID() bool { return x&descriptorDictID != 0 }
+// DictID reports whether the descriptor holds a dictionary ID.
+func (x DescriptorFlags) DictID() bool { return x&descriptorDictID != 0 }
 
 func descriptorChecksum(buf []byte) byte {
 	return byte(xxh32.ChecksumZero(buf) >> 8)

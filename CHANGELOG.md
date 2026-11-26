@@ -40,6 +40,11 @@ issues in this repository.
 - `Reader` treats a declared content size of 0 as unknown, as the C library
   does, so it reads those frames again; since v4.1.31 it rejected them with
   `ErrInvalidContentSize`.
+- `Reader` with `DictionaryOption` decodes frames whose descriptor holds a
+  dictionary ID, as the C library writes when its `dictID` preference is set;
+  it rejected them with `ErrInvalidFrameDescriptor` even with the right
+  dictionary. Without a dictionary it still rejects them, and
+  `ValidFrameHeader` accepts such headers.
 - The amd64 block decoder assembles again for dynamic linking
   (`-buildmode=plugin` and `-buildmode=shared` on linux/amd64); since v4.1.32
   the build failed with `R15 is clobbered by a global variable access`. CI now

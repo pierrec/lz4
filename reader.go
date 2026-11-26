@@ -2,6 +2,7 @@ package lz4
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 
 	"github.com/pierrec/lz4/v4/internal/lz4block"
@@ -83,6 +84,10 @@ func (r *Reader) init() error {
 	err := r.frame.ParseHeaders(r.src)
 	if err != nil {
 		return err
+	}
+	if fd := &r.frame.Descriptor; fd.Flags.DictID() && len(r.presetDict) == 0 {
+		// Decoding without the dictionary would produce garbage.
+		return fmt.Errorf("%w: dictionary ID %#x without a dictionary", lz4errors.ErrInvalidFrameDescriptor, fd.DictID)
 	}
 	if !r.frame.Descriptor.Flags.BlockIndependence() {
 		// We can't decompress dependent blocks concurrently.

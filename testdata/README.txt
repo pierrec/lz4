@@ -21,11 +21,6 @@ pg1661.txt
     The Adventures of Sherlock Holmes, by Arthur Conan Doyle: Project
     Gutenberg eBook #1661 (https://www.gutenberg.org/ebooks/1661), with its
     Project Gutenberg header, under the Project Gutenberg License.
-pg1661_dict_independent.lz4, pg1661_dict_linked_hc.lz4
-    The 80 KiB of pg1661.txt after its first 64 KiB, compressed by lz4
-    1.10.0 with those 64 KiB as the dictionary: with independent blocks at
-    level 1, and with linked blocks at level 9. bench/TestDictFixtures
-    rebuilds them.
 gettysburg.txt
     Abraham Lincoln's Gettysburg Address. Public domain.
 e.txt, pi.txt

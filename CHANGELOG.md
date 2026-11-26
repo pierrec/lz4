@@ -10,9 +10,9 @@ issues in this repository.
 
 - The package documentation and README describe dictionaries and how to build
   one, with examples for `CompressBlockWithDict` and `DictionaryOption`.
-  Tests in `bench` check that liblz4 and this package decode each other's
-  blocks and frames compressed with a dictionary, and CI decodes two such C
-  frames.
+  In CI, the `lz4` command and this package decode each other's frames
+  compressed with a dictionary; a fuzzer in `bench` checks blocks against
+  liblz4.
 
 ### Changed
 

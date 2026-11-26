@@ -10,6 +10,7 @@ import (
 	"math/rand"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync/atomic"
@@ -571,6 +572,79 @@ func TestWriterCommand(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// TestDictCommand checks that the lz4 command and this package decode each
+// other's frames compressed with a dictionary: lz4 -D at levels 1 and 9, with
+// independent and linked blocks, read by Reader, and Writer's frames
+// decompressed by lz4 -d -D. CI runs it in the silesia job.
+func TestDictCommand(t *testing.T) {
+	lz4cmd, err := exec.LookPath("lz4")
+	if err != nil {
+		t.Skip("no lz4 binary to test against")
+	}
+	pg := loadGolden(t, "testdata/pg1661.txt.lz4")
+	data := pg[100<<10 : 356<<10]
+	for _, dict := range [][]byte{
+		pg[:100],     // shorter than the window
+		pg[:64<<10],  // the window
+		pg[:100<<10], // longer: only its last 64 KiB are used
+	} {
+		dictFile := filepath.Join(t.TempDir(), "dict")
+		if err := os.WriteFile(dictFile, dict, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		runLZ4 := func(t *testing.T, in []byte, args ...string) []byte {
+			t.Helper()
+			cmd := exec.Command(lz4cmd, append(args, "-D", dictFile, "-c")...)
+			cmd.Stdin = bytes.NewReader(in)
+			var stderr bytes.Buffer
+			cmd.Stderr = &stderr
+			out, err := cmd.Output()
+			if err != nil {
+				t.Fatalf("lz4 %v: %v: %s", args, err, stderr.Bytes())
+			}
+			return out
+		}
+		name := fmt.Sprintf("dict%d", len(dict))
+
+		for _, args := range [][]string{{"-1", "-BI"}, {"-9", "-BI"}, {"-1", "-BD"}, {"-9", "-BD"}} {
+			t.Run(name+"/lz4"+strings.Join(args, ""), func(t *testing.T) {
+				frame := runLZ4(t, data, append(args, "-B4")...) // 64 KiB blocks
+				for _, conc := range []int{1, 4} {
+					zr := lz4.NewReader(bytes.NewReader(frame))
+					if err := zr.Apply(lz4.DictionaryOption(dict), lz4.ConcurrencyOption(conc)); err != nil {
+						t.Fatal(err)
+					}
+					got, err := io.ReadAll(zr)
+					if err != nil || !bytes.Equal(got, data) {
+						t.Fatalf("Reader with concurrency %d: %d bytes, %v", conc, len(got), err)
+					}
+				}
+				// Without the dictionary, the frame does not decode.
+				if _, err := io.ReadAll(lz4.NewReader(bytes.NewReader(frame))); err == nil {
+					t.Fatal("decoded without the dictionary")
+				}
+			})
+		}
+
+		t.Run(name+"/Writer", func(t *testing.T) {
+			var frame bytes.Buffer
+			zw := lz4.NewWriter(&frame)
+			if err := zw.Apply(lz4.BlockSizeOption(lz4.Block64Kb), lz4.DictionaryOption(dict)); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := zw.Write(data); err != nil {
+				t.Fatal(err)
+			}
+			if err := zw.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if got := runLZ4(t, frame.Bytes(), "-d"); !bytes.Equal(got, data) {
+				t.Fatalf("lz4 output mismatch: got %d bytes; want %d", len(got), len(data))
+			}
+		})
 	}
 }
 

@@ -136,46 +136,6 @@ func TestReader(t *testing.T) {
 	}
 }
 
-// TestReaderDictCFrames decodes frames that the C library compressed with the
-// first 64 KiB of pg1661.txt as the dictionary, holding the 80 KiB after it.
-// bench/TestDictFixtures writes them.
-func TestReaderDictCFrames(t *testing.T) {
-	pg := loadGolden(t, "testdata/pg1661.txt.lz4")
-	dict, want := pg[:64<<10], pg[64<<10:144<<10]
-	for _, name := range []string{
-		"testdata/pg1661_dict_independent.lz4", // LZ4F_compressFrame_usingCDict, level 1
-		"testdata/pg1661_dict_linked_hc.lz4",   // the same, level 9 and linked blocks
-	} {
-		frame, err := os.ReadFile(name)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, conc := range []int{1, 4} {
-			for _, chunk := range []int{0, 1000} { // WriteTo, or Read in chunks
-				zr := lz4.NewReader(bytes.NewReader(frame))
-				if err := zr.Apply(lz4.DictionaryOption(dict), lz4.ConcurrencyOption(conc)); err != nil {
-					t.Fatal(err)
-				}
-				var got []byte
-				if chunk == 0 {
-					got, err = io.ReadAll(zr)
-				} else {
-					var out bytes.Buffer
-					_, err = io.CopyBuffer(&out, struct{ io.Reader }{zr}, make([]byte, chunk))
-					got = out.Bytes()
-				}
-				if err != nil || !bytes.Equal(got, want) {
-					t.Fatalf("%s concurrency %d chunk %d: got %d bytes, %v", name, conc, chunk, len(got), err)
-				}
-			}
-		}
-		// Without the dictionary, the frame does not decode.
-		if _, err := io.ReadAll(lz4.NewReader(bytes.NewReader(frame))); err == nil {
-			t.Fatalf("%s: decoded without the dictionary", name)
-		}
-	}
-}
-
 func TestReader_Reset(t *testing.T) {
 	data := pg1661LZ4
 	buf := new(bytes.Buffer)

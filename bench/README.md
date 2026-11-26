@@ -55,17 +55,14 @@ effect on compression.
 
 ## Dictionaries
 
-`TestDictBlockMatchesC`, `TestDictFrameMatchesC` and `FuzzDictMatchesC`
-check that this package and liblz4 decode each other's output when
-compressing with a dictionary, for blocks and frames:
+`TestDictCommand` in the `lz4` package checks frames compressed with a
+dictionary against the `lz4` command, in CI. `FuzzDictMatchesC` checks
+blocks against liblz4 on arbitrary input and dictionaries, which takes cgo
+to run fast enough:
 
 ```sh
-(cd bench && go test -run Dict . && go test -run '^$' -fuzz FuzzDictMatchesC -fuzztime 5m .)
+(cd bench && go test -run '^$' -fuzz FuzzDictMatchesC -fuzztime 5m .)
 ```
-
-CI doesn't build this module, so `TestDictFixtures` writes two C frames
-compressed with a dictionary to `testdata` (with `-update`), which
-`TestReaderDictCFrames` in the `lz4` package decodes.
 
 ## Real-world data
 

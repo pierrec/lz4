@@ -5,18 +5,6 @@ import (
 	"sync"
 )
 
-// CompressorCCompatHC is a port of LZ4_compress_HC from the reference
-// implementation (lz4 1.10), and produces the same output for each of its
-// levels: level 2 (lz4mid) looks up one 4-byte and one 8-byte hash per
-// position, levels 3 to 9 search a hash chain and look ahead at overlapping
-// matches before choosing one, and levels 10 to 12 search for the cheapest
-// sequence of matches (the optimal parser).
-//
-// Positions are indexes as in lz4hc.c: those of a call start at least 64kiB
-// past the last one of the previous call, so that entries left in the tables
-// are out of reach, like the zeroed tables of a fresh LZ4_streamHC_t, and the
-// tables need clearing only every 1GiB of input.
-//
 // Constants and names follow lz4hc.c.
 const (
 	mlBits         = 4                 // ML_BITS
@@ -29,7 +17,6 @@ const (
 	hcOptimalML    = mlMask - 1 + minMatch // OPTIMAL_ML
 	hcOptNum       = 1 << 12               // LZ4_OPT_NUM
 	hcTrailingLits = 3                     // TRAILING_LITERALS
-	hcMinLength    = ccompatMFLimit + 1    // LZ4_minLength
 	hcLevelDefault = 9                     // LZ4HC_CLEVEL_DEFAULT
 	hcLevelMax     = 12                    // LZ4HC_CLEVEL_MAX
 	hcIndexReset   = 1 << 30               // tables are cleared past 1GB of indexes
@@ -65,6 +52,17 @@ var hcLevels = [hcLevelMax + 1]struct {
 	{hcOpt, 16384, hcOptNum},
 }
 
+// CompressorCCompatHC is a port of LZ4_compress_HC from the reference
+// implementation (lz4 1.10), and produces the same output at each of its
+// levels: level 2 (lz4mid) looks up one 4-byte and one 8-byte hash per
+// position, levels 3 to 9 search a hash chain and look ahead at overlapping
+// matches before choosing one, and levels 10 to 12 search for the cheapest
+// sequence of matches (the optimal parser).
+//
+// Positions are indexes as in lz4hc.c. Those of a call start at least 64kiB
+// past the last one of the previous call, so entries left in the tables are
+// out of reach, like the zeroed tables of a fresh LZ4_streamHC_t, and the
+// tables need clearing only every 1GiB of input.
 type CompressorCCompatHC struct {
 	// hashTable holds the latest index for each hash. lz4mid uses its two
 	// halves as its 4-byte and 8-byte tables.
@@ -165,32 +163,16 @@ func hcMidHash7(v uint64) uint32 { return uint32(v << 8 * 58295818150454627 >> (
 // insert is LZ4HC_Insert: it adds the positions up to ip, excluded, to the
 // hash chains.
 func (h *hcCtx) insert(ip int) {
-	c := h.c
-	target := uint32(ip) + h.base
-	for idx := h.nextToUpdate; idx < target; idx++ {
-		hv := hcHash(h.r.load32(h.src, int(idx-h.base)))
-		c.chainTable[uint16(idx)] = uint16(min(idx-c.hashTable[hv], distanceMax))
-		c.hashTable[hv] = idx
+	// Locals: the stores below could otherwise alias h.
+	hashTable, chainTable, src, r := &h.c.hashTable, &h.c.chainTable, h.src, h.r
+	idx := h.nextToUpdate
+	for p := int(idx - h.base); p < ip; p++ {
+		hv := hcHash(r.load32(src, p))
+		chainTable[uint16(idx)] = uint16(min(idx-hashTable[hv], distanceMax))
+		hashTable[hv] = idx
+		idx++
 	}
-	h.nextToUpdate = target
-}
-
-// countBack is LZ4HC_countBack: minus the number of bytes before ip that
-// match those before match, going no lower than iMin or 0.
-func (h *hcCtx) countBack(ip, match, iMin int) int {
-	back := 0
-	min := max(iMin-ip, -match)
-	for back-min > 3 {
-		v := h.r.load32(h.src, ip+back-4) ^ h.r.load32(h.src, match+back-4)
-		if v != 0 {
-			return back - bits.LeadingZeros32(v)>>3
-		}
-		back -= 4
-	}
-	for back > min && h.src[ip+back-1] == h.src[match+back-1] {
-		back--
-	}
-	return back
+	h.nextToUpdate = uint32(ip) + h.base
 }
 
 // countPattern is LZ4HC_countPattern: the number of bytes from ip, up to
@@ -256,23 +238,68 @@ func (h *hcCtx) getWiderMatch(ip, iLowLimit, iHighLimit, longest, maxNbAttempts 
 	h.insert(ip)
 	matchIndex := c.hashTable[hcHash(pattern)]
 
+	// A candidate must match the 2 bytes that end the longest match so far:
+	// tail, at tailOff from the candidate.
+	tail := r.load16(src, iLowLimit+longest-1)
+	tailOff := longest - 1 - lookBackLength
+
 	// Indexes are never below prefixIdx, so this omits lz4hc.c's extDict
-	// cases, and LZ4HC_protectDictEnd always holds.
+	// cases, LZ4HC_protectDictEnd always holds, and subtracting a chain
+	// distance (below 64ki) from an index (at least 64ki) cannot wrap.
+	//
+	// LZ4_count and LZ4HC_countBack are inlined by hand: calls in this loop
+	// make the compiler keep its variables on the stack.
 	for matchIndex >= lowestMatchIndex && nbAttempts > 0 {
 		matchLength := 0
 		nbAttempts--
 		matchPtr := int(matchIndex - prefixIdx)
-		if r.load16(src, iLowLimit+longest-1) == r.load16(src, matchPtr-lookBackLength+longest-1) &&
-			r.load32(src, matchPtr) == pattern {
+		if r.load16(src, matchPtr+tailOff) == tail && r.load32(src, matchPtr) == pattern {
 			back := 0
 			if lookBackLength != 0 {
-				back = h.countBack(ip, matchPtr, iLowLimit)
+				// LZ4HC_countBack: back is minus the number of equal
+				// bytes before ip and matchPtr, down to iLowLimit and 0.
+				min := max(iLowLimit-ip, -matchPtr)
+				for back-min > 3 {
+					if v := r.load32(src, ip+back-4) ^ r.load32(src, matchPtr+back-4); v != 0 {
+						back -= bits.LeadingZeros32(v) >> 3
+						goto counted
+					}
+					back -= 4
+				}
+				for back > min && src[ip+back-1] == src[matchPtr+back-1] {
+					back--
+				}
 			}
-			matchLength = minMatch + countMatch(r, src, ip+minMatch, matchPtr+minMatch, iHighLimit) - back
+		counted:
+			// LZ4_count from ip+minMatch.
+			in, m := ip+minMatch, matchPtr+minMatch
+			for in+8 <= iHighLimit {
+				if diff := r.load64(src, m) ^ r.load64(src, in); diff != 0 {
+					in += bits.TrailingZeros64(diff) >> 3
+					goto found
+				}
+				in += 8
+				m += 8
+			}
+			if in+4 <= iHighLimit && r.load32(src, m) == r.load32(src, in) {
+				in += 4
+				m += 4
+			}
+			if in+2 <= iHighLimit && r.load16(src, m) == r.load16(src, in) {
+				in += 2
+				m += 2
+			}
+			if in < iHighLimit && src[m] == src[in] {
+				in++
+			}
+		found:
+			matchLength = in - ip - back
 			if matchLength > longest {
 				longest = matchLength
 				offset = int(ipIndex - matchIndex)
 				sBack = back
+				tail = r.load16(src, iLowLimit+longest-1)
+				tailOff = longest - 1 - lookBackLength
 			}
 		}
 
@@ -295,9 +322,6 @@ func (h *hcCtx) getWiderMatch(ip, iLowLimit, iHighLimit, longest, maxNbAttempts 
 				}
 			}
 			if distanceToNextMatch > 1 {
-				if distanceToNextMatch > matchIndex {
-					break
-				}
 				matchIndex -= distanceToNextMatch
 				continue
 			}
@@ -331,17 +355,15 @@ func (h *hcCtx) getWiderMatch(ip, iLowLimit, iHighLimit, longest, maxNbAttempts 
 						matchIndex = matchCandidateIdx - uint32(backLength)
 						if lookBackLength == 0 {
 							if maxML := min(currentSegmentLength, srcPatternLength); longest < maxML {
-								if uint32(ip)+prefixIdx-matchIndex > distanceMax {
+								if ipIndex-matchIndex > distanceMax {
 									break
 								}
 								longest = maxML
 								offset = int(ipIndex - matchIndex)
+								tail = r.load16(src, iLowLimit+longest-1)
+								tailOff = longest - 1 - lookBackLength
 							}
-							distToNextPattern := uint32(c.chainTable[uint16(matchIndex)])
-							if distToNextPattern > matchIndex {
-								break
-							}
-							matchIndex -= distToNextPattern
+							matchIndex -= uint32(c.chainTable[uint16(matchIndex)])
 						}
 					}
 					continue
@@ -413,9 +435,9 @@ func (h *hcCtx) encodeSequence(ip, op, anchor, matchLength, offset int) int {
 	return op
 }
 
-// lastLiterals writes the literals from anchor to the end of src, and
+// encodeLastLiterals writes the literals from anchor to the end of src, and
 // returns the size of the output, or 0 if limited and they do not fit.
-func (h *hcCtx) lastLiterals(op, anchor int) int {
+func (h *hcCtx) encodeLastLiterals(op, anchor int) int {
 	dst := h.dst
 	lastRunSize := len(h.src) - anchor
 	if h.limited && op+1+(lastRunSize+255-runMask)/255+lastRunSize > len(dst) {
@@ -454,41 +476,43 @@ func (h *hcCtx) compressMid() int {
 	var matchLength int
 	var matchDistance uint32
 
-	if len(src) < hcMinLength {
-		return h.lastLiterals(op, anchor)
+	if len(src) < ccompatMinLength {
+		return h.encodeLastLiterals(op, anchor)
 	}
 
+	// A match is only used from minMatch bytes, so its first 4 bytes are
+	// compared before counting the rest: most candidates fail there.
 	for ip <= mflimit {
 		ipIndex := uint32(ip) + prefixIdx
+		v := r.load32(src, ip)
 		// Search a long match.
 		{
 			h8 := hcMidHash7(r.load64(src, ip))
 			pos8 := hash8Table[h8]
 			hash8Table[h8] = ipIndex
-			if ipIndex-pos8 <= distanceMax {
-				// Never below prefixIdx: older entries are out of reach.
-				matchLength = countMatch(r, src, ip, int(pos8-prefixIdx), matchlimit)
-				if matchLength >= minMatch {
-					matchDistance = ipIndex - pos8
-					goto encode
-				}
+			// Never below prefixIdx: older entries are out of reach.
+			if m := int(pos8 - prefixIdx); ipIndex-pos8 <= distanceMax && r.load32(src, m) == v {
+				matchLength = countMatch(r, src, ip, m, matchlimit)
+				matchDistance = ipIndex - pos8
+				goto encode
 			}
 		}
 		// Search a short match.
 		{
-			h4 := hcMidHash4(r.load32(src, ip))
+			h4 := hcMidHash4(v)
 			pos4 := hash4Table[h4]
 			hash4Table[h4] = ipIndex
-			if ipIndex-pos4 <= distanceMax {
-				matchLength = countMatch(r, src, ip, int(pos4-prefixIdx), matchlimit)
-				if matchLength >= minMatch {
+			if m := int(pos4 - prefixIdx); ipIndex-pos4 <= distanceMax && r.load32(src, m) == v {
+				matchLength = countMatch(r, src, ip, m, matchlimit)
+				{
 					// Check ip+1 for a longer match.
 					h8 := hcMidHash7(r.load64(src, ip+1))
 					pos8 := hash8Table[h8]
 					m2Distance := ipIndex + 1 - pos8
 					matchDistance = ipIndex - pos4
-					if m2Distance <= distanceMax && pos8 >= prefixIdx && ip < mflimit {
-						if ml2 := countMatch(r, src, ip+1, int(pos8-prefixIdx), matchlimit); ml2 > matchLength {
+					m2 := int(pos8 - prefixIdx)
+					if m2Distance <= distanceMax && pos8 >= prefixIdx && ip < mflimit && r.load32(src, m2) == r.load32(src, ip+1) {
+						if ml2 := countMatch(r, src, ip+1, m2, matchlimit); ml2 > matchLength {
 							hash8Table[h8] = ipIndex + 1
 							ip++
 							matchLength = ml2
@@ -534,7 +558,7 @@ func (h *hcCtx) compressMid() int {
 			addPos4(ip-1, endMatchIdx-1)
 		}
 	}
-	return h.lastLiterals(op, anchor)
+	return h.encodeLastLiterals(op, anchor)
 }
 
 // compressHashChain is LZ4HC_compress_hashChain, for levels 3 to 9.
@@ -548,8 +572,8 @@ func (h *hcCtx) compressHashChain(maxNbAttempts int) int {
 		m0, m1, m2, m3         hcMatch
 	)
 
-	if len(h.src) < hcMinLength {
-		return h.lastLiterals(op, anchor)
+	if len(h.src) < ccompatMinLength {
+		return h.encodeLastLiterals(op, anchor)
 	}
 
 	// encode writes ip's sequence with m and moves past it, and reports
@@ -683,7 +707,7 @@ func (h *hcCtx) compressHashChain(maxNbAttempts int) int {
 		start2, m2 = start3, m3
 		goto search3
 	}
-	return h.lastLiterals(op, anchor)
+	return h.encodeLastLiterals(op, anchor)
 }
 
 // hcLiteralsPrice is LZ4HC_literalsPrice, in bytes.
@@ -695,13 +719,20 @@ func hcLiteralsPrice(litlen int) int {
 	return price
 }
 
-// hcSequencePrice is LZ4HC_sequencePrice; mlen >= minMatch.
-func hcSequencePrice(litlen, mlen int) int {
-	price := 1 + 2 + hcLiteralsPrice(litlen) // token, offset and literals
+// LZ4HC_sequencePrice(litlen, mlen) is hcSequenceBasePrice(litlen) +
+// hcMatchLenPrice(mlen), split so that loops over mlen compute the first
+// part once.
+
+// hcSequenceBasePrice is the price of the token, offset and literals.
+func hcSequenceBasePrice(litlen int) int { return 1 + 2 + hcLiteralsPrice(litlen) }
+
+// hcMatchLenPrice is the price of the match length's extra bytes; mlen >=
+// minMatch.
+func hcMatchLenPrice(mlen int) int {
 	if mlen >= mlMask+minMatch {
-		price += 1 + (mlen-(mlMask+minMatch))/255
+		return 1 + (mlen-(mlMask+minMatch))/255
 	}
-	return price
+	return 0
 }
 
 // compressOptimal is LZ4HC_compress_optimal without favorDecSpeed, for
@@ -742,12 +773,13 @@ func (h *hcCtx) compressOptimal(nbSearches, sufficientLen int, fullUpdate bool) 
 			}
 		}
 		// Set prices using the first match.
+		basePrice := hcSequenceBasePrice(llen)
 		for mlen := minMatch; mlen <= firstMatch.len; mlen++ {
 			opt[mlen] = hcOptimal{
 				mlen:   int32(mlen),
 				off:    int32(firstMatch.off),
 				litlen: int32(llen),
-				price:  int32(hcSequencePrice(llen, mlen)),
+				price:  int32(basePrice + hcMatchLenPrice(mlen)),
 			}
 		}
 		lastMatchPos := firstMatch.len
@@ -809,19 +841,19 @@ func (h *hcCtx) compressOptimal(nbSearches, sufficientLen int, fullUpdate bool) 
 				}
 			}
 
-			// Set prices using the match at cur.
+			// Set prices using the match at cur: after the literals that
+			// end at cur, or after the match that does.
+			ll, basePrice := 0, int(opt[cur].price)
+			if opt[cur].mlen == 1 {
+				ll, basePrice = int(opt[cur].litlen), 0
+				if cur > ll {
+					basePrice = int(opt[cur-ll].price)
+				}
+			}
+			basePrice += hcSequenceBasePrice(ll)
 			for ml := minMatch; ml <= newMatch.len; ml++ {
 				pos := cur + ml
-				var price, ll int
-				if opt[cur].mlen == 1 {
-					ll = int(opt[cur].litlen)
-					if cur > ll {
-						price = int(opt[cur-ll].price)
-					}
-					price += hcSequencePrice(ll, ml)
-				} else {
-					price = int(opt[cur].price) + hcSequencePrice(0, ml)
-				}
+				price := basePrice + hcMatchLenPrice(ml)
 				if pos > lastMatchPos+hcTrailingLits || price <= int(opt[pos].price) {
 					if ml == newMatch.len && lastMatchPos < pos {
 						lastMatchPos = pos
@@ -885,5 +917,5 @@ func (h *hcCtx) compressOptimal(nbSearches, sufficientLen int, fullUpdate bool) 
 			anchor = ip
 		}
 	}
-	return h.lastLiterals(op, anchor)
+	return h.encodeLastLiterals(op, anchor)
 }

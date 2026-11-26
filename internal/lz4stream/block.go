@@ -315,9 +315,9 @@ func (b *FrameDataBlock) CompressWithDict(f *Frame, src []byte, level lz4block.C
 	default:
 		if level.IsCCompatHC() {
 			n, _ = lz4block.CompressBlockCCompatHC(src, data, int(level))
-			break
+		} else {
+			n, _ = lz4block.CompressBlockHC(src, data, level)
 		}
-		n, _ = lz4block.CompressBlockHC(src, data, level)
 	}
 	if n == 0 {
 		b.Size.UncompressedSet(true)

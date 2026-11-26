@@ -13,6 +13,11 @@ issues in this repository.
   In CI, the `lz4` command and this package decode each other's frames
   compressed with a dictionary; a fuzzer in `bench` checks blocks against
   liblz4.
+- Compression with a dictionary supports the HC levels: `DictionaryOption`
+  works with `Fast` and `Level1` to `Level9`, and `CompressorHC` gains
+  `CompressBlockWithDict`. Compressing pg1661.txt after its first 64 KiB, in
+  64 KiB blocks with those 64 KiB as the dictionary, `Level9` output shrinks
+  from 52.0% to 45.3% of the input.
 
 ### Changed
 

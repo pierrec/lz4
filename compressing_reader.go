@@ -27,7 +27,7 @@ type CompressingReader struct {
 	out        ovWriter
 	handler    func(int)
 	dict       []byte
-	compressor *lz4block.Compressor
+	compressor *lz4block.DictCompressor
 }
 
 // NewCompressingReader creates a reader which reads compressed data from
@@ -77,7 +77,7 @@ func (*CompressingReader) private() {}
 
 func (zrd *CompressingReader) init() error {
 	if len(zrd.dict) > 0 && zrd.compressor == nil {
-		zrd.compressor = new(lz4block.Compressor)
+		zrd.compressor = new(lz4block.DictCompressor)
 	}
 	zrd.frame.InitW(&zrd.out, 1, false)
 	size := zrd.frame.BlockSizeIndex()

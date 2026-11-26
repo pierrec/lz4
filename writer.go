@@ -38,10 +38,10 @@ type Writer struct {
 	handler    func(int)
 	legacy     bool
 	dict       []byte
-	compressor *lz4block.Compressor // with dict, without concurrency
+	compressor *lz4block.DictCompressor // with dict, without concurrency
 	// With dict and concurrency, compressors keeps up to num Compressors
 	// that have indexed dict, for the compressing goroutines.
-	compressors chan *lz4block.Compressor
+	compressors chan *lz4block.DictCompressor
 }
 
 func (*Writer) private() {}
@@ -73,10 +73,10 @@ func (w *Writer) init() error {
 	if len(w.dict) > 0 {
 		if w.isNotConcurrent() {
 			if w.compressor == nil {
-				w.compressor = new(lz4block.Compressor)
+				w.compressor = new(lz4block.DictCompressor)
 			}
 		} else if cap(w.compressors) != w.num {
-			w.compressors = make(chan *lz4block.Compressor, w.num)
+			w.compressors = make(chan *lz4block.DictCompressor, w.num)
 		}
 	}
 	if !w.legacy && !w.frame.Descriptor.Flags.BlockSizeIndex().IsValid() {
@@ -158,11 +158,11 @@ func (w *Writer) write(data []byte, safe bool) error {
 		if len(dict) > 0 {
 			// Every block refers to dict alone, so each goroutine can use
 			// its own Compressor.
-			var zc *lz4block.Compressor
+			var zc *lz4block.DictCompressor
 			select {
 			case zc = <-compressors:
 			default:
-				zc = new(lz4block.Compressor)
+				zc = new(lz4block.DictCompressor)
 			}
 			b.CompressWithDict(w.frame, data, w.level, zc, dict)
 			select {

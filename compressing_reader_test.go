@@ -97,9 +97,9 @@ func TestCompressingReader_Dictionary(t *testing.T) {
 		t.Fatalf("CompressingReader roundtrip mismatch")
 	}
 
-	// Non-Fast level with dictionary should return ErrOptionNotApplicable.
+	// CCompatFast with a dictionary returns ErrOptionNotApplicable.
 	cr2 := lz4.NewCompressingReader(io.NopCloser(bytes.NewReader(src)))
-	if err := cr2.Apply(lz4.CompressionLevelOption(lz4.Level1), lz4.DictionaryOption(dict)); !errors.Is(err, lz4.ErrOptionNotApplicable) {
+	if err := cr2.Apply(lz4.CompressionLevelOption(lz4.CCompatFast), lz4.DictionaryOption(dict)); !errors.Is(err, lz4.ErrOptionNotApplicable) {
 		t.Fatalf("expected ErrOptionNotApplicable, got %v", err)
 	}
 }

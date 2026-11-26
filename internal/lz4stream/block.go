@@ -295,8 +295,9 @@ func (b *FrameDataBlock) Compress(f *Frame, src []byte, level lz4block.Compressi
 }
 
 // CompressWithDict compresses src with dict, if set, using c, which must then
-// be non-nil and is reused across blocks so that dict is indexed once.
-func (b *FrameDataBlock) CompressWithDict(f *Frame, src []byte, level lz4block.CompressionLevel, c *lz4block.Compressor, dict []byte) *FrameDataBlock {
+// be non-nil and is reused across blocks so that dict is indexed once. level
+// must not be CCompatFast with dict.
+func (b *FrameDataBlock) CompressWithDict(f *Frame, src []byte, level lz4block.CompressionLevel, c *lz4block.DictCompressor, dict []byte) *FrameDataBlock {
 	data := b.data
 	if f.isLegacy() {
 		data = data[:cap(data)]
@@ -304,14 +305,12 @@ func (b *FrameDataBlock) CompressWithDict(f *Frame, src []byte, level lz4block.C
 		data = data[:len(src)] // trigger the incompressible flag in CompressBlock
 	}
 	var n int
-	switch level {
-	case lz4block.Fast:
-		if len(dict) > 0 {
-			n, _ = c.CompressBlockWithDict(src, data, dict)
-		} else {
-			n, _ = lz4block.CompressBlock(src, data)
-		}
-	case lz4block.CCompatFast:
+	switch {
+	case len(dict) > 0:
+		n, _ = c.CompressBlock(src, data, dict, level)
+	case level == lz4block.Fast:
+		n, _ = lz4block.CompressBlock(src, data)
+	case level == lz4block.CCompatFast:
 		n, _ = lz4block.CompressBlockCCompat(src, data)
 	default:
 		n, _ = lz4block.CompressBlockHC(src, data, level)

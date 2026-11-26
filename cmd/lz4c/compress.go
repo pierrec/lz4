@@ -40,6 +40,7 @@ func Compress(fs *flag.FlagSet) cmdflag.Handler {
 	var concurrency int
 	fs.IntVar(&concurrency, "c", -1, "concurrency (default=all CPUs")
 	bench := fs.Int("bench", 0, "Run benchmark n times. No output will be written")
+	dictFile := fs.String("D", "", "compress with the dictionary in this file; uncompress with the same one")
 
 	return func(args ...string) (int, error) {
 		var lvl lz4.CompressionLevel
@@ -79,6 +80,13 @@ func Compress(fs *flag.FlagSet) cmdflag.Handler {
 			lz4.ChecksumOption(streamChecksum),
 			lz4.CompressionLevelOption(lvl),
 			lz4.ConcurrencyOption(concurrency),
+		}
+		if *dictFile != "" {
+			dict, err := os.ReadFile(*dictFile)
+			if err != nil {
+				return 0, err
+			}
+			options = append(options, lz4.DictionaryOption(dict))
 		}
 		if err := zw.Apply(options...); err != nil {
 			return 0, err

@@ -19,8 +19,18 @@ import (
 // Uncompress uncompresses a set of files or from stdin to stdout.
 func Uncompress(fs *flag.FlagSet) cmdflag.Handler {
 	bench := fs.Int("bench", 0, "Run benchmark n times. No output will be written")
+	dictFile := fs.String("D", "", "uncompress with the dictionary in this file")
 	return func(args ...string) (int, error) {
 		zr := lz4.NewReader(nil)
+		if *dictFile != "" {
+			dict, err := os.ReadFile(*dictFile)
+			if err != nil {
+				return 0, err
+			}
+			if err := zr.Apply(lz4.DictionaryOption(dict)); err != nil {
+				return 0, err
+			}
+		}
 
 		// Use stdin/stdout if no file provided.
 		if len(args) == 0 {

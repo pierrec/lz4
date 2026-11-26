@@ -22,6 +22,9 @@ issues in this repository.
 
 ### `lz4c`
 
+- `compress -D file` compresses with a dictionary, and `uncompress -D file`
+  decompresses with it, as with the C `lz4` command. Until `lz4c` builds
+  against a release with HC dictionaries, `-D` works only at `-l 0`.
 - `lz4c` requires Go 1.27; the library still requires Go 1.22. CI runs its
   tests, and tests the library on Go 1.22 and with the `nounsafe` tag (#309).
 - The help for `compress -sc` said that it disables the stream checksum; the

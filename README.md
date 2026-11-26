@@ -33,6 +33,8 @@ Usage of lz4c:
 Subcommands:
 Compress the given files or from stdin to stdout.
 compress [arguments] [<file name> ...]
+  -D string
+        compress with the dictionary in this file; uncompress with the same one
   -bc
         enable block checksum
   -l int
@@ -44,6 +46,8 @@ compress [arguments] [<file name> ...]
 
 Uncompress the given files or from stdin to stdout.
 uncompress [arguments] [<file name> ...]
+  -D string
+        uncompress with the dictionary in this file
 
 ```
 

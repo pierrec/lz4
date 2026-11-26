@@ -12,30 +12,54 @@ import (
 	"github.com/pierrec/lz4/v4/internal/lz4block"
 )
 
-// testdata/ccompat.golden holds digests of the output of lz4 1.10.0's
-// LZ4_compress_fast for the cases below, showing that CompressorCCompat
-// produces the same output as the reference implementation. Each digest
-// covers every block's compressed size (0 when it did not fit in dst) and
-// data, so it also shows that the same blocks fit.
-const ccompatGoldenPath = "../../testdata/ccompat.golden"
+// testdata/ccompat.golden and ccompathc.golden hold digests of the output of
+// lz4 1.10.0's LZ4_compress_fast and LZ4_compress_HC for the cases below,
+// showing that CompressorCCompat and CompressorCCompatHC produce the same
+// output as the reference implementation. Each digest covers every block's
+// compressed size (0 when it did not fit in dst) and data, so it also shows
+// that the same blocks fit.
+type ccompatGoldenSet struct {
+	path       string
+	maxInput   int
+	blockSizes []int
+	params     []int // accelerations or levels
+}
 
-// forCCompatGoldenCases calls f for each golden case: every block of each
-// input, split at sizes either side of the switch between 16- and 32-bit
-// table entries (64kiB+11 bytes), into a dst of CompressBlockBound and of
-// the block's own length, with accelerations 1 and 3.
-func forCCompatGoldenCases(tb testing.TB, f func(name string, blocks [][]byte, dstLen func(int) int, accel int)) {
+// The cases of ccompat.golden: blocks either side of the switch between 16-
+// and 32-bit table entries (64kiB+11 bytes), with accelerations 1 and 3.
+var ccompatGolden = ccompatGoldenSet{
+	path:       "../../testdata/ccompat.golden",
+	maxInput:   4 << 20,
+	blockSizes: []int{4 << 10, 64<<10 + 10, 64<<10 + 11, 4 << 20},
+	params:     []int{1, 3},
+}
+
+// The cases of ccompathc.golden: blocks within the 64kiB window and beyond
+// it, at every level. Inputs are shorter than for ccompat.golden, as the
+// highest levels are slow.
+var ccompatHCGolden = ccompatGoldenSet{
+	path:       "../../testdata/ccompathc.golden",
+	maxInput:   512 << 10,
+	blockSizes: []int{4 << 10, 64 << 10, 512 << 10},
+	params:     []int{2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
+}
+
+// forCases calls f for each golden case: every block of each input, up to
+// maxInput bytes, split at each block size, into a dst of CompressBlockBound
+// and of the block's own length, with each parameter.
+func (g ccompatGoldenSet) forCases(tb testing.TB, f func(name string, blocks [][]byte, dstLen func(int) int, param int)) {
 	tb.Helper()
 	inputs := []struct {
 		name string
 		data []byte
-	}{{"zeros", make([]byte, 1<<20)}}
+	}{{"zeros", make([]byte, min(1<<20, g.maxInput))}}
 	for _, name := range []string{"pg1661.txt", "Mark.Twain-Tom.Sawyer.txt", "vmlinux_LZ4_19377", "pg_control.tar", "e.txt", "random.data"} {
 		b, err := readGz("../../testdata/" + name + ".gz")
 		if err != nil {
 			tb.Fatal(err)
 		}
-		if len(b) > 4<<20 {
-			b = b[:4<<20]
+		if len(b) > g.maxInput {
+			b = b[:g.maxInput]
 		}
 		inputs = append(inputs, struct {
 			name string
@@ -50,7 +74,7 @@ func forCCompatGoldenCases(tb testing.TB, f func(name string, blocks [][]byte, d
 		{"src", func(n int) int { return n }},
 	}
 	for _, in := range inputs {
-		for _, bs := range []int{4 << 10, 64<<10 + 10, 64<<10 + 11, 4 << 20} {
+		for _, bs := range g.blockSizes {
 			var blocks [][]byte
 			for b := in.data; len(b) > 0; {
 				n := min(bs, len(b))
@@ -58,8 +82,8 @@ func forCCompatGoldenCases(tb testing.TB, f func(name string, blocks [][]byte, d
 				b = b[n:]
 			}
 			for _, d := range dsts {
-				for _, accel := range []int{1, 3} {
-					f(fmt.Sprintf("%s/%d/%s/%d", in.name, bs, d.name, accel), blocks, d.len, accel)
+				for _, p := range g.params {
+					f(fmt.Sprintf("%s/%d/%s/%d", in.name, bs, d.name, p), blocks, d.len, p)
 				}
 			}
 		}
@@ -81,8 +105,9 @@ func ccompatGoldenDigest(blocks [][]byte, dstLen func(int) int, compress func(sr
 	return total, fmt.Sprintf("%x", h.Sum(nil))
 }
 
-func TestCompressorCCompatGolden(t *testing.T) {
-	f, err := os.Open(ccompatGoldenPath)
+// check compares the digests of compress's output with the golden file.
+func (g ccompatGoldenSet) check(t *testing.T, compress func(src, dst []byte, param int) int) {
+	f, err := os.Open(g.path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,12 +123,13 @@ func TestCompressorCCompatGolden(t *testing.T) {
 			want[fs[0]] = fs[1]
 		}
 	}
-	var c lz4block.CompressorCCompat
+	if err := s.Err(); err != nil {
+		t.Fatal(err)
+	}
 	n := 0
-	forCCompatGoldenCases(t, func(name string, blocks [][]byte, dstLen func(int) int, accel int) {
+	g.forCases(t, func(name string, blocks [][]byte, dstLen func(int) int, param int) {
 		total, digest := ccompatGoldenDigest(blocks, dstLen, func(src, dst []byte) int {
-			n, _ := c.CompressBlock(src, dst, accel)
-			return n
+			return compress(src, dst, param)
 		})
 		if got := fmt.Sprintf("%d %s", total, digest); got != want[name] {
 			t.Errorf("%s: got %s, want %s from lz4 1.10.0", name, got, want[name])
@@ -111,6 +137,22 @@ func TestCompressorCCompatGolden(t *testing.T) {
 		n++
 	})
 	if n != len(want) {
-		t.Errorf("checked %d cases, %s has %d", n, ccompatGoldenPath, len(want))
+		t.Errorf("checked %d cases, %s has %d", n, g.path, len(want))
 	}
+}
+
+func TestCompressorCCompatGolden(t *testing.T) {
+	var c lz4block.CompressorCCompat
+	ccompatGolden.check(t, func(src, dst []byte, accel int) int {
+		n, _ := c.CompressBlock(src, dst, accel)
+		return n
+	})
+}
+
+func TestCompressorCCompatHCGolden(t *testing.T) {
+	var c lz4block.CompressorCCompatHC
+	ccompatHCGolden.check(t, func(src, dst []byte, level int) int {
+		n, _ := c.CompressBlock(src, dst, level)
+		return n
+	})
 }

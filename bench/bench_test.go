@@ -26,8 +26,9 @@ func benchCorpus(tb testing.TB) []benchdata.Input {
 
 // BenchmarkCompressBlock is the lz4 package's benchmark of the same name, run
 // with the C implementation: fast is LZ4_compress_default, and hcN is
-// LZ4_compress_HC at level N. The HC levels of the two implementations are
-// not equivalent: compare their throughput together with their %size.
+// LZ4_compress_HC at level N. The lz4 package's hcN levels are not
+// equivalent: compare their throughput together with their %size. Its
+// ccompathcN produce the same output as hcN here.
 func BenchmarkCompressBlock(b *testing.B) {
 	b.Logf("liblz4 %s", Version())
 	compressors := []struct {
@@ -37,6 +38,7 @@ func BenchmarkCompressBlock(b *testing.B) {
 		{"fast", func(src, dst []byte) int { return CompressFast(src, dst, 1) }},
 		{"hc2", func(src, dst []byte) int { return CompressHC(src, dst, 2) }},
 		{"hc9", func(src, dst []byte) int { return CompressHC(src, dst, 9) }},
+		{"hc12", func(src, dst []byte) int { return CompressHC(src, dst, 12) }},
 	}
 	for _, c := range compressors {
 		for _, in := range benchCorpus(b) {

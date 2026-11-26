@@ -1193,6 +1193,8 @@ func TestWriter_DictionaryOptionsValidation(t *testing.T) {
 	}{
 		{"level then dict", []lz4.Option{lz4.CompressionLevelOption(lz4.CCompatFast), lz4.DictionaryOption(dict)}},
 		{"dict then level", []lz4.Option{lz4.DictionaryOption(dict), lz4.CompressionLevelOption(lz4.CCompatFast)}},
+		{"C level 2 then dict", []lz4.Option{lz4.CompressionLevelOption(lz4.CCompatLevel2), lz4.DictionaryOption(dict)}},
+		{"dict then C level 12", []lz4.Option{lz4.DictionaryOption(dict), lz4.CompressionLevelOption(lz4.CCompatLevel12)}},
 		{"legacy then dict", []lz4.Option{lz4.LegacyOption(true), lz4.DictionaryOption(dict)}},
 		{"dict then legacy", []lz4.Option{lz4.DictionaryOption(dict), lz4.LegacyOption(true)}},
 	} {

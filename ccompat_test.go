@@ -2,6 +2,8 @@ package lz4_test
 
 import (
 	"bytes"
+	"encoding/binary"
+	"errors"
 	"io"
 	"os"
 	"testing"
@@ -48,6 +50,9 @@ func TestWriterCCompatFast(t *testing.T) {
 		{lz4.CompressionLevelOption(lz4.CCompatFast)},
 		{lz4.CompressionLevelOption(lz4.CCompatFast), lz4.ConcurrencyOption(4), lz4.BlockSizeOption(lz4.Block64Kb)},
 		{lz4.CompressionLevelOption(lz4.CCompatFast), lz4.LegacyOption(true)},
+		{lz4.CompressionLevelOption(lz4.CCompatLevel2)},
+		{lz4.CompressionLevelOption(lz4.CCompatLevel9), lz4.ConcurrencyOption(4), lz4.BlockSizeOption(lz4.Block64Kb)},
+		{lz4.CompressionLevelOption(lz4.CCompatLevel12), lz4.LegacyOption(true)},
 	} {
 		var buf bytes.Buffer
 		zw := lz4.NewWriter(&buf)
@@ -78,7 +83,74 @@ func TestWriterCCompatFast(t *testing.T) {
 	if err != nil || !bytes.Equal(out, text) {
 		t.Fatalf("CompressingReader: round trip failed: %v", err)
 	}
-	if lz4.CCompatFast.String() != "CCompatFast" {
-		t.Errorf("CCompatFast.String() = %q", lz4.CCompatFast.String())
+	for _, tc := range []struct {
+		level lz4.CompressionLevel
+		want  string
+	}{
+		{lz4.CCompatFast, "CCompatFast"},
+		{lz4.CCompatLevel2, "CCompatLevel2"},
+		{lz4.CCompatLevel12, "CCompatLevel12"},
+		{lz4.CompressionLevel(13), "CompressionLevel(13)"},
+	} {
+		if got := tc.level.String(); got != tc.want {
+			t.Errorf("CompressionLevel(%d).String() = %q, want %q", uint32(tc.level), got, tc.want)
+		}
+	}
+}
+
+// CompressionLevelOption accepts the C levels, from 1 to 12, and no others
+// below Level1.
+func TestCompressionLevelOptionCCompat(t *testing.T) {
+	for level := range lz4.Level1 {
+		err := lz4.NewWriter(io.Discard).Apply(lz4.CompressionLevelOption(level))
+		if valid := level <= lz4.CCompatLevel12; valid != (err == nil) {
+			t.Errorf("CompressionLevelOption(%d): %v", level, err)
+		}
+		if err != nil && !errors.Is(err, lz4.ErrOptionInvalidCompressionLevel) {
+			t.Errorf("CompressionLevelOption(%d): %v, want ErrOptionInvalidCompressionLevel", level, err)
+		}
+	}
+}
+
+// A Writer at CCompatLevelN writes the blocks CompressorCCompatHC writes at
+// level N, raw where they do not fit in the block's size.
+func TestWriterCCompatHCBlocks(t *testing.T) {
+	text, err := os.ReadFile("fuzz/corpus/pg1661.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text = text[:200<<10]
+	for level := lz4.CCompatLevel2; level <= lz4.CCompatLevel12; level++ {
+		var buf bytes.Buffer
+		zw := lz4.NewWriter(&buf)
+		if err := zw.Apply(lz4.CompressionLevelOption(level), lz4.BlockSizeOption(lz4.Block64Kb), lz4.ChecksumOption(false)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := zw.Write(text); err != nil {
+			t.Fatal(err)
+		}
+		if err := zw.Close(); err != nil {
+			t.Fatal(err)
+		}
+		c := lz4.CompressorCCompatHC{Level: int(level)}
+		var want []byte
+		for b := text; len(b) > 0; {
+			chunk := b[:min(64<<10, len(b))]
+			b = b[len(chunk):]
+			dst := make([]byte, len(chunk))
+			n, _ := c.CompressBlock(chunk, dst)
+			if n == 0 {
+				want = binary.LittleEndian.AppendUint32(want, uint32(len(chunk))|1<<31)
+				want = append(want, chunk...)
+			} else {
+				want = binary.LittleEndian.AppendUint32(want, uint32(n))
+				want = append(want, dst[:n]...)
+			}
+		}
+		// The frame: a 7-byte header, the blocks, and the end mark.
+		got := buf.Bytes()
+		if len(got) < 11 || !bytes.Equal(got[7:len(got)-4], want) {
+			t.Errorf("%v: blocks differ from CompressorCCompatHC's", level)
+		}
 	}
 }

@@ -61,6 +61,19 @@ func blockCompressors() []blockCompressor {
 		{"hc1", true, hc(lz4.Level1)},
 		{"hc2", true, hc(lz4.Level2)},
 		{"hc9", false, hc(lz4.Level9)},
+		// The same output as the bench module's hcN; ccompathc.golden
+		// covers them.
+		{"ccompathc2", false, ccompatHC(2)},
+		{"ccompathc9", false, ccompatHC(9)},
+		{"ccompathc12", false, ccompatHC(12)},
+	}
+}
+
+func ccompatHC(level int) func(src, dst []byte) int {
+	c := lz4.CompressorCCompatHC{Level: level}
+	return func(src, dst []byte) int {
+		n, _ := c.CompressBlock(src, dst)
+		return n
 	}
 }
 

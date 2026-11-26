@@ -112,3 +112,13 @@ Special thanks to [@greatroar](https://github.com/greatroar) for his work on the
 Special thanks to [@klauspost](https://github.com/klauspost) for his work on optimizing the code.
 
 Special thanks to [@lizthegrey](https://github.com/lizthegrey) for work on the arm64 decoder, the compressors, and fuzzing and robustness testing.
+
+## License
+
+This package is under the BSD 3-Clause License in [LICENSE](LICENSE).
+`CompressorCCompat` and `CompressorCCompatHC` are ports of the reference
+implementation's `lib/lz4.c` and `lib/lz4hc.c`, which are copyright Yann
+Collet under the BSD 2-Clause License in
+[LICENSE-lz4](LICENSE-lz4). That code is compiled into every program that
+imports the package, so programs distributed in binary form should reproduce
+both notices.

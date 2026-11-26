@@ -1,3 +1,7 @@
+// This file is a port of lib/lz4.c from lz4 1.10.0,
+// Copyright (C) 2011-2023, Yann Collet, under the BSD 2-Clause License in
+// LICENSE-lz4 at the root of this repository.
+
 package lz4block
 
 import (

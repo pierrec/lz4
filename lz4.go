@@ -34,6 +34,8 @@ func _() {
 	var x [1]struct{}
 	_ = x[lz4block.CompressionLevel(Fast)-lz4block.Fast]
 	_ = x[lz4block.CompressionLevel(CCompatFast)-lz4block.CCompatFast]
+	_ = x[lz4block.CompressionLevel(CCompatLevel2)-lz4block.CCompatLevel2]
+	_ = x[lz4block.CompressionLevel(CCompatLevel12)-lz4block.CCompatLevel12]
 	_ = x[Block64Kb-BlockSize(lz4block.Block64Kb)]
 	_ = x[Block256Kb-BlockSize(lz4block.Block256Kb)]
 	_ = x[Block1Mb-BlockSize(lz4block.Block1Mb)]
@@ -164,6 +166,38 @@ type CompressorCCompat struct {
 // first return value is zero if the compressed data does not fit in dst.
 func (c *CompressorCCompat) CompressBlock(src, dst []byte) (int, error) {
 	return c.c.CompressBlock(src, dst, c.Acceleration)
+}
+
+// A CompressorCCompatHC compresses data into the LZ4 block format with the
+// reference implementation's high compression algorithms, and produces the
+// same output as its LZ4_compress_HC at each level.
+//
+// Compared with CompressorHC, it compresses more at levels 3 and up, because
+// it compares overlapping matches before choosing one (levels 3 to 9) or
+// searches for the cheapest sequence of matches (levels 10 to 12); level 2
+// is a faster mode that compresses less.
+//
+// A CompressorCCompatHC is not safe for concurrent use by multiple goroutines.
+//
+// Use a Writer with CompressionLevelOption(CCompatLevel2) to
+// CompressionLevelOption(CCompatLevel12) to compress into the LZ4 stream
+// format.
+type CompressorCCompatHC struct {
+	// Level is the C library's compression level, from 2 to 12. As in
+	// LZ4_compress_HC, values below 1 mean 9, values above 12 mean 12, and
+	// level 1 is the same as level 2.
+	Level int
+	c     lz4block.CompressorCCompatHC
+}
+
+// CompressBlock compresses the source buffer src into the destination dst.
+//
+// If compression is successful, the first return value is the size of the
+// compressed data, which is always >0. If dst has length at least
+// CompressBlockBound(len(src)), compression always succeeds. Otherwise, the
+// first return value is zero if the compressed data does not fit in dst.
+func (c *CompressorCCompatHC) CompressBlock(src, dst []byte) (int, error) {
+	return c.c.CompressBlock(src, dst, c.Level)
 }
 
 // A CompressorHC compresses data into the LZ4 block format.

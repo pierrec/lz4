@@ -317,6 +317,31 @@ func TestCompressBlockDstBoundaries(t *testing.T) {
 	}
 }
 
+// CompressorHC.CompressBlockWithDict keeps its copy of the dictionary and the
+// block for 64 KiB blocks only, so that pooled compressors stay small.
+func TestCompressorHCDictBuffer(t *testing.T) {
+	dict := bytes.Repeat([]byte("dictionary "), 10000)
+	for _, tc := range []struct {
+		size int
+		kept bool
+	}{
+		{1 << 10, true},
+		{64 << 10, true},
+		{64<<10 + 1, false},
+		{4 << 20, false},
+	} {
+		var c CompressorHC
+		src := bytes.Repeat([]byte("source text "), tc.size/12+1)[:tc.size]
+		dst := make([]byte, CompressBlockBound(len(src)))
+		if n, err := c.CompressBlockWithDict(src, dst, dict, 9); n == 0 || err != nil {
+			t.Fatalf("%d bytes: n=%d err=%v", tc.size, n, err)
+		}
+		if kept := c.dict.buf != nil; kept != tc.kept {
+			t.Errorf("%d bytes: buffer kept=%v, want %v", tc.size, kept, tc.kept)
+		}
+	}
+}
+
 // CompressBlockWithDict reports incompressible input to a short dst the way
 // CompressBlock does: (0, nil) rather than an error.
 func TestCompressBlockWithDictIncompressible(t *testing.T) {

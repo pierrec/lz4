@@ -37,6 +37,8 @@ compress [arguments] [<file name> ...]
         compress with the dictionary in this file; uncompress with the same one
   -bc
         enable block checksum
+  -ccompat
+        -l is a level of the C lz4 tool, 1 to 12, and blocks are compressed as it compresses them
   -l int
         compression level (0=fastest)
   -sc

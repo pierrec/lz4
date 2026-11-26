@@ -50,6 +50,12 @@ func TestCompressLevels(t *testing.T) {
 		{name: "level 8", args: []string{"-l", "8"}, wantLevel: lz4.Level8},
 		{name: "level 9", args: []string{"-l", "9"}, wantLevel: lz4.Level9},
 		{name: "level 10 invalid", args: []string{"-l", "10"}, wantErr: lz4.ErrOptionInvalidCompressionLevel},
+		{name: "ccompat default level", args: []string{"-ccompat"}, wantLevel: lz4.CCompatFast},
+		{name: "ccompat level 1", args: []string{"-ccompat", "-l", "1"}, wantLevel: lz4.CCompatFast},
+		{name: "ccompat level 2", args: []string{"-ccompat", "-l", "2"}, wantLevel: lz4.CCompatLevel2},
+		{name: "ccompat level 9", args: []string{"-ccompat", "-l", "9"}, wantLevel: lz4.CCompatLevel9},
+		{name: "ccompat level 12", args: []string{"-ccompat", "-l", "12"}, wantLevel: lz4.CCompatLevel12},
+		{name: "ccompat level 13 invalid", args: []string{"-ccompat", "-l", "13"}, wantErr: lz4.ErrOptionInvalidCompressionLevel},
 	}
 
 	for _, tc := range tests {

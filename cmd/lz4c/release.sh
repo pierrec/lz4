@@ -33,7 +33,11 @@ esac
 cd "$(dirname "$0")"
 
 cur=$(go list -m -f '{{.Version}}' github.com/pierrec/lz4/v4)
-newest=$(printf '%s\n%s\n' "$cur" "$lib" | sort -V | tail -n 1)
+# lz4c may require a pseudo-version of an unreleased commit on v4, such as
+# v4.1.35-0.20261126053415-6a03abafc698, to use an API before it is tagged.
+# That precedes v4.1.35 in semver, but sort -V puts it after, so compare
+# without the pre-release part.
+newest=$(printf '%s\n%s\n' "${cur%%-*}" "$lib" | sort -V | tail -n 1)
 if [ "$lib" = "$cur" ] || [ "$newest" != "$lib" ]; then
 	echo "lz4c already requires lz4 $cur; nothing to do for $lib"
 	exit 0

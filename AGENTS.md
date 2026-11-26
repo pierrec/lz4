@@ -99,6 +99,11 @@ README describes the package itself.
   bumps `cmd/lz4c/go.mod` on v4 and tags the next lz4c patch version (see
   `cmd/lz4c/release.sh`). Don't bump or tag lz4c by hand; rerun the
   workflow from the Actions tab if it fails.
+- An lz4c change that needs library API not yet tagged requires the
+  pseudo-version of the v4 commit that added it (`go get
+  github.com/pierrec/lz4/v4@<commit>` in `cmd/lz4c`), not a `replace`:
+  `go install` refuses modules with one. The next `v4` tag then moves lz4c to
+  the release.
 
 ## Assembly
 

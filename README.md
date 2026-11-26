@@ -34,12 +34,16 @@ Subcommands:
 Compress the given files or from stdin to stdout.
 compress [arguments] [<file name> ...]
   -D string
-        compress with the dictionary in this file; uncompress with the same one
+        compress with the dictionary in this file, not with -ccompat; uncompress with the same one
   -bc
         enable block checksum
+  -bench int
+        Run benchmark n times. No output will be written
+  -c int
+        concurrency; -1 uses all CPUs (default -1)
   -ccompat
         -l is a level of the C lz4 tool, 1 to 12, and blocks are compressed as it compresses them
-  -l int
+  -l uint
         compression level (0=fastest)
   -sc
         enable stream checksum
@@ -50,6 +54,8 @@ Uncompress the given files or from stdin to stdout.
 uncompress [arguments] [<file name> ...]
   -D string
         uncompress with the dictionary in this file
+  -bench int
+        Run benchmark n times. No output will be written
 
 ```
 

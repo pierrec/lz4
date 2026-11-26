@@ -25,7 +25,7 @@ func checkMatchesC(t testing.TB, src []byte, dstLen, accel int) {
 func checkHCMatchesC(t testing.TB, c *lz4.CompressorCCompatHC, src []byte, dstLen int) {
 	t.Helper()
 	checkSameAsC(t, fmt.Sprintf("level=%d", c.Level), src, dstLen, c.CompressBlock,
-		func(src, dst []byte) int { return CompressHC(src, dst, c.Level) })
+		func(src, dst []byte) int { return CompressHC(src, dst, int(c.Level)) })
 }
 
 func checkSameAsC(t testing.TB, name string, src []byte, dstLen int, goCompress func(src, dst []byte) (int, error), cCompress func(src, dst []byte) int) {
@@ -92,8 +92,8 @@ func TestCCompatHCMatchesC(t *testing.T) {
 	}
 	inputs := append(benchCorpus(t), benchdata.Input{Name: "mixed", Data: mixed})
 	var c lz4.CompressorCCompatHC
-	for level := -1; level <= 13; level++ {
-		c.Level = level
+	for level := range 13 {
+		c.Level = lz4.CompressionLevel(level)
 		t.Run(fmt.Sprint(level), func(t *testing.T) {
 			for _, in := range inputs {
 				for _, bs := range benchdata.BlockSizes {
@@ -247,7 +247,9 @@ func FuzzCCompatMatchesC(f *testing.F) {
 			checkMatchesC(t, src, int(dstLen), int(accel))
 			return
 		}
-		hc.Level = int(level)
+		// C clamps levels to 1..12 and reads those below 1 as 9, as
+		// CompressorCCompatHC reads 0; it refuses levels above 12.
+		hc.Level = lz4.CompressionLevel(min(max(level, 0), 12))
 		checkHCMatchesC(t, &hc, src, int(dstLen))
 	})
 }

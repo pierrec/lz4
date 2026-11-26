@@ -25,6 +25,8 @@
 package lz4
 
 import (
+	"fmt"
+
 	"github.com/pierrec/lz4/v4/internal/lz4block"
 	"github.com/pierrec/lz4/v4/internal/lz4errors"
 )
@@ -183,10 +185,11 @@ func (c *CompressorCCompat) CompressBlock(src, dst []byte) (int, error) {
 // CompressionLevelOption(CCompatLevel12) to compress into the LZ4 stream
 // format.
 type CompressorCCompatHC struct {
-	// Level is the C library's compression level, from 2 to 12. As in
-	// LZ4_compress_HC, values below 1 mean 9, values above 12 mean 12, and
-	// level 1 is the same as level 2.
-	Level int
+	// Level is the C library's compression level, CCompatLevel2 to
+	// CCompatLevel12. As in LZ4_compress_HC, 0 means CCompatLevel9 and 1
+	// means CCompatLevel2. Higher values, such as Level1 to Level9, make
+	// CompressBlock return ErrOptionInvalidCompressionLevel.
+	Level CompressionLevel
 	c     lz4block.CompressorCCompatHC
 }
 
@@ -197,7 +200,10 @@ type CompressorCCompatHC struct {
 // CompressBlockBound(len(src)), compression always succeeds. Otherwise, the
 // first return value is zero if the compressed data does not fit in dst.
 func (c *CompressorCCompatHC) CompressBlock(src, dst []byte) (int, error) {
-	return c.c.CompressBlock(src, dst, c.Level)
+	if c.Level > CCompatLevel12 {
+		return 0, fmt.Errorf("%w: %d", lz4errors.ErrOptionInvalidCompressionLevel, c.Level)
+	}
+	return c.c.CompressBlock(src, dst, int(c.Level))
 }
 
 // A CompressorHC compresses data into the LZ4 block format.
@@ -208,8 +214,10 @@ func (c *CompressorCCompatHC) CompressBlock(src, dst []byte) (int, error) {
 //
 // Use a Writer to compress into the LZ4 stream format.
 type CompressorHC struct {
-	// Level is the maximum search depth for compression.
-	// Values <= 0 mean no maximum.
+	// Level is the maximum search depth for compression, such as Level1 to
+	// Level9; 0 means no maximum. CCompatLevel2 to CCompatLevel12 are not
+	// depths: here they mean depths of 2 to 12, which compress poorly.
+	// CompressorCCompatHC takes them.
 	Level CompressionLevel
 	c     lz4block.CompressorHC
 }

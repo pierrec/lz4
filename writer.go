@@ -195,6 +195,8 @@ func (w *Writer) write(data []byte, safe bool) error {
 func (w *Writer) Flush() (err error) {
 	switch w.state.state {
 	case writeState:
+	case closedState:
+		return nil
 	case errorState:
 		return w.state.err
 	case newState:
@@ -202,8 +204,9 @@ func (w *Writer) Flush() (err error) {
 			return
 		}
 	default:
-		return nil
+		return w.state.fail()
 	}
+	defer w.state.check(&err)
 
 	if w.idx > 0 {
 		if err = w.write(w.data[:w.idx], true); err != nil {

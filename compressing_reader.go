@@ -79,6 +79,9 @@ func (zrd *CompressingReader) init() error {
 	if len(zrd.dict) > 0 && zrd.compressor == nil {
 		zrd.compressor = new(lz4block.DictCompressor)
 	}
+	if zrd.frame.Descriptor.Flags.DictID() && len(zrd.dict) == 0 {
+		return errDictIDWithoutDict
+	}
 	zrd.frame.InitW(&zrd.out, 1, false)
 	size := zrd.frame.BlockSizeIndex()
 	zrd.in = size.Get()

@@ -299,13 +299,19 @@ func LegacyOption(legacy bool) Option {
 	}
 }
 
+// errDictIDWithoutDict reports a frame that would name a dictionary it was not
+// compressed with, which a Reader without one refuses.
+var errDictIDWithoutDict = fmt.Errorf("%w: DictionaryIDOption without DictionaryOption", lz4errors.ErrOptionNotApplicable)
+
 // DictionaryIDOption sets the ID of the dictionary, from DictionaryOption.
 // LZ4 does not define how to number dictionaries; 0 means none. A Writer or
 // CompressingReader writes the ID in the frame descriptor, so that readers,
 // such as the C library's, can tell which dictionary the frame needs. A
 // Reader returns ErrInvalidFrameDescriptor for a frame that holds another ID,
 // as decoding with the wrong dictionary would produce garbage; it reads
-// frames without an ID as before.
+// frames without an ID as before. An ID without a dictionary makes the first
+// Write, Close or ReadFrom of a Writer, or Read of a CompressingReader, return
+// ErrOptionNotApplicable.
 func DictionaryIDOption(id uint32) Option {
 	return func(a applier) error {
 		switch rw := a.(type) {

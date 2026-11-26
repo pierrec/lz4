@@ -84,6 +84,10 @@ func (w *Writer) init() error {
 		// applied after BlockSizeOption.
 		return fmt.Errorf("%w: %d is only valid for legacy frames", lz4errors.ErrOptionInvalidBlockSize, lz4block.Block8Mb)
 	}
+	if w.frame.Descriptor.Flags.DictID() && len(w.dict) == 0 {
+		// Also catches LegacyOption, which excludes a dictionary.
+		return errDictIDWithoutDict
+	}
 	w.frame.InitW(w.src, w.num, w.legacy)
 	size := w.frame.BlockSizeIndex()
 	w.data = size.Get()

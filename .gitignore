@@ -40,3 +40,5 @@ testdata/silesia.tar
 testdata/silesia.tar.*.lz4
 # Go test binaries (go test -c)
 *.test
+# Binary from go build in cmd/lz4c
+cmd/lz4c/lz4c

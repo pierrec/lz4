@@ -144,7 +144,7 @@ func (b *Blocks) ErrorR() error {
 //
 // If not in concurrent mode, the uncompressed block is b.Block and the returned error
 // needs to be checked.
-func (b *Blocks) initR(f *Frame, num int, src io.Reader) (chan []byte, error) {
+func (b *Blocks) initR(f *Frame, num int, src io.Reader, dict []byte) (chan []byte, error) {
 	size := f.BlockSizeIndex()
 	if num == 1 {
 		b.Blocks = nil
@@ -184,7 +184,7 @@ func (b *Blocks) initR(f *Frame, num int, src io.Reader) (chan []byte, error) {
 			go func() {
 				defer block.Close(f)
 				dst := size.Get()
-				buf, err := block.Uncompress(f, dst, nil, false)
+				buf, err := block.Uncompress(f, dst, dict, false)
 				if err != nil {
 					lz4block.Put(dst)
 					r.fail(err)

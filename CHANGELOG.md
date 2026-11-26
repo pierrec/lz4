@@ -16,6 +16,9 @@ issues in this repository.
 
 ### Changed
 
+- A dictionary no longer turns off concurrency. `Writer` compresses blocks
+  with a dictionary concurrently, writing the same frame as without
+  concurrency, and `Reader` decodes independent blocks with one concurrently.
 - `Reader` decodes frames with linked blocks, such as `lz4 -BD` writes, without
   allocating: it keeps the last 64 KiB of output instead of copying every block
   into a new buffer. Decoding the Silesia corpus is about 30% faster from

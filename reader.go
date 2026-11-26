@@ -80,9 +80,6 @@ func (r *Reader) isNotConcurrent() bool {
 }
 
 func (r *Reader) init() error {
-	if len(r.dict) > 0 {
-		r.num = 1
-	}
 	err := r.frame.ParseHeaders(r.src)
 	if err != nil {
 		return err
@@ -92,7 +89,7 @@ func (r *Reader) init() error {
 		// Instead of throwing an error to the user, silently drop concurrency
 		r.num = 1
 	}
-	data, err := r.frame.InitR(r.src, r.num)
+	data, err := r.frame.InitR(r.src, r.num, r.presetDict)
 	if err != nil {
 		return err
 	}

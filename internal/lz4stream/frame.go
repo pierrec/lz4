@@ -47,7 +47,8 @@ func unexpectedEOF(err error) error {
 func (f *Frame) Reset(num int) {
 	f.Magic = 0
 	f.Descriptor.Checksum = 0
-	f.Descriptor.ContentSize = 0
+	// ContentSize is kept: it is a Writer option, and readers only use it
+	// when the descriptor they parsed has the size flag.
 	_ = f.Blocks.close(f, num)
 	f.Checksum = 0
 }

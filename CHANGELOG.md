@@ -15,6 +15,11 @@ issues in this repository.
 
 ### Fixed
 
+- `Writer.Reset` and `CompressingReader.Reset` keep the size from `SizeOption`,
+  as they keep the other options. They kept the size flag but cleared the size,
+  so applying `SizeOption` before `Reset`, as after `NewWriter(nil)`, or writing
+  a second frame failed with `ErrInvalidContentSize`; before v4.1.31, such
+  frames were written with a content size of 0.
 - The amd64 block decoder assembles again for dynamic linking
   (`-buildmode=plugin` and `-buildmode=shared` on linux/amd64); since v4.1.32
   the build failed with `R15 is clobbered by a global variable access`. CI now

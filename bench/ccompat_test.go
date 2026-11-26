@@ -124,9 +124,9 @@ func TestCCompatHCMatchesC(t *testing.T) {
 // TestFrameCCompatBlocksMatchC checks the frame path: every block a Writer
 // writes at CCompatFast or a CCompatLevel holds exactly what
 // LZ4_compress_fast or LZ4_compress_HC at that level produces for that chunk
-// of input into a destination of the chunk's size, or the raw chunk where
-// that does not fit, for block sizes that use each of C's fast hash tables,
-// with and without concurrency.
+// of input into a destination one byte smaller than the chunk, as
+// LZ4F_makeBlock does, or the raw chunk where that does not fit, for block
+// sizes that use each of C's fast hash tables, with and without concurrency.
 func TestFrameCCompatBlocksMatchC(t *testing.T) {
 	levels := []struct {
 		level    lz4.CompressionLevel
@@ -164,7 +164,7 @@ func TestFrameCCompatBlocksMatchC(t *testing.T) {
 						t.Fatalf("%s: %d blocks, want %d", name, len(blocks), len(chunks))
 					}
 					for i, chunk := range chunks {
-						cDst := make([]byte, len(chunk))
+						cDst := make([]byte, len(chunk)-1)
 						n := lvl.compress(chunk, cDst)
 						b := blocks[i]
 						switch {

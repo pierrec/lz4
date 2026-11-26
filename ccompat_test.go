@@ -140,8 +140,39 @@ func TestCompressorCCompatHCLevel(t *testing.T) {
 	}
 }
 
+// A Writer at CCompatFast or a CCompatLevel writes a block that compresses to
+// exactly its size raw, as the lz4 1.10.0 command does at levels 1, 9 and 12:
+// the frame below is its output for this input with -BI.
+func TestWriterCCompatExactSizeBlock(t *testing.T) {
+	// A 4-byte match costs as much as it saves: 13 bytes for the first
+	// sequence and 13 for the last literals.
+	src := []byte("ABCDEFGHIJABCDklmnopqrstuv")
+	want := []byte("\x04\x22\x4d\x18\x64\x40\xa7\x1a\x00\x00\x80" + string(src) + "\x00\x00\x00\x00\xc2\xa8\xd2\x6c")
+	var c lz4.CompressorCCompat
+	if n, _ := c.CompressBlock(src, make([]byte, len(src))); n != len(src) {
+		t.Fatalf("the input compresses to %d bytes, want %d", n, len(src))
+	}
+	for _, level := range []lz4.CompressionLevel{lz4.CCompatFast, lz4.CCompatLevel2, lz4.CCompatLevel9, lz4.CCompatLevel12} {
+		var buf bytes.Buffer
+		zw := lz4.NewWriter(&buf)
+		if err := zw.Apply(lz4.CompressionLevelOption(level), lz4.BlockSizeOption(lz4.Block64Kb)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := zw.Write(src); err != nil {
+			t.Fatal(err)
+		}
+		if err := zw.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(buf.Bytes(), want) {
+			t.Errorf("%v: frame\n%x, want\n%x", level, buf.Bytes(), want)
+		}
+	}
+}
+
 // A Writer at CCompatLevelN writes the blocks CompressorCCompatHC writes at
-// level N, raw where they do not fit in the block's size.
+// level N into one byte less than the block's size, raw where they do not
+// fit, as the C library does.
 func TestWriterCCompatHCBlocks(t *testing.T) {
 	text, err := os.ReadFile("fuzz/corpus/pg1661.txt")
 	if err != nil {
@@ -165,7 +196,7 @@ func TestWriterCCompatHCBlocks(t *testing.T) {
 		for b := text; len(b) > 0; {
 			chunk := b[:min(64<<10, len(b))]
 			b = b[len(chunk):]
-			dst := make([]byte, len(chunk))
+			dst := make([]byte, len(chunk)-1)
 			n, _ := c.CompressBlock(chunk, dst)
 			if n == 0 {
 				want = binary.LittleEndian.AppendUint32(want, uint32(len(chunk))|1<<31)

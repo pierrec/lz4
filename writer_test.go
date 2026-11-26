@@ -1226,6 +1226,11 @@ func TestWriter_DictionaryConcurrency(t *testing.T) {
 				t.Fatalf("%s: Reader concurrency %d: %d bytes, %v", level, conc, len(out), err)
 			}
 		}
+		// The blocks refer to the dictionary, so that the checks above
+		// would fail if either Writer ignored it.
+		if out, err := io.ReadAll(lz4.NewReader(bytes.NewReader(frames[1]))); err == nil && bytes.Equal(out, data) {
+			t.Fatalf("%s: frame decodes without the dictionary", level)
+		}
 	}
 }
 

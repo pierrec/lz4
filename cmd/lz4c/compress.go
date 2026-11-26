@@ -37,37 +37,27 @@ func Compress(fs *flag.FlagSet) cmdflag.Handler {
 	fs.BoolVar(&streamChecksum, "sc", false, "enable stream checksum")
 	var level uint
 	fs.UintVar(&level, "l", 0, "compression level (0=fastest)")
+	var ccompat bool
+	fs.BoolVar(&ccompat, "ccompat", false, "-l is a level of the C lz4 tool, 1 to 12, and blocks are compressed as it compresses them")
 	var concurrency int
 	fs.IntVar(&concurrency, "c", -1, "concurrency (default=all CPUs")
 	bench := fs.Int("bench", 0, "Run benchmark n times. No output will be written")
 	dictFile := fs.String("D", "", "compress with the dictionary in this file; uncompress with the same one")
 
 	return func(args ...string) (int, error) {
-		var lvl lz4.CompressionLevel
-		switch level {
-		default:
-			return 0, fmt.Errorf("%w: %d", lz4.ErrOptionInvalidCompressionLevel, level)
-		case 0:
-			lvl = lz4.Fast
-		case 1:
-			lvl = lz4.Level1
-		case 2:
-			lvl = lz4.Level2
-		case 3:
-			lvl = lz4.Level3
-		case 4:
-			lvl = lz4.Level4
-		case 5:
-			lvl = lz4.Level5
-		case 6:
-			lvl = lz4.Level6
-		case 7:
-			lvl = lz4.Level7
-		case 8:
-			lvl = lz4.Level8
-		case 9:
-			lvl = lz4.Level9
+		levels := []lz4.CompressionLevel{lz4.Fast, lz4.Level1, lz4.Level2, lz4.Level3, lz4.Level4,
+			lz4.Level5, lz4.Level6, lz4.Level7, lz4.Level8, lz4.Level9}
+		if ccompat {
+			// As in the C tool, 0 compresses as 1 does.
+			levels = []lz4.CompressionLevel{lz4.CCompatFast, lz4.CCompatFast, lz4.CCompatLevel2,
+				lz4.CCompatLevel3, lz4.CCompatLevel4, lz4.CCompatLevel5, lz4.CCompatLevel6,
+				lz4.CCompatLevel7, lz4.CCompatLevel8, lz4.CCompatLevel9, lz4.CCompatLevel10,
+				lz4.CCompatLevel11, lz4.CCompatLevel12}
 		}
+		if level >= uint(len(levels)) {
+			return 0, fmt.Errorf("%w: %d", lz4.ErrOptionInvalidCompressionLevel, level)
+		}
+		lvl := levels[level]
 		sz, err := bytefmt.ToBytes(blockMaxSize)
 		if err != nil {
 			return 0, err

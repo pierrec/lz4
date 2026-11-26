@@ -18,6 +18,11 @@ issues in this repository.
   `CompressBlockWithDict`. Compressing pg1661.txt after its first 64 KiB, in
   64 KiB blocks with those 64 KiB as the dictionary, `Level9` output shrinks
   from 52.0% to 45.3% of the input.
+- `DictionaryIDOption` sets the ID of the dictionary: `Writer` and
+  `CompressingReader` write it in the frame descriptor, as the C library does
+  when its `dictID` preference is set, and a `Reader` refuses a frame with
+  another ID with `ErrInvalidFrameDescriptor`, as decoding with the wrong
+  dictionary produces garbage that only a content checksum would catch.
 
 ### Changed
 

@@ -240,7 +240,7 @@ const (
 	ErrWriterClosed = lz4errors.ErrWriterClosed
 	// ErrInvalidFrameDescriptor is returned when reading a frame whose descriptor has an
 	// unknown version or reserved bits set, or a dictionary ID when the Reader has no
-	// dictionary.
+	// dictionary or expects another ID (see DictionaryIDOption).
 	ErrInvalidFrameDescriptor = lz4errors.ErrInvalidFrameDescriptor
 	// ErrInvalidContentSize is returned when reading a frame whose uncompressed size differs
 	// from the content size in its descriptor, unless that is 0, which means unknown, or

@@ -44,6 +44,7 @@ type Reader struct {
 	cum        uint32
 	dict       []byte // what the next block can refer to; see slideWindow
 	presetDict []byte
+	dictID     uint32 // from DictionaryIDOption, or 0
 }
 
 func (*Reader) private() {}
@@ -85,9 +86,14 @@ func (r *Reader) init() error {
 	if err != nil {
 		return err
 	}
-	if fd := &r.frame.Descriptor; fd.Flags.DictID() && len(r.presetDict) == 0 {
-		// Decoding without the dictionary would produce garbage.
-		return fmt.Errorf("%w: dictionary ID %#x without a dictionary", lz4errors.ErrInvalidFrameDescriptor, fd.DictID)
+	if fd := &r.frame.Descriptor; fd.Flags.DictID() {
+		// Decoding without the right dictionary would produce garbage.
+		if len(r.presetDict) == 0 {
+			return fmt.Errorf("%w: dictionary ID %#x without a dictionary", lz4errors.ErrInvalidFrameDescriptor, fd.DictID)
+		}
+		if r.dictID != 0 && fd.DictID != r.dictID {
+			return fmt.Errorf("%w: dictionary ID %#x; expected %#x", lz4errors.ErrInvalidFrameDescriptor, fd.DictID, r.dictID)
+		}
 	}
 	if !r.frame.Descriptor.Flags.BlockIndependence() {
 		// We can't decompress dependent blocks concurrently.

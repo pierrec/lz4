@@ -24,7 +24,7 @@ func NewFrame() *Frame {
 }
 
 type Frame struct {
-	buf        [15]byte // frame descriptor needs at most 2(flags)+8(size)+4(dict id)+1(checksum)=15 bytes
+	buf        [19]byte // the magic number and frame descriptor take at most 4+2(flags)+8(size)+4(dict id)+1(checksum)=19 bytes
 	Magic      uint32
 	Descriptor FrameDescriptor
 	Blocks     Blocks
@@ -192,8 +192,10 @@ func (fd *FrameDescriptor) Write(f *Frame, dst io.Writer) error {
 		binary.LittleEndian.PutUint16(buf[4:], uint16(fd.Flags))
 
 		if fd.Flags.Size() {
-			buf = buf[:4+2+8]
-			binary.LittleEndian.PutUint64(buf[4+2:], fd.ContentSize)
+			buf = binary.LittleEndian.AppendUint64(buf, fd.ContentSize)
+		}
+		if fd.Flags.DictID() {
+			buf = binary.LittleEndian.AppendUint32(buf, fd.DictID)
 		}
 		fd.Checksum = descriptorChecksum(buf[4:])
 		buf = append(buf, fd.Checksum)
@@ -264,6 +266,14 @@ const (
 
 // DictID reports whether the descriptor holds a dictionary ID.
 func (x DescriptorFlags) DictID() bool { return x&descriptorDictID != 0 }
+
+// DictIDSet sets whether the descriptor holds a dictionary ID.
+func (x *DescriptorFlags) DictIDSet(v bool) {
+	*x &^= descriptorDictID
+	if v {
+		*x |= descriptorDictID
+	}
+}
 
 func descriptorChecksum(buf []byte) byte {
 	return byte(xxh32.ChecksumZero(buf) >> 8)

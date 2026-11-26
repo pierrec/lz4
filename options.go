@@ -273,6 +273,35 @@ func LegacyOption(legacy bool) Option {
 	}
 }
 
+// DictionaryIDOption sets the ID of the dictionary, from DictionaryOption.
+// LZ4 does not define how to number dictionaries; 0 means none. A Writer or
+// CompressingReader writes the ID in the frame descriptor, so that readers,
+// such as the C library's, can tell which dictionary the frame needs. A
+// Reader returns ErrInvalidFrameDescriptor for a frame that holds another ID,
+// as decoding with the wrong dictionary would produce garbage; it reads
+// frames without an ID as before.
+func DictionaryIDOption(id uint32) Option {
+	return func(a applier) error {
+		switch rw := a.(type) {
+		case nil:
+			s := fmt.Sprintf("DictionaryIDOption(%#x)", id)
+			return lz4errors.Error(s)
+		case *Writer:
+			rw.frame.Descriptor.Flags.DictIDSet(id != 0)
+			rw.frame.Descriptor.DictID = id
+			return nil
+		case *CompressingReader:
+			rw.frame.Descriptor.Flags.DictIDSet(id != 0)
+			rw.frame.Descriptor.DictID = id
+			return nil
+		case *Reader:
+			rw.dictID = id
+			return nil
+		}
+		return lz4errors.ErrOptionNotApplicable
+	}
+}
+
 // DictionaryOption defines the dictionary to use for compression and decompression.
 // Compression with a dictionary supports Fast and Level1 to Level9, not the
 // levels that reproduce the C library's output, and only non-legacy frames:

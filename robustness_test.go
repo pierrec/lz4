@@ -694,6 +694,70 @@ func TestDictionaryID(t *testing.T) {
 	}
 }
 
+// TestDictionaryIDNeedsDictionary checks that Writer and CompressingReader
+// refuse to write a dictionary ID without a dictionary, whatever the order of
+// the options, as a Reader without a dictionary refuses such frames.
+func TestDictionaryIDNeedsDictionary(t *testing.T) {
+	dict := []byte("hello dictionary, hello world")
+	data := []byte("hello world, hello dictionary, hello world")
+	for _, tc := range []struct {
+		name    string
+		opts    []lz4.Option
+		wantErr bool
+	}{
+		{"ID only", []lz4.Option{lz4.DictionaryIDOption(7)}, true},
+		{"dictionary cleared", []lz4.Option{lz4.DictionaryOption(dict), lz4.DictionaryIDOption(7), lz4.DictionaryOption(nil)}, true},
+		{"legacy", []lz4.Option{lz4.LegacyOption(true), lz4.DictionaryIDOption(7)}, true},
+		{"ID before dictionary", []lz4.Option{lz4.DictionaryIDOption(7), lz4.DictionaryOption(dict)}, false},
+		{"both cleared", []lz4.Option{lz4.DictionaryOption(dict), lz4.DictionaryIDOption(7), lz4.DictionaryOption(nil), lz4.DictionaryIDOption(0)}, false},
+	} {
+		check := func(t *testing.T, err error) {
+			t.Helper()
+			if tc.wantErr != errors.Is(err, lz4.ErrOptionNotApplicable) || !tc.wantErr && err != nil {
+				t.Fatalf("got %v, want ErrOptionNotApplicable: %v", err, tc.wantErr)
+			}
+		}
+		for _, write := range []bool{true, false} {
+			t.Run(fmt.Sprintf("Writer/write=%v/%s", write, tc.name), func(t *testing.T) {
+				var buf bytes.Buffer
+				zw := lz4.NewWriter(&buf)
+				if err := zw.Apply(tc.opts...); err != nil {
+					t.Fatal(err)
+				}
+				var err error
+				if write {
+					_, err = zw.Write(data)
+				}
+				if err == nil {
+					err = zw.Close()
+				}
+				check(t, err)
+				if !tc.wantErr {
+					zr := lz4.NewReader(&buf)
+					if err := zr.Apply(lz4.DictionaryOption(dict)); err != nil {
+						t.Fatal(err)
+					}
+					got, err := io.ReadAll(zr)
+					if err != nil || write && !bytes.Equal(got, data) {
+						t.Fatalf("%q, %v", got, err)
+					}
+				}
+			})
+		}
+		t.Run("CompressingReader/"+tc.name, func(t *testing.T) {
+			if tc.name == "legacy" {
+				t.Skip("CompressingReader has no legacy frames")
+			}
+			zc := lz4.NewCompressingReader(io.NopCloser(bytes.NewReader(data)))
+			if err := zc.Apply(tc.opts...); err != nil {
+				t.Fatal(err)
+			}
+			_, err := io.ReadAll(zc)
+			check(t, err)
+		})
+	}
+}
+
 func TestFrameMalformed(t *testing.T) {
 	for _, tc := range malformedCases(t) {
 		t.Run(tc.name, func(t *testing.T) {

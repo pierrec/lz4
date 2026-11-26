@@ -13,8 +13,8 @@
 // such as log lines or messages that share a schema: matches may refer to
 // it as if it preceded the input. CompressBlockWithDict and
 // UncompressBlockWithDict use one for a block, and DictionaryOption for a
-// frame. Decompression needs the same dictionary, which frames do not
-// record. The output is compatible with the C library's dictionary
+// frame. Decompression needs the same dictionary; frames record at most its
+// ID, from DictionaryIDOption. The output is compatible with the C library's dictionary
 // functions, such as LZ4_loadDict and LZ4_decompress_safe_usingDict.
 //
 // LZ4 does not define a dictionary format: any bytes will do, and only the

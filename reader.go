@@ -2,6 +2,7 @@ package lz4
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 
 	"github.com/pierrec/lz4/v4/internal/lz4block"
@@ -43,6 +44,7 @@ type Reader struct {
 	cum        uint32
 	dict       []byte // what the next block can refer to; see slideWindow
 	presetDict []byte
+	dictID     uint32 // from DictionaryIDOption, or 0
 }
 
 func (*Reader) private() {}
@@ -83,6 +85,15 @@ func (r *Reader) init() error {
 	err := r.frame.ParseHeaders(r.src)
 	if err != nil {
 		return err
+	}
+	if fd := &r.frame.Descriptor; fd.Flags.DictID() {
+		// Decoding without the right dictionary would produce garbage.
+		if len(r.presetDict) == 0 {
+			return fmt.Errorf("%w: dictionary ID %#x without a dictionary", lz4errors.ErrInvalidFrameDescriptor, fd.DictID)
+		}
+		if r.dictID != 0 && fd.DictID != r.dictID {
+			return fmt.Errorf("%w: dictionary ID %#x; expected %#x", lz4errors.ErrInvalidFrameDescriptor, fd.DictID, r.dictID)
+		}
 	}
 	if !r.frame.Descriptor.Flags.BlockIndependence() {
 		// We can't decompress dependent blocks concurrently.

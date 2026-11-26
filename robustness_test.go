@@ -575,6 +575,125 @@ func malformedCases(t testing.TB) []malformedCase {
 	return cases
 }
 
+// TestReaderDictID checks that a Reader with a dictionary decodes frames whose
+// descriptor holds a dictionary ID, as the C library writes when asked to, and
+// that one without a dictionary refuses them.
+func TestReaderDictID(t *testing.T) {
+	dict := []byte("hello dictionary, hello world")
+	data := []byte("hello world, hello dictionary, hello world")
+	comp := make([]byte, lz4.CompressBlockBound(len(data)))
+	n, err := lz4.CompressBlockWithDict(data, comp, dict)
+	if err != nil || n == 0 {
+		t.Fatalf("CompressBlockWithDict: n=%d err=%v", n, err)
+	}
+	block := compBlock(comp[:n])
+	id := le32(0xDEADBEEF)
+	frames := []struct {
+		name  string
+		frame []byte
+	}{
+		{"independent", cat(magic, desc(flgV1|flgIndep|flgDict, bd64K, id...), block, endMark)},
+		{"linked", cat(magic, desc(flgV1|flgDict, bd64K, id...), block, endMark)},
+		{"withSize", cat(magic, desc(flgV1|flgIndep|flgSize|flgDict, bd64K, cat(le64(uint64(len(data))), id)...), block, endMark)},
+	}
+	for _, f := range frames {
+		t.Run(f.name, func(t *testing.T) {
+			if ok, err := lz4.ValidFrameHeader(f.frame); !ok || err != nil {
+				t.Fatalf("ValidFrameHeader: %v, %v", ok, err)
+			}
+			got, err := decodeAllModes(t, f.frame, lz4.DictionaryOption(dict))
+			if err != nil || !bytes.Equal(got, data) {
+				t.Fatalf("with the dictionary: %q, %v", got, err)
+			}
+			if _, err := decodeAllModes(t, f.frame); !errors.Is(err, lz4.ErrInvalidFrameDescriptor) {
+				t.Fatalf("without a dictionary: got %v, want ErrInvalidFrameDescriptor", err)
+			}
+		})
+	}
+}
+
+// TestDictionaryID checks that Writer and CompressingReader write the ID from
+// DictionaryIDOption in the frame descriptor, and that a Reader refuses a
+// frame with another ID, or with one but no dictionary.
+func TestDictionaryID(t *testing.T) {
+	dict := []byte("hello dictionary, hello world")
+	data := []byte("hello world, hello dictionary, hello world")
+	write := func(t *testing.T, id uint32, viaReader bool) []byte {
+		t.Helper()
+		opts := []lz4.Option{lz4.DictionaryOption(dict), lz4.DictionaryIDOption(id)}
+		if viaReader {
+			// With a content size, which precedes the ID.
+			zc := lz4.NewCompressingReader(io.NopCloser(bytes.NewReader(data)))
+			if err := zc.Apply(append(opts, lz4.SizeOption(uint64(len(data))))...); err != nil {
+				t.Fatal(err)
+			}
+			frame, err := io.ReadAll(zc)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return frame
+		}
+		var buf bytes.Buffer
+		zw := lz4.NewWriter(io.Discard)
+		if err := zw.Apply(opts...); err != nil {
+			t.Fatal(err)
+		}
+		// The second frame after Reset keeps the ID.
+		for range 2 {
+			buf.Reset()
+			zw.Reset(&buf)
+			if _, err := zw.Write(data); err != nil {
+				t.Fatal(err)
+			}
+			if err := zw.Close(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return buf.Bytes()
+	}
+	for _, viaReader := range []bool{false, true} {
+		for _, tc := range []struct {
+			name      string
+			writeID   uint32
+			readOpts  []lz4.Option
+			wantError bool
+		}{
+			{"matching ID", 7, []lz4.Option{lz4.DictionaryOption(dict), lz4.DictionaryIDOption(7)}, false},
+			{"no ID expected", 7, []lz4.Option{lz4.DictionaryOption(dict)}, false},
+			{"other ID", 7, []lz4.Option{lz4.DictionaryOption(dict), lz4.DictionaryIDOption(8)}, true},
+			{"no dictionary", 7, nil, true},
+			{"ID 0 writes none", 0, []lz4.Option{lz4.DictionaryOption(dict), lz4.DictionaryIDOption(8)}, false},
+		} {
+			t.Run(fmt.Sprintf("CompressingReader=%v/%s", viaReader, tc.name), func(t *testing.T) {
+				frame := write(t, tc.writeID, viaReader)
+				flg := frame[4]
+				if (flg&flgDict != 0) != (tc.writeID != 0) {
+					t.Fatalf("FLG %#x: dictionary ID flag should be %v", flg, tc.writeID != 0)
+				}
+				if tc.writeID != 0 {
+					at := 4 + 2 // after the magic number, FLG and BD
+					if flg&flgSize != 0 {
+						at += 8
+					}
+					if got := binary.LittleEndian.Uint32(frame[at:]); got != tc.writeID {
+						t.Fatalf("dictionary ID %d, want %d", got, tc.writeID)
+					}
+				}
+				got, err := decodeAllModes(t, frame, tc.readOpts...)
+				if tc.wantError {
+					if !errors.Is(err, lz4.ErrInvalidFrameDescriptor) {
+						t.Fatalf("got %v, want ErrInvalidFrameDescriptor", err)
+					}
+					return
+				}
+				if err != nil || !bytes.Equal(got, data) {
+					t.Fatalf("%q, %v", got, err)
+				}
+			})
+		}
+	}
+}
+
 func TestFrameMalformed(t *testing.T) {
 	for _, tc := range malformedCases(t) {
 		t.Run(tc.name, func(t *testing.T) {

@@ -18,6 +18,11 @@ issues in this repository.
   `CompressBlockWithDict`. Compressing pg1661.txt after its first 64 KiB, in
   64 KiB blocks with those 64 KiB as the dictionary, `Level9` output shrinks
   from 52.0% to 45.3% of the input.
+- `DictionaryIDOption` sets the ID of the dictionary: `Writer` and
+  `CompressingReader` write it in the frame descriptor, as the C library does
+  when its `dictID` preference is set, and a `Reader` refuses a frame with
+  another ID with `ErrInvalidFrameDescriptor`, as decoding with the wrong
+  dictionary produces garbage that only a content checksum would catch.
 
 ### Changed
 
@@ -40,6 +45,11 @@ issues in this repository.
 - `Reader` treats a declared content size of 0 as unknown, as the C library
   does, so it reads those frames again; since v4.1.31 it rejected them with
   `ErrInvalidContentSize`.
+- `Reader` with `DictionaryOption` decodes frames whose descriptor holds a
+  dictionary ID, as the C library writes when its `dictID` preference is set;
+  it rejected them with `ErrInvalidFrameDescriptor` even with the right
+  dictionary. Without a dictionary it still rejects them, and
+  `ValidFrameHeader` accepts such headers.
 - The amd64 block decoder assembles again for dynamic linking
   (`-buildmode=plugin` and `-buildmode=shared` on linux/amd64); since v4.1.32
   the build failed with `R15 is clobbered by a global variable access`. CI now

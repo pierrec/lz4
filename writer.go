@@ -38,7 +38,10 @@ type Writer struct {
 	handler    func(int)
 	legacy     bool
 	dict       []byte
-	compressor *lz4block.Compressor
+	compressor *lz4block.Compressor // with dict, without concurrency
+	// With dict and concurrency, compressors keeps up to num Compressors
+	// that have indexed dict, for the compressing goroutines.
+	compressors chan *lz4block.Compressor
 }
 
 func (*Writer) private() {}
@@ -68,9 +71,12 @@ func (w *Writer) isNotConcurrent() bool {
 // init sets up the Writer when in newState. It does not change the Writer state.
 func (w *Writer) init() error {
 	if len(w.dict) > 0 {
-		w.num = 1
-		if w.compressor == nil {
-			w.compressor = new(lz4block.Compressor)
+		if w.isNotConcurrent() {
+			if w.compressor == nil {
+				w.compressor = new(lz4block.Compressor)
+			}
+		} else if cap(w.compressors) != w.num {
+			w.compressors = make(chan *lz4block.Compressor, w.num)
 		}
 	}
 	if !w.legacy && !w.frame.Descriptor.Flags.BlockSizeIndex().IsValid() {
@@ -146,9 +152,26 @@ func (w *Writer) write(data []byte, safe bool) error {
 	}
 	c := make(chan *lz4stream.FrameDataBlock)
 	w.frame.Blocks.Blocks <- c
+	dict, compressors := w.dict, w.compressors
 	go func(c chan *lz4stream.FrameDataBlock, data []byte, safe bool) {
 		b := lz4stream.NewFrameDataBlock(w.frame)
-		b.Compress(w.frame, data, w.level)
+		if len(dict) > 0 {
+			// Every block refers to dict alone, so each goroutine can use
+			// its own Compressor.
+			var zc *lz4block.Compressor
+			select {
+			case zc = <-compressors:
+			default:
+				zc = new(lz4block.Compressor)
+			}
+			b.CompressWithDict(w.frame, data, w.level, zc, dict)
+			select {
+			case compressors <- zc:
+			default:
+			}
+		} else {
+			b.Compress(w.frame, data, w.level)
+		}
 		// Report the block before handing it over, so that Close, which waits
 		// for every block to be written, returns after all the reports.
 		w.handler(len(b.Data))

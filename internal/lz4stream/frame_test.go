@@ -121,7 +121,7 @@ func TestBlocksReuseBlockAcrossReset(t *testing.T) {
 		f.Descriptor.Flags.BlockSizeIndexSet(lz4block.Index(lz4block.Block64Kb))
 		init := func() {
 			if name == "reader" {
-				if _, err := f.InitR(strings.NewReader(""), 1); err != nil {
+				if _, err := f.InitR(strings.NewReader(""), 1, nil); err != nil {
 					t.Fatal(err)
 				}
 			} else {

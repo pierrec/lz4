@@ -41,9 +41,9 @@ var errNoProgress = errors.New("Read made no progress")
 // the run time, particularly with the race detector.
 var readBufs sync.Pool
 
-func decodeWith(m decodeMode, in []byte) ([]byte, error) {
+func decodeWith(m decodeMode, in []byte, opts ...lz4.Option) ([]byte, error) {
 	zr := lz4.NewReader(bytes.NewReader(in))
-	if err := zr.Apply(lz4.ConcurrencyOption(m.conc)); err != nil {
+	if err := zr.Apply(append(opts, lz4.ConcurrencyOption(m.conc))...); err != nil {
 		return nil, err
 	}
 	var out bytes.Buffer
@@ -76,14 +76,15 @@ func decodeWith(m decodeMode, in []byte) ([]byte, error) {
 	return out.Bytes(), errNoProgress
 }
 
-// decodeAllModes reads in every way and checks that they agree on success,
-// and on output when successful. It returns the result of the first mode.
-func decodeAllModes(t testing.TB, in []byte) ([]byte, error) {
+// decodeAllModes reads in every way, with opts, and checks that they agree on
+// success, and on output when successful. It returns the result of the first
+// mode.
+func decodeAllModes(t testing.TB, in []byte, opts ...lz4.Option) ([]byte, error) {
 	t.Helper()
 	var first []byte
 	var firstErr error
 	for i, m := range decodeModes {
-		out, err := decodeWith(m, in)
+		out, err := decodeWith(m, in, opts...)
 		if errors.Is(err, errNoProgress) {
 			t.Fatalf("%s: %v", m.name, err)
 		}

@@ -55,21 +55,27 @@ func FuzzReader(f *testing.F) {
 	})
 }
 
-// FuzzFrameRoundTrip compresses and decompresses arbitrary data with options
-// and write sizes picked by the fuzzer.
+// FuzzFrameRoundTrip compresses and decompresses arbitrary data with options,
+// write sizes and a dictionary picked by the fuzzer.
 func FuzzFrameRoundTrip(f *testing.F) {
 	for i, n := range []int{0, 1, 17, 1000, int(lz4.Block64Kb) + 1} {
-		f.Add(testData(n, true, int64(i)), uint16(i*0x1111), uint16(n/3))
-		f.Add(testData(n, false, int64(i)), uint16(0xFFFF-i), uint16(0))
+		f.Add(testData(n, true, int64(i)), uint16(i*0x1111), uint16(n/3), []byte(nil))
+		f.Add(testData(n, false, int64(i)), uint16(0xFFFF-i), uint16(0), []byte(nil))
 	}
 	// Frames of several blocks, raw and compressed, fed through ReadFrom.
 	for i, bs := range []uint16{0, 1, 3} {
-		f.Add(testData(1000, i%2 == 0, int64(i)), 1<<14|uint16(4+i)<<11|bs, uint16(0))
-		f.Add(testData(100, true, int64(i)), 1<<14|1<<6|7<<11|bs, uint16(0))
+		f.Add(testData(1000, i%2 == 0, int64(i)), 1<<14|uint16(4+i)<<11|bs, uint16(0), []byte(nil))
+		f.Add(testData(100, true, int64(i)), 1<<14|1<<6|7<<11|bs, uint16(0), []byte(nil))
 		// The same frames written and flushed in chunks.
-		f.Add(testData(1000, true, int64(i)), 1<<15|1<<6|uint16(2+i)<<11|bs, uint16(300))
+		f.Add(testData(1000, true, int64(i)), 1<<15|1<<6|uint16(2+i)<<11|bs, uint16(300), []byte(nil))
 		// The same frames fed through a mix of io.CopyN and Write.
-		f.Add(testData(1000, true, int64(i)), 1<<14|uint16(i)<<6|uint16(2+i)<<11|bs, uint16(5000))
+		f.Add(testData(1000, true, int64(i)), 1<<14|uint16(i)<<6|uint16(2+i)<<11|bs, uint16(5000), []byte(nil))
+	}
+	// Frames of several blocks with a dictionary, with and without
+	// concurrency, through Writer and CompressingReader.
+	for i, flags := range []uint16{0, 1 << 6, 1 << 8, 1<<6 | 1<<15} {
+		d := testData(4000, true, int64(i))
+		f.Add(d[1000:], flags|uint16(i)<<11, uint16(700), d[:1000])
 	}
 	// Inputs go-fuzz collected for the frame round trip.
 	entries, err := os.ReadDir("fuzz/corpus")
@@ -82,16 +88,19 @@ func FuzzFrameRoundTrip(f *testing.F) {
 			f.Fatal(err)
 		}
 		if len(b) <= 64<<10 {
-			f.Add(b, uint16(i*0x0101), uint16(len(b)/3))
+			f.Add(b, uint16(i*0x0101), uint16(len(b)/3), []byte(nil))
 		}
 	}
 	blockSizes := []lz4.BlockSize{lz4.Block64Kb, lz4.Block256Kb, lz4.Block1Mb, lz4.Block4Mb}
 	levels := []lz4.CompressionLevel{lz4.Fast, lz4.Level1, lz4.Level5, lz4.Level9}
-	f.Fuzz(func(t *testing.T, data []byte, flags uint16, chunk uint16) {
+	f.Fuzz(func(t *testing.T, data []byte, flags uint16, chunk uint16, dict []byte) {
 		legacy := flags&(1<<9) != 0
 		level := levels[flags>>2&3]
 		if flags&(1<<10) != 0 {
 			level = lz4.CCompatFast
+		}
+		if level != lz4.Fast || legacy {
+			dict = nil // a dictionary requires both
 		}
 		opts := []lz4.Option{
 			lz4.BlockSizeOption(blockSizes[flags&3]),
@@ -100,6 +109,7 @@ func FuzzFrameRoundTrip(f *testing.F) {
 			lz4.ChecksumOption(flags&(1<<5) != 0),
 			lz4.ConcurrencyOption(1 + int(flags>>6&1)*3),
 			lz4.LegacyOption(legacy),
+			lz4.DictionaryOption(dict),
 		}
 		// OnBlockDone must report each block once, by Close.
 		var reports, reported atomic.Int64
@@ -164,7 +174,7 @@ func FuzzFrameRoundTrip(f *testing.F) {
 		if r, s := reports.Load(), reported.Load(); r != n || s != sum {
 			t.Fatalf("OnBlockDone reported %d blocks of %d bytes; the frame has %d of %d", r, s, n, sum)
 		}
-		out, err := decodeAllModes(t, frame.Bytes())
+		out, err := decodeAllModes(t, frame.Bytes(), lz4.DictionaryOption(dict))
 		if err != nil {
 			t.Fatal(err)
 		}

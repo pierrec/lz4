@@ -132,8 +132,10 @@ newFrame:
 	return nil
 }
 
-func (f *Frame) InitR(src io.Reader, num int) (chan []byte, error) {
-	return f.Blocks.initR(f, num, src)
+// InitR starts reading the frame's blocks. With num > 1, the blocks must be
+// independent, and each is decoded with dict, which must not change.
+func (f *Frame) InitR(src io.Reader, num int, dict []byte) (chan []byte, error) {
+	return f.Blocks.initR(f, num, src, dict)
 }
 
 func (f *Frame) CloseR(src io.Reader) (err error) {

@@ -6,6 +6,14 @@ issues in this repository.
 
 ## Unreleased
 
+### Added
+
+- The package documentation and README describe dictionaries and how to build
+  one, with examples for `CompressBlockWithDict` and `DictionaryOption`.
+  Tests in `bench` check that liblz4 and this package decode each other's
+  blocks and frames compressed with a dictionary, and CI decodes two such C
+  frames.
+
 ### Changed
 
 - `Reader` decodes frames with linked blocks, such as `lz4 -BD` writes, without

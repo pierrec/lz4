@@ -6,6 +6,22 @@
 // http://fastcompression.blogspot.fr/2011/05/lz4-explained.html.
 //
 // See https://github.com/lz4/lz4 for the reference C implementation.
+//
+// # Dictionaries
+//
+// A dictionary improves the compression of small inputs that look alike,
+// such as log lines or messages that share a schema: matches may refer to
+// it as if it preceded the input. CompressBlockWithDict and
+// UncompressBlockWithDict use one for a block, and DictionaryOption for a
+// frame. Decompression needs the same dictionary, which frames do not
+// record. The output is compatible with the C library's dictionary
+// functions, such as LZ4_loadDict and LZ4_decompress_safe_usingDict.
+//
+// LZ4 does not define a dictionary format: any bytes will do, and only the
+// last 64 KiB are used, so put the most common content last. A sample of
+// typical data works; zstd can build a better one from many samples:
+//
+//	zstd --train samples/* -o dict --maxdict=65536
 package lz4
 
 import (

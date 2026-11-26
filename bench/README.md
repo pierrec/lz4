@@ -53,6 +53,20 @@ When a change alters the output on purpose, regenerate the file with
 `go test -run TestCompressGolden -update .`: the sizes it records show the
 effect on compression.
 
+## Dictionaries
+
+`TestDictBlockMatchesC`, `TestDictFrameMatchesC` and `FuzzDictMatchesC`
+check that this package and liblz4 decode each other's output when
+compressing with a dictionary, for blocks and frames:
+
+```sh
+(cd bench && go test -run Dict . && go test -run '^$' -fuzz FuzzDictMatchesC -fuzztime 5m .)
+```
+
+CI doesn't build this module, so `TestDictFixtures` writes two C frames
+compressed with a dictionary to `testdata` (with `-update`), which
+`TestReaderDictCFrames` in the `lz4` package decodes.
+
 ## Real-world data
 
 The corpora above are small. Two larger ones live outside the repository:

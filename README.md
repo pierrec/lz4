@@ -73,6 +73,23 @@ _, _ = io.Copy(os.Stdout, zr)
 // hello world
 ```
 
+## Dictionaries
+
+A dictionary improves the compression of small inputs that look alike, such
+as log lines or messages that share a schema. `CompressBlockWithDict` and
+`UncompressBlockWithDict` use one for a block, and `DictionaryOption` for a
+`Writer`, `Reader` or `CompressingReader`. Decompression needs the same
+dictionary: frames do not record which one was used. The output is
+compatible with the C library's dictionary functions.
+
+LZ4 does not define a dictionary format. Any bytes will do, and only the last
+64 KiB are used, so put the most common content last. A sample of typical
+data works; zstd can build a better one from many samples:
+
+```
+zstd --train samples/* -o dict --maxdict=65536
+```
+
 ## Contributing
 
 Contributions are very welcome for bug fixing, performance improvements...!

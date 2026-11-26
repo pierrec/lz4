@@ -109,6 +109,8 @@ func ChecksumOption(flag bool) Option {
 // SizeOption sets the size of the original uncompressed data (default=0). It is useful to know the size of the
 // whole uncompressed data stream. It must be exact: readers reject a frame whose data differs from it, so
 // closing a Writer, or reading to the end of a CompressingReader, fails with ErrInvalidContentSize if it does.
+// Like the other options, it applies to every frame until changed: before writing a frame of another size after
+// Reset, apply it again, or SizeOption(0) to omit the size.
 func SizeOption(size uint64) Option {
 	return func(a applier) error {
 		switch w := a.(type) {

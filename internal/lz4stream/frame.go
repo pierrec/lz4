@@ -47,7 +47,8 @@ func unexpectedEOF(err error) error {
 func (f *Frame) Reset(num int) {
 	f.Magic = 0
 	f.Descriptor.Checksum = 0
-	f.Descriptor.ContentSize = 0
+	// ContentSize is kept: it is a Writer option, and readers only use it
+	// when the descriptor they parsed has the size flag.
 	_ = f.Blocks.close(f, num)
 	f.Checksum = 0
 }
@@ -157,7 +158,9 @@ func (f *Frame) CloseR(src io.Reader) (err error) {
 			return fmt.Errorf("%w: got %x; expected %x", lz4errors.ErrInvalidFrameChecksum, c, f.Checksum)
 		}
 	}
-	if f.Descriptor.Flags.Size() && read.size != f.Descriptor.ContentSize {
+	// A declared size of 0 means unknown, as in the C library: releases up to
+	// v4.1.30 wrote it for data of any size after SizeOption and Reset.
+	if f.Descriptor.Flags.Size() && f.Descriptor.ContentSize != 0 && read.size != f.Descriptor.ContentSize {
 		return fmt.Errorf("%w: got %d; expected %d", lz4errors.ErrInvalidContentSize, read.size, f.Descriptor.ContentSize)
 	}
 	return nil

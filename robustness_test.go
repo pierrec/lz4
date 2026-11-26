@@ -493,6 +493,10 @@ func malformedCases(t testing.TB) []malformedCase {
 		{"valid/max64KRawBlock", cat(hdr, rawBlock(max64K), endMark), max64K, nil},
 		{"contentSize/ok", cat(withSize(uint64(len(hello))), compBlock(comp), endMark), hello, nil},
 		{"contentSize/zero", cat(withSize(0), endMark), nil, nil},
+		// 0 means unknown, as in C, so frames that releases up to v4.1.30
+		// wrote with a size of 0 still read.
+		{"contentSize/zeroMeansUnknown", cat(withSize(0), compBlock(comp), endMark), hello, nil},
+		{"contentSize/zeroMeansUnknown/concatenated", cat(withSize(0), compBlock(comp), rawBlock(hello), endMark, withSize(0), rawBlock(hello), endMark), cat(hello, hello, hello), nil},
 		{"contentSize/tooBig", cat(withSize(uint64(len(hello))+1), compBlock(comp), endMark), hello, lz4.ErrInvalidContentSize},
 		{"contentSize/tooSmall", cat(withSize(uint64(len(hello))-1), compBlock(comp), endMark), hello, lz4.ErrInvalidContentSize},
 		{"contentSize/huge", cat(withSize(1<<63), compBlock(comp), endMark), hello, lz4.ErrInvalidContentSize},
@@ -772,6 +776,74 @@ func TestWriterSizeOption(t *testing.T) {
 			}
 			return io.ReadAll(zc)
 		}, false},
+		// Apply resets before applying, so a later Apply must keep the
+		// size from an earlier one.
+		{"Apply/twice", func(data []byte, size uint64, _ bool) ([]byte, error) {
+			var buf bytes.Buffer
+			zw := lz4.NewWriter(&buf)
+			if err := zw.Apply(lz4.SizeOption(size)); err != nil {
+				return nil, err
+			}
+			if err := zw.Apply(lz4.BlockSizeOption(lz4.Block64Kb)); err != nil {
+				return nil, err
+			}
+			if _, err := zw.Write(data); err != nil {
+				return nil, err
+			}
+			err := zw.Close()
+			return buf.Bytes(), err
+		}, false},
+		{"CompressingReader/Apply/twice", func(data []byte, size uint64, _ bool) ([]byte, error) {
+			zc := lz4.NewCompressingReader(io.NopCloser(bytes.NewReader(data)))
+			if err := zc.Apply(lz4.SizeOption(size)); err != nil {
+				return nil, err
+			}
+			if err := zc.Apply(lz4.BlockSizeOption(lz4.Block64Kb)); err != nil {
+				return nil, err
+			}
+			return io.ReadAll(zc)
+		}, false},
+		// Reset keeps the options, the size included: before the first
+		// frame, as after NewWriter(nil), and between frames.
+		{"Reset", func(data []byte, size uint64, _ bool) ([]byte, error) {
+			zw := lz4.NewWriter(nil)
+			if err := zw.Apply(lz4.SizeOption(size), lz4.BlockSizeOption(lz4.Block64Kb)); err != nil {
+				return nil, err
+			}
+			var buf bytes.Buffer
+			zw.Reset(&buf)
+			if _, err := zw.Write(data); err != nil {
+				return nil, err
+			}
+			err := zw.Close()
+			return buf.Bytes(), err
+		}, false},
+		{"Reset/secondFrame", func(data []byte, size uint64, _ bool) ([]byte, error) {
+			zw := lz4.NewWriter(io.Discard)
+			if err := zw.Apply(lz4.SizeOption(size), lz4.BlockSizeOption(lz4.Block64Kb)); err != nil {
+				return nil, err
+			}
+			var buf bytes.Buffer
+			for range 2 {
+				buf.Reset()
+				zw.Reset(&buf)
+				if _, err := zw.Write(data); err != nil {
+					return nil, err
+				}
+				if err := zw.Close(); err != nil {
+					return nil, err
+				}
+			}
+			return buf.Bytes(), nil
+		}, false},
+		{"CompressingReader/Reset", func(data []byte, size uint64, _ bool) ([]byte, error) {
+			zc := lz4.NewCompressingReader(io.NopCloser(nil))
+			if err := zc.Apply(lz4.SizeOption(size), lz4.BlockSizeOption(lz4.Block64Kb)); err != nil {
+				return nil, err
+			}
+			zc.Reset(io.NopCloser(bytes.NewReader(data)))
+			return io.ReadAll(zc)
+		}, false},
 	}
 	for _, w := range writers {
 		for _, tc := range []struct {
@@ -800,6 +872,28 @@ func TestWriterSizeOption(t *testing.T) {
 					t.Fatalf("read back %d bytes, err %v", len(out), err)
 				}
 			})
+		}
+	}
+
+	// A Reader reset for a frame without a size does not report the size
+	// of the frame before.
+	sized, err := withWriter()(data, uint64(len(data)), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unsized, err := withWriter()(data, 0, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zr := lz4.NewReader(bytes.NewReader(sized))
+	for i, frame := range [][]byte{sized, unsized} {
+		zr.Reset(bytes.NewReader(frame))
+		// Size reports once the descriptor has been read.
+		if _, err := zr.Read(make([]byte, 1)); err != nil {
+			t.Fatal(err)
+		}
+		if want := []int{len(data), 0}[i]; zr.Size() != want {
+			t.Fatalf("frame %d: Size() = %d, want %d", i, zr.Size(), want)
 		}
 	}
 }

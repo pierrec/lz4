@@ -53,6 +53,17 @@ When a change alters the output on purpose, regenerate the file with
 `go test -run TestCompressGolden -update .`: the sizes it records show the
 effect on compression.
 
+## Dictionaries
+
+`TestDictCommand` in the `lz4` package checks frames compressed with a
+dictionary against the `lz4` command, in CI. `FuzzDictMatchesC` checks
+blocks against liblz4 on arbitrary input and dictionaries, which takes cgo
+to run fast enough:
+
+```sh
+(cd bench && go test -run '^$' -fuzz FuzzDictMatchesC -fuzztime 5m .)
+```
+
 ## Real-world data
 
 The corpora above are small. Two larger ones live outside the repository:

@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync/atomic"
 	"testing"
 
@@ -100,8 +101,8 @@ func FuzzFrameRoundTrip(f *testing.F) {
 		if flags&(1<<10) != 0 {
 			level = lz4.CCompatFast
 		}
-		if level == lz4.CCompatFast || legacy {
-			dict = nil // neither supports a dictionary
+		if !slices.Contains(levels, level) || legacy {
+			dict = nil // neither the C-compatible levels nor legacy frames support one
 		}
 		opts := []lz4.Option{
 			lz4.BlockSizeOption(blockSizes[flags&3]),

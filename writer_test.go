@@ -1185,8 +1185,8 @@ func TestWriter_DictionaryConcurrency(t *testing.T) {
 func TestWriter_DictionaryOptionsValidation(t *testing.T) {
 	dict := []byte("test dictionary content")
 
-	// A dictionary works with every level but CCompatFast, and only in
-	// non-legacy frames, whichever option is applied first.
+	// A dictionary works with Fast and Level1 to Level9, not the C-compatible
+	// levels, and only in non-legacy frames, whichever option is applied first.
 	for _, tc := range []struct {
 		name string
 		opts []lz4.Option

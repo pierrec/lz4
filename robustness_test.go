@@ -771,6 +771,33 @@ func TestWriterSizeOption(t *testing.T) {
 			}
 			return io.ReadAll(zc)
 		}, false},
+		// Apply resets before applying, so a later Apply must keep the
+		// size from an earlier one.
+		{"Apply/twice", func(data []byte, size uint64, _ bool) ([]byte, error) {
+			var buf bytes.Buffer
+			zw := lz4.NewWriter(&buf)
+			if err := zw.Apply(lz4.SizeOption(size)); err != nil {
+				return nil, err
+			}
+			if err := zw.Apply(lz4.BlockSizeOption(lz4.Block64Kb)); err != nil {
+				return nil, err
+			}
+			if _, err := zw.Write(data); err != nil {
+				return nil, err
+			}
+			err := zw.Close()
+			return buf.Bytes(), err
+		}, false},
+		{"CompressingReader/Apply/twice", func(data []byte, size uint64, _ bool) ([]byte, error) {
+			zc := lz4.NewCompressingReader(io.NopCloser(bytes.NewReader(data)))
+			if err := zc.Apply(lz4.SizeOption(size)); err != nil {
+				return nil, err
+			}
+			if err := zc.Apply(lz4.BlockSizeOption(lz4.Block64Kb)); err != nil {
+				return nil, err
+			}
+			return io.ReadAll(zc)
+		}, false},
 		// Reset keeps the options, the size included: before the first
 		// frame, as after NewWriter(nil), and between frames.
 		{"Reset", func(data []byte, size uint64, _ bool) ([]byte, error) {

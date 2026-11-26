@@ -30,7 +30,9 @@ issues in this repository.
   of its levels: level 2 (`lz4mid`), the hash chain with lookahead of levels
   3 to 9, and the optimal parser of levels 10 to 12. Unlike `Level1` to
   `Level9`, which differ in search depth only and give almost the same
-  output, they trade speed for ratio as C's levels do (#219).
+  output, they trade speed for ratio as C's levels do (#219). Set
+  `CompressorCCompatHC.Level` to one of them; it refuses `Level1` to
+  `Level9`. In `CompressorHC.Level`, they would be search depths of 2 to 12.
 - `LICENSE-lz4` holds the BSD 2-Clause License of the C library, whose code
   `CompressorCCompat` and `CompressorCCompatHC` port; the ported files and the
   README name it. Programs distributed in binary form should reproduce it

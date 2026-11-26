@@ -69,7 +69,7 @@ func blockCompressors() []blockCompressor {
 	}
 }
 
-func ccompatHC(level int) func(src, dst []byte) int {
+func ccompatHC(level lz4.CompressionLevel) func(src, dst []byte) int {
 	c := lz4.CompressorCCompatHC{Level: level}
 	return func(src, dst []byte) int {
 		n, _ := c.CompressBlock(src, dst)

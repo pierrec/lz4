@@ -112,6 +112,34 @@ func TestCompressionLevelOptionCCompat(t *testing.T) {
 	}
 }
 
+// CompressorCCompatHC takes the C levels, with 0 as the default, and refuses
+// the others, such as Level9, which would otherwise mean the slowest level.
+func TestCompressorCCompatHCLevel(t *testing.T) {
+	src := bytes.Repeat([]byte("hello, world. "), 100)
+	dst := make([]byte, lz4.CompressBlockBound(len(src)))
+	for _, tc := range []struct {
+		level lz4.CompressionLevel
+		valid bool
+	}{
+		{0, true},
+		{lz4.CCompatFast, true},
+		{lz4.CCompatLevel2, true},
+		{lz4.CCompatLevel12, true},
+		{lz4.CCompatLevel12 + 1, false},
+		{lz4.Level1, false},
+		{lz4.Level9, false},
+	} {
+		c := lz4.CompressorCCompatHC{Level: tc.level}
+		n, err := c.CompressBlock(src, dst)
+		if tc.valid != (err == nil) || tc.valid != (n > 0) {
+			t.Errorf("Level %d: n=%d, err=%v", uint32(tc.level), n, err)
+		}
+		if err != nil && !errors.Is(err, lz4.ErrOptionInvalidCompressionLevel) {
+			t.Errorf("Level %d: %v, want ErrOptionInvalidCompressionLevel", uint32(tc.level), err)
+		}
+	}
+}
+
 // A Writer at CCompatLevelN writes the blocks CompressorCCompatHC writes at
 // level N, raw where they do not fit in the block's size.
 func TestWriterCCompatHCBlocks(t *testing.T) {
@@ -132,7 +160,7 @@ func TestWriterCCompatHCBlocks(t *testing.T) {
 		if err := zw.Close(); err != nil {
 			t.Fatal(err)
 		}
-		c := lz4.CompressorCCompatHC{Level: int(level)}
+		c := lz4.CompressorCCompatHC{Level: level}
 		var want []byte
 		for b := text; len(b) > 0; {
 			chunk := b[:min(64<<10, len(b))]

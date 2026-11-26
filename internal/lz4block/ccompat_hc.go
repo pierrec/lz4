@@ -250,6 +250,9 @@ func (h *hcCtx) getWiderMatch(ip, iLowLimit, iHighLimit, longest, maxNbAttempts 
 	// Indexes are never below prefixIdx, so this omits lz4hc.c's extDict
 	// cases, LZ4HC_protectDictEnd always holds, and subtracting a chain
 	// distance (below 64ki) from an index (at least 64ki) cannot wrap.
+	// Callers never move ip back, so every inserted index, and so every
+	// candidate, precedes ip: the unchecked loads below rely on that, which
+	// lz4hc.c asserts.
 	//
 	// LZ4_count and LZ4HC_countBack are inlined by hand: calls in this loop
 	// make the compiler keep its variables on the stack.

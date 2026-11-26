@@ -66,9 +66,8 @@ func ExampleCompressBlockWithDict() {
 	dict := []byte(`{"service":"checkout","level":"info","msg":"request served","status":200}`)
 	msg := []byte(`{"service":"checkout","level":"info","msg":"request served","status":404}`)
 
-	var c lz4.Compressor
 	buf := make([]byte, lz4.CompressBlockBound(len(msg)))
-	n, err := c.CompressBlockWithDict(msg, buf, dict)
+	n, err := lz4.CompressBlockWithDict(msg, buf, dict)
 	if err != nil {
 		fmt.Println(err)
 	}

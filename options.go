@@ -310,8 +310,8 @@ var errDictIDWithoutDict = fmt.Errorf("%w: DictionaryIDOption without Dictionary
 // Reader returns ErrInvalidFrameDescriptor for a frame that holds another ID,
 // as decoding with the wrong dictionary would produce garbage; it reads
 // frames without an ID as before. An ID without a dictionary makes the first
-// Write, Close or ReadFrom of a Writer, or Read of a CompressingReader, return
-// ErrOptionNotApplicable.
+// Write, ReadFrom, Flush or Close of a Writer, or Read of a CompressingReader,
+// return ErrOptionNotApplicable.
 func DictionaryIDOption(id uint32) Option {
 	return func(a applier) error {
 		switch rw := a.(type) {
@@ -337,8 +337,9 @@ func DictionaryIDOption(id uint32) Option {
 // DictionaryOption defines the dictionary to use for compression and decompression.
 // Compression with a dictionary supports Fast and Level1 to Level9, not the
 // levels that reproduce the C library's output, and only non-legacy frames:
-// with another CompressionLevelOption, or LegacyOption(true), on a Writer or
-// CompressingReader, either option returns ErrOptionNotApplicable.
+// with another CompressionLevelOption on a Writer or CompressingReader, or
+// with LegacyOption(true) on a Writer, either option returns
+// ErrOptionNotApplicable.
 func DictionaryOption(dict []byte) Option {
 	dict = bytes.Clone(dict) // never modified, so shared by all it is applied to
 	return func(a applier) error {

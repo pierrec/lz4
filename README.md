@@ -85,8 +85,8 @@ A dictionary improves the compression of small inputs that look alike, such
 as log lines or messages that share a schema. `CompressBlockWithDict` and
 `UncompressBlockWithDict` use one for a block, and `DictionaryOption` for a
 `Writer`, `Reader` or `CompressingReader`. Decompression needs the same
-dictionary: frames do not record which one was used. The output is
-compatible with the C library's dictionary functions.
+dictionary; frames record at most its ID, set with `DictionaryIDOption`. The
+output is compatible with the C library's dictionary functions.
 
 LZ4 does not define a dictionary format. Any bytes will do, and only the last
 64 KiB are used, so put the most common content last. A sample of typical

@@ -364,51 +364,98 @@ func TestWriterFlushRepeated(t *testing.T) {
 type flushErrorWriter struct {
 	writes int
 	failAt int
+	once   bool // fail only write failAt, as with a transient error
 }
 
 func (w *flushErrorWriter) Write(p []byte) (int, error) {
 	w.writes++
-	if w.writes >= w.failAt {
+	if w.writes == w.failAt || !w.once && w.writes > w.failAt {
 		return 0, io.ErrClosedPipe
 	}
 	return len(p), nil
 }
 
+// A failed Flush fails the Writer until Reset, even if the error was
+// transient: retrying the block could duplicate the part already written.
 func TestWriterFlushError(t *testing.T) {
 	for _, concurrency := range []int{1, 2, 4} {
 		for _, failAt := range []int{2, 3} {
-			t.Run(fmt.Sprintf("concurrency=%d/failAt=%d", concurrency, failAt), func(t *testing.T) {
-				zw := lz4.NewWriter(&flushErrorWriter{failAt: failAt})
-				if err := zw.Apply(lz4.ConcurrencyOption(concurrency), lz4.BlockSizeOption(lz4.Block64Kb)); err != nil {
-					t.Fatal(err)
-				}
-				if _, err := zw.Write([]byte("first block")); err != nil {
-					t.Fatal(err)
-				}
-				err := zw.Flush()
-				if concurrency == 1 {
-					if err != io.ErrClosedPipe {
-						t.Fatalf("Flush: got %v, want %v", err, io.ErrClosedPipe)
-					}
-					zw.Reset(io.Discard)
-					return
-				}
-				if err != nil {
-					t.Fatal(err)
-				}
-				for range 8 {
-					if _, err := zw.Write([]byte("next block")); err != nil {
-						t.Fatal(err)
-					}
-					if err := zw.Flush(); err != nil {
-						t.Fatal(err)
-					}
-				}
-				if err := zw.Close(); err != io.ErrClosedPipe {
-					t.Fatalf("Close: got %v, want %v", err, io.ErrClosedPipe)
-				}
-			})
+			for _, once := range []bool{false, true} {
+				t.Run(fmt.Sprintf("concurrency=%d/failAt=%d/once=%v", concurrency, failAt, once), func(t *testing.T) {
+					testWriterFlushError(t, concurrency, failAt, once)
+				})
+			}
 		}
+	}
+}
+
+func testWriterFlushError(t *testing.T, concurrency, failAt int, once bool) {
+	dst := &flushErrorWriter{failAt: failAt, once: once}
+	zw := lz4.NewWriter(dst)
+	if err := zw.Apply(lz4.ConcurrencyOption(concurrency), lz4.BlockSizeOption(lz4.Block64Kb)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := zw.Write([]byte("first block")); err != nil {
+		t.Fatal(err)
+	}
+	err := zw.Flush()
+	if concurrency == 1 {
+		if err != io.ErrClosedPipe {
+			t.Fatalf("Flush: got %v, want %v", err, io.ErrClosedPipe)
+		}
+		writes := dst.writes
+		if n, err := zw.Write([]byte("more")); !errors.Is(err, io.ErrClosedPipe) || n != 0 {
+			t.Fatalf("Write after failed Flush: n=%d err=%v", n, err)
+		}
+		if n, err := zw.ReadFrom(bytes.NewReader([]byte("more"))); !errors.Is(err, io.ErrClosedPipe) || n != 0 {
+			t.Fatalf("ReadFrom after failed Flush: n=%d err=%v", n, err)
+		}
+		if err := zw.Flush(); !errors.Is(err, io.ErrClosedPipe) {
+			t.Fatalf("Flush after failed Flush: %v", err)
+		}
+		if err := zw.Close(); !errors.Is(err, io.ErrClosedPipe) {
+			t.Fatalf("Close after failed Flush: %v", err)
+		}
+		if dst.writes != writes {
+			t.Fatalf("%d writes after failed Flush", dst.writes-writes)
+		}
+		var buf bytes.Buffer
+		zw.Reset(&buf)
+		if _, err := zw.Write([]byte("recovered")); err != nil {
+			t.Fatal(err)
+		}
+		if err := zw.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if out, err := io.ReadAll(lz4.NewReader(&buf)); err != nil || string(out) != "recovered" {
+			t.Fatalf("after Reset: %q, %v", out, err)
+		}
+		return
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 8 {
+		if _, err := zw.Write([]byte("next block")); err != nil {
+			t.Fatal(err)
+		}
+		if err := zw.Flush(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := zw.Close(); err != io.ErrClosedPipe {
+		t.Fatalf("Close: got %v, want %v", err, io.ErrClosedPipe)
+	}
+}
+
+// A zero-value Writer, not made by NewWriter, fails instead of panicking.
+func TestWriterZeroValue(t *testing.T) {
+	var zw lz4.Writer
+	if err := zw.Flush(); !errors.Is(err, lz4.ErrInternalUnhandledState) {
+		t.Fatalf("Flush: %v", err)
+	}
+	if err := zw.Close(); !errors.Is(err, lz4.ErrInternalUnhandledState) {
+		t.Fatalf("Close: %v", err)
 	}
 }
 
@@ -1388,95 +1435,4 @@ func TestWriterReadFromWriteError(t *testing.T) {
 		t.Fatalf("Close after the error: got %v, want %v", err, io.ErrClosedPipe)
 	}
 	zw.Reset(io.Discard)
-}
-
-type failOnceWriter struct {
-	writes int
-	failAt int
-	err    error
-}
-
-func (w *failOnceWriter) Write(p []byte) (int, error) {
-	w.writes++
-	if w.writes == w.failAt {
-		return 0, w.err
-	}
-	return len(p), nil
-}
-
-// TestWriterFlushErrorSticky checks that a failed Flush latches the writer's
-// error state so subsequent Write, ReadFrom, Flush, and Close calls fail
-// instead of silently succeeding or retrying writes on a broken stream.
-func TestWriterFlushErrorSticky(t *testing.T) {
-	t.Run("permanent", func(t *testing.T) {
-		dst := &flushErrorWriter{failAt: 2}
-		zw := lz4.NewWriter(dst)
-		if err := zw.Apply(lz4.ConcurrencyOption(1), lz4.BlockSizeOption(lz4.Block64Kb)); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := zw.Write([]byte("first block")); err != nil {
-			t.Fatal(err)
-		}
-		if err := zw.Flush(); err != io.ErrClosedPipe {
-			t.Fatalf("Flush: got %v, want %v", err, io.ErrClosedPipe)
-		}
-		writesAfterFail := dst.writes
-		if n, err := zw.Write([]byte("more")); !errors.Is(err, io.ErrClosedPipe) || n != 0 {
-			t.Fatalf("Write after failed Flush: n=%d err=%v, want 0 and %v", n, err, io.ErrClosedPipe)
-		}
-		if n, err := zw.ReadFrom(bytes.NewReader([]byte("more"))); !errors.Is(err, io.ErrClosedPipe) || n != 0 {
-			t.Fatalf("ReadFrom after failed Flush: n=%d err=%v, want 0 and %v", n, err, io.ErrClosedPipe)
-		}
-		if err := zw.Flush(); !errors.Is(err, io.ErrClosedPipe) {
-			t.Fatalf("Flush after failed Flush: got %v, want %v", err, io.ErrClosedPipe)
-		}
-		if err := zw.Close(); !errors.Is(err, io.ErrClosedPipe) {
-			t.Fatalf("Close after failed Flush: got %v, want %v", err, io.ErrClosedPipe)
-		}
-		if dst.writes != writesAfterFail {
-			t.Fatalf("destination received %d extra writes after failed Flush", dst.writes-writesAfterFail)
-		}
-		// Reset clears the latched error state.
-		var buf bytes.Buffer
-		zw.Reset(&buf)
-		if _, err := zw.Write([]byte("recovered")); err != nil {
-			t.Fatalf("Write after Reset: %v", err)
-		}
-		if err := zw.Close(); err != nil {
-			t.Fatalf("Close after Reset: %v", err)
-		}
-		out, err := io.ReadAll(lz4.NewReader(&buf))
-		if err != nil || string(out) != "recovered" {
-			t.Fatalf("decoded after Reset: %q, %v; want %q", out, err, "recovered")
-		}
-	})
-
-	t.Run("transient", func(t *testing.T) {
-		errBoom := errors.New("transient write failure")
-		dst := &failOnceWriter{failAt: 2, err: errBoom}
-		zw := lz4.NewWriter(dst)
-		if err := zw.Apply(lz4.ConcurrencyOption(1), lz4.BlockSizeOption(lz4.Block64Kb)); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := zw.Write([]byte("payload")); err != nil {
-			t.Fatal(err)
-		}
-		if err := zw.Flush(); err != errBoom {
-			t.Fatalf("Flush: got %v, want %v", err, errBoom)
-		}
-		writesAfterFail := dst.writes
-		if err := zw.Close(); !errors.Is(err, errBoom) {
-			t.Fatalf("Close after transient Flush error: got %v, want %v", err, errBoom)
-		}
-		if dst.writes != writesAfterFail {
-			t.Fatalf("Close retried %d writes after failed Flush", dst.writes-writesAfterFail)
-		}
-	})
-
-	t.Run("uninitialized", func(t *testing.T) {
-		var zw lz4.Writer
-		if err := zw.Flush(); err == nil {
-			t.Fatal("Flush on zero-value Writer returned nil, want error")
-		}
-	})
 }

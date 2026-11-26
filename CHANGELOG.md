@@ -64,6 +64,12 @@ issues in this repository.
   it rejected them with `ErrInvalidFrameDescriptor` even with the right
   dictionary. Without a dictionary it still rejects them, and
   `ValidFrameHeader` accepts such headers.
+- `Writer` fails after a failed `Flush` until `Reset`, as after a failed
+  `Write`. Without concurrency, a later `Write` succeeded and `Close` wrote
+  the block again, which corrupts the frame if the destination took part of
+  it, and returned nil if that write succeeded. `Flush` and `Close` on a
+  zero-value `Writer` return `ErrInternalUnhandledState`; `Close` panicked
+  (#321).
 - The amd64 block decoder assembles again for dynamic linking
   (`-buildmode=plugin` and `-buildmode=shared` on linux/amd64); since v4.1.32
   the build failed with `R15 is clobbered by a global variable access`. CI now

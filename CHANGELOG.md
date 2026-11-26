@@ -23,6 +23,12 @@ issues in this repository.
   when its `dictID` preference is set, and a `Reader` refuses a frame with
   another ID with `ErrInvalidFrameDescriptor`, as decoding with the wrong
   dictionary produces garbage that only a content checksum would catch.
+- `CompressorCCompatHC` and the levels `CCompatLevel2` to `CCompatLevel12`
+  port the C library's `LZ4_compress_HC` and produce the same blocks at each
+  of its levels: level 2 (`lz4mid`), the hash chain with lookahead of levels
+  3 to 9, and the optimal parser of levels 10 to 12. Unlike `Level1` to
+  `Level9`, which differ in search depth only and give almost the same
+  output, they trade speed for ratio as C's levels do (#219).
 
 ### Changed
 

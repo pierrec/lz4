@@ -56,23 +56,32 @@ func fuzzSeeds(f *testing.F) {
 	f.Add([]byte("the quick brown fox jumps over the lazy dog. "), []byte("the quick brown fox "))
 }
 
-// FuzzCompressorCCompat checks CompressorCCompat against arbitrary input,
-// destination sizes and accelerations; see checkCCompat.
+// FuzzCompressorCCompat checks CompressorCCompat and CompressorCCompatHC
+// against arbitrary input, destination sizes and accelerations or levels; see
+// checkCCompat. A level of 0 selects CompressorCCompat, and the others
+// CompressorCCompatHC at level-1, so that its default level is reached too.
 func FuzzCompressorCCompat(f *testing.F) {
 	for _, src := range ccompatInputs(f) {
 		if len(src) > 1<<16 {
 			src = src[:1<<16]
 		}
-		f.Add(src, uint32(CompressBlockBound(len(src))), uint8(1))
-		f.Add(src, uint32(len(src)/2), uint8(3))
+		for _, level := range []uint8{0, 3, 4, 10, 13} {
+			f.Add(src, uint32(CompressBlockBound(len(src))), uint8(1), level)
+			f.Add(src, uint32(len(src)/2), uint8(3), level)
+		}
 	}
 	var c CompressorCCompat
-	f.Fuzz(func(t *testing.T, src []byte, dstLen uint32, accel uint8) {
+	var hc CompressorCCompatHC
+	f.Fuzz(func(t *testing.T, src []byte, dstLen uint32, accel, level uint8) {
 		bound := CompressBlockBound(len(src))
 		if int(dstLen) > bound {
 			dstLen = uint32(bound)
 		}
-		checkCCompat(t, &c, src, int(dstLen), int(accel))
+		if level == 0 {
+			checkCCompat(t, &c, src, int(dstLen), int(accel))
+			return
+		}
+		checkCCompatHC(t, &hc, src, int(dstLen), int(level%14)-1)
 	})
 }
 

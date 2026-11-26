@@ -50,10 +50,21 @@ func _() {
 	_ = x[Level8-65536]
 	_ = x[Level9-131072]
 	_ = x[CCompatFast-1]
+	_ = x[CCompatLevel2-2]
+	_ = x[CCompatLevel3-3]
+	_ = x[CCompatLevel4-4]
+	_ = x[CCompatLevel5-5]
+	_ = x[CCompatLevel6-6]
+	_ = x[CCompatLevel7-7]
+	_ = x[CCompatLevel8-8]
+	_ = x[CCompatLevel9-9]
+	_ = x[CCompatLevel10-10]
+	_ = x[CCompatLevel11-11]
+	_ = x[CCompatLevel12-12]
 }
 
 const (
-	_CompressionLevel_name_0 = "FastCCompatFast"
+	_CompressionLevel_name_0 = "FastCCompatFastCCompatLevel2CCompatLevel3CCompatLevel4CCompatLevel5CCompatLevel6CCompatLevel7CCompatLevel8CCompatLevel9CCompatLevel10CCompatLevel11CCompatLevel12"
 	_CompressionLevel_name_1 = "Level1"
 	_CompressionLevel_name_2 = "Level2"
 	_CompressionLevel_name_3 = "Level3"
@@ -66,12 +77,12 @@ const (
 )
 
 var (
-	_CompressionLevel_index_0 = [...]uint8{0, 4, 15}
+	_CompressionLevel_index_0 = [...]uint8{0, 4, 15, 28, 41, 54, 67, 80, 93, 106, 119, 133, 147, 161}
 )
 
 func (i CompressionLevel) String() string {
 	switch {
-	case i <= 1:
+	case i <= 12:
 		return _CompressionLevel_name_0[_CompressionLevel_index_0[i]:_CompressionLevel_index_0[i+1]]
 	case i == 512:
 		return _CompressionLevel_name_1

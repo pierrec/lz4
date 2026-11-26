@@ -109,4 +109,11 @@ const (
 	// CCompatFast selects CompressorCCompat. The HC levels are powers of two from
 	// 1<<9, so it cannot be mistaken for one.
 	CCompatFast CompressionLevel = 1
+	// CCompatLevel2 to CCompatLevel12 select CompressorCCompatHC at the C
+	// library's levels of the same numbers.
+	CCompatLevel2  CompressionLevel = 2
+	CCompatLevel12 CompressionLevel = 12
 )
+
+// IsCCompatHC reports whether l selects CompressorCCompatHC.
+func (l CompressionLevel) IsCCompatHC() bool { return l >= CCompatLevel2 && l <= CCompatLevel12 }

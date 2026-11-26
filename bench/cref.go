@@ -30,7 +30,12 @@ func CompressFast(src, dst []byte, acceleration int) int {
 
 // CompressHC is LZ4_compress_HC.
 func CompressHC(src, dst []byte, level int) int {
-	return int(C.LZ4_compress_HC(ptr(src), ptr(dst), C.int(len(src)), C.int(len(dst)), C.int(level)))
+	p := ptr(src)
+	if p == nil {
+		// Levels 10 to 12 read through a NULL src, even when empty.
+		p = (*C.char)(unsafe.Pointer(&[1]byte{}))
+	}
+	return int(C.LZ4_compress_HC(p, ptr(dst), C.int(len(src)), C.int(len(dst)), C.int(level)))
 }
 
 // DecompressSafe is LZ4_decompress_safe.

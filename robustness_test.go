@@ -758,7 +758,7 @@ func TestOptionErrors(t *testing.T) {
 	}{
 		{"blockSize0", lz4.BlockSizeOption(0), lz4.ErrOptionInvalidBlockSize},
 		{"blockSize123", lz4.BlockSizeOption(123), lz4.ErrOptionInvalidBlockSize},
-		{"level3", lz4.CompressionLevelOption(3), lz4.ErrOptionInvalidCompressionLevel},
+		{"level13", lz4.CompressionLevelOption(13), lz4.ErrOptionInvalidCompressionLevel},
 		{"level1<<18", lz4.CompressionLevelOption(1 << 18), lz4.ErrOptionInvalidCompressionLevel},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

@@ -95,11 +95,12 @@ func FuzzFrameRoundTrip(f *testing.F) {
 	}
 	blockSizes := []lz4.BlockSize{lz4.Block64Kb, lz4.Block256Kb, lz4.Block1Mb, lz4.Block4Mb}
 	levels := []lz4.CompressionLevel{lz4.Fast, lz4.Level1, lz4.Level5, lz4.Level9}
+	ccompatLevels := []lz4.CompressionLevel{lz4.CCompatFast, lz4.CCompatLevel2, lz4.CCompatLevel9, lz4.CCompatLevel10}
 	f.Fuzz(func(t *testing.T, data []byte, flags uint16, chunk uint16, dict []byte) {
 		legacy := flags&(1<<9) != 0
 		level := levels[flags>>2&3]
 		if flags&(1<<10) != 0 {
-			level = lz4.CCompatFast
+			level = ccompatLevels[flags>>2&3]
 		}
 		if !slices.Contains(levels, level) || legacy {
 			dict = nil // neither the C-compatible levels nor legacy frames support one

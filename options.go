@@ -183,6 +183,36 @@ func (l CompressionLevel) dictOK() bool {
 	return false
 }
 
+// CCompatLevel2 to CCompatLevel12 compress with CompressorCCompatHC at the
+// reference implementation's levels of the same numbers, and produce the
+// same blocks as it does. Higher levels are slower and compress more;
+// CCompatLevel9 is the C library's default high compression level. See
+// CompressorCCompatHC.
+//
+// Their values are the C levels, but they only select those levels in
+// CompressionLevelOption: CompressorHC takes Level as a search depth.
+const (
+	CCompatLevel2 CompressionLevel = 2 + iota
+	CCompatLevel3
+	CCompatLevel4
+	CCompatLevel5
+	CCompatLevel6
+	CCompatLevel7
+	CCompatLevel8
+	CCompatLevel9
+	CCompatLevel10
+	CCompatLevel11
+	CCompatLevel12
+)
+
+func (l CompressionLevel) valid() bool {
+	switch l {
+	case Fast, CCompatFast, Level1, Level2, Level3, Level4, Level5, Level6, Level7, Level8, Level9:
+		return true
+	}
+	return lz4block.CompressionLevel(l).IsCCompatHC()
+}
+
 // CompressionLevelOption defines the compression level (default=Fast).
 func CompressionLevelOption(level CompressionLevel) Option {
 	return func(a applier) error {
@@ -191,9 +221,7 @@ func CompressionLevelOption(level CompressionLevel) Option {
 			s := fmt.Sprintf("CompressionLevelOption(%s)", level)
 			return lz4errors.Error(s)
 		case *Writer:
-			switch level {
-			case Fast, CCompatFast, Level1, Level2, Level3, Level4, Level5, Level6, Level7, Level8, Level9:
-			default:
+			if !level.valid() {
 				return fmt.Errorf("%w: %d", lz4errors.ErrOptionInvalidCompressionLevel, level)
 			}
 			if len(w.dict) > 0 && !level.dictOK() {
@@ -202,9 +230,7 @@ func CompressionLevelOption(level CompressionLevel) Option {
 			w.level = lz4block.CompressionLevel(level)
 			return nil
 		case *CompressingReader:
-			switch level {
-			case Fast, CCompatFast, Level1, Level2, Level3, Level4, Level5, Level6, Level7, Level8, Level9:
-			default:
+			if !level.valid() {
 				return fmt.Errorf("%w: %d", lz4errors.ErrOptionInvalidCompressionLevel, level)
 			}
 			if len(w.dict) > 0 && !level.dictOK() {

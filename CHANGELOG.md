@@ -4,7 +4,7 @@ Notable changes to `github.com/pierrec/lz4/v4`, newest first. Entries before
 v4.1.34 were reconstructed from the git history; numbers are pull requests or
 issues in this repository.
 
-## Unreleased
+## v4.1.35
 
 ### Added
 
@@ -12,41 +12,54 @@ issues in this repository.
   one, with examples for `CompressBlockWithDict` and `DictionaryOption`.
   In CI, the `lz4` command and this package decode each other's frames
   compressed with a dictionary; a fuzzer in `bench` checks blocks against
-  liblz4.
+  liblz4 (#310).
 - Compression with a dictionary supports the HC levels: `DictionaryOption`
   works with `Fast` and `Level1` to `Level9`, and `CompressorHC` gains
   `CompressBlockWithDict`. Compressing pg1661.txt after its first 64 KiB, in
   64 KiB blocks with those 64 KiB as the dictionary, `Level9` output shrinks
-  from 52.0% to 45.3% of the input.
+  from 52.0% to 45.3% of the input (#313).
 - `DictionaryIDOption` sets the ID of the dictionary: `Writer` and
   `CompressingReader` write it in the frame descriptor, as the C library does
   when its `dictID` preference is set, and a `Reader` refuses a frame with
   another ID with `ErrInvalidFrameDescriptor`, as decoding with the wrong
   dictionary produces garbage that only a content checksum would catch.
   `Writer` and `CompressingReader` return `ErrOptionNotApplicable` for an ID
-  without a dictionary.
+  without a dictionary (#314, #319).
 - `CompressorCCompatHC` and the levels `CCompatLevel2` to `CCompatLevel12`
   port the C library's `LZ4_compress_HC` and produce the same blocks at each
   of its levels: level 2 (`lz4mid`), the hash chain with lookahead of levels
   3 to 9, and the optimal parser of levels 10 to 12. Unlike `Level1` to
   `Level9`, which differ in search depth only and give almost the same
-  output, they trade speed for ratio as C's levels do (#219). Set
+  output, they trade speed for ratio as C's levels do. Set
   `CompressorCCompatHC.Level` to one of them; it refuses `Level1` to
-  `Level9`. In `CompressorHC.Level`, they would be search depths of 2 to 12.
+  `Level9`. In `CompressorHC.Level`, they would be search depths of 2 to 12
+  (#219, #312, #320).
 - `LICENSE-lz4` holds the BSD 2-Clause License of the C library, whose code
   `CompressorCCompat` and `CompressorCCompatHC` port; the ported files and the
   README name it. Programs distributed in binary form should reproduce it
-  with this package's license.
+  with this package's license (#312).
 
 ### Changed
 
 - A dictionary no longer turns off concurrency. `Writer` compresses blocks
   with a dictionary concurrently, writing the same frame as without
   concurrency, and `Reader` decodes independent blocks with one concurrently.
+  With `ConcurrencyOption` above 1, a `Writer` with a dictionary now behaves
+  as one without: it calls the `OnBlockDoneOption` handler from several
+  goroutines, so the handler must be safe for concurrent use, and it reports
+  an error from the destination at `Close` rather than at the `Write` that
+  produced the block (#311).
+- `CompressionLevelOption` accepts 2 to 12, as `CCompatLevel2` to
+  `CCompatLevel12`; `CompressionLevel(2)` to `CompressionLevel(12)` failed
+  with `ErrOptionInvalidCompressionLevel`, and now select the C library's
+  levels, which are slower at the top: level 12 is its optimal parser (#312).
 - `Reader` decodes frames with linked blocks, such as `lz4 -BD` writes, without
   allocating: it keeps the last 64 KiB of output instead of copying every block
   into a new buffer. Decoding the Silesia corpus is about 30% faster from
   64 KiB blocks and 13% faster from 4 MiB blocks on a Zen 3 core (#308).
+- The amd64 block decoder does less work for short sequences. Decoding the
+  Silesia corpus takes 5-6% less time on an Intel Xeon 6975P-C (Granite
+  Rapids) and 2-4% less on a Zen 3 core (#322, #323).
 
 ### Fixed
 
@@ -55,21 +68,26 @@ issues in this repository.
   the size, which broke three common uses: a later `Apply` call, which resets
   first; `Reset` after `Apply`, as after `NewWriter(nil)`; and a second frame.
   `Close` failed with `ErrInvalidContentSize`; before v4.1.31, such frames were
-  written with a content size of 0.
+  written with a content size of 0 (#317).
 - `Reader` treats a declared content size of 0 as unknown, as the C library
   does, so it reads those frames again; since v4.1.31 it rejected them with
-  `ErrInvalidContentSize`.
+  `ErrInvalidContentSize` (#317).
 - `Reader` with `DictionaryOption` decodes frames whose descriptor holds a
   dictionary ID, as the C library writes when its `dictID` preference is set;
   it rejected them with `ErrInvalidFrameDescriptor` even with the right
   dictionary. Without a dictionary it still rejects them, and
-  `ValidFrameHeader` accepts such headers.
+  `ValidFrameHeader` now accepts such headers (#314).
 - `Writer` fails after a failed `Flush` until `Reset`, as after a failed
   `Write`. Without concurrency, a later `Write` succeeded and `Close` wrote
   the block again, which corrupts the frame if the destination took part of
   it, and returned nil if that write succeeded. `Flush` and `Close` on a
   zero-value `Writer` return `ErrInternalUnhandledState`; `Close` panicked
   (#321).
+- A `Writer` at `CCompatFast` or a `CCompatLevel` stores a block raw unless it
+  compresses to less than its size, as the C library's frame encoder does. A
+  block that compressed to exactly its size was written compressed, so such
+  frames could differ from the `lz4` command's; at `CCompatFast` since
+  v4.1.31 (#324).
 - The amd64 block decoder assembles again for dynamic linking
   (`-buildmode=plugin` and `-buildmode=shared` on linux/amd64); since v4.1.32
   the build failed with `R15 is clobbered by a global variable access`. CI now
@@ -77,17 +95,27 @@ issues in this repository.
 
 ### `lz4c`
 
+These ship in `cmd/lz4c` v1.1.0, which follows this tag.
+
 - `compress -D file` compresses with a dictionary, and `uncompress -D file`
-  decompresses with it, as with the C `lz4` command. Until `lz4c` builds
-  against a release with HC dictionaries, `-D` works only at `-l 0`.
+  decompresses with it, as with the C `lz4` command. `-D` works with `-l 0`
+  to `-l 9`; with `-ccompat` it fails, as the C-compatible levels take no
+  dictionary (#315, #324).
 - `compress -ccompat -l N` compresses each block as the C `lz4` tool does at
   level N, from 1 to 12 (`CCompatFast` and `CCompatLevel2` to
-  `CCompatLevel12`). Without `-ccompat`, `-l` is unchanged.
+  `CCompatLevel12`). Without `-ccompat`, `-l` is unchanged (#316).
 - `lz4c` requires Go 1.27; the library still requires Go 1.22. CI runs its
   tests, and tests the library on Go 1.22 and with the `nounsafe` tag (#309).
 - The help for `compress -sc` said that it disables the stream checksum; the
   flag has always enabled it, and the help now says so. Without `-sc`, frames
   still have no stream checksum (#302).
+
+### Internal
+
+- A `cmd/lz4c/BUMP` file containing `minor` makes the next `lz4c` release a
+  minor version rather than a patch, and the release commit deletes it;
+  `cmd/lz4c/release.sh -next` prints the version the next release will tag
+  (#325).
 
 ## v4.1.34
 

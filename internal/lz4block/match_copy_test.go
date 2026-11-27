@@ -442,6 +442,27 @@ func TestMatchCopyDict(t *testing.T) {
 	}
 }
 
+// TestMatchCopyDictLowAddress enters the shortcut with a destination below
+// the match offset. Unsigned pointer subtraction must fall back to dictionary
+// handling instead of rejecting the block.
+func TestMatchCopyDictLowAddress(t *testing.T) {
+	dst := lowBuffer(t, 33)
+	dict := guardedTail(t, winMask)
+	copy(dict, "dict")
+	block := appendSeq(nil, nil, winMask, minMatch)
+	block = appendSeq(block, []byte("abcdefghijklmn"), 0, 0)
+	src := guardedTail(t, len(block))
+	copy(src, block)
+	want := []byte("dictabcdefghijklmn")
+	n := decodeBlock(dst, src, dict)
+	if n != len(want) {
+		t.Fatalf("decodeBlock = %d, want %d", n, len(want))
+	}
+	if !bytes.Equal(dst[:n], want) {
+		t.Fatalf("decodeBlock = %q, want %q", dst[:n], want)
+	}
+}
+
 // BenchmarkDecodeLongCopy measures single sequences whose literal run or
 // match is far longer than any inline copy loop: incompressible data (one
 // long literal), runs of a repeated short pattern such as zeros (one long
@@ -513,5 +534,38 @@ func BenchmarkDecodeLongCopy(b *testing.B) {
 	}
 	for _, bc := range dictBenches {
 		run(bc, dict)
+	}
+}
+
+// TestShortcutBounds puts both buffers against an inaccessible page. Short
+// sequences exercise the shortcut and then leave it at each tail boundary.
+func TestShortcutBounds(t *testing.T) {
+	srcBuf, dstBuf := guardedTail(t, 128), guardedTail(t, 128)
+	prefix := appendSeq(nil, testPattern(8, 1), 8, 8)
+	for lit := 0; lit <= 15; lit++ {
+		for _, match := range []int{4, 18, 19} {
+			for _, offset := range []int{0, 1, 8, 32} {
+				for tail := 0; tail <= 18; tail++ {
+					block := appendSeq(append([]byte(nil), prefix...), testPattern(lit, 2), offset, match)
+					block = appendSeq(block, testPattern(tail, 3), 0, 0)
+					// Include truncated offsets, extensions and final literals.
+					for _, end := range []int{len(prefix) + 1, len(prefix) + 1 + lit, len(prefix) + 2 + lit, len(prefix) + 3 + lit, len(block)} {
+						src := srcBuf[len(srcBuf)-end:]
+						copy(src, block[:end])
+						for _, size := range []int{31, 32, 33, 16 + lit + match + tail} {
+							dst := dstBuf[len(dstBuf)-size:]
+							clear(dst)
+							dict := []byte("0123456789abcdef0123456789abcdef")
+							want := make([]byte, size)
+							wn := decodeBlockGo(want, src, dict)
+							n := decodeBlock(dst, src, dict)
+							if (n < 0) != (wn < 0) || n >= 0 && (n != wn || !bytes.Equal(dst[:n], want[:wn])) {
+								t.Fatalf("lit=%d match=%d offset=%d tail=%d end=%d dst=%d: got %d, want %d", lit, match, offset, tail, end, size, n, wn)
+							}
+						}
+					}
+				}
+			}
+		}
 	}
 }

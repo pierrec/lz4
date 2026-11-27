@@ -49,92 +49,77 @@ TEXT ·decodeBlock(SB), NOSPLIT, $48-80
 
 	// short input end
 	MOVQ R9, R13
-	SUBQ $16, R13
+	SUBQ $17, R13
 
 	XORL CX, CX
 
+	// Keep the short-sequence loop on a 32-byte boundary; compare
+	// changes here with an alignment-only control as well as the base.
+	PCALIGN $32
+
 loop:
-	// token := uint32(src[si])
+	// Keep SI at the token until the literal length is known.
 	MOVBLZX (SI), DX
-	INCQ    SI
+	CMPB    DX, $0xF0
+	JAE     lit_len_loop_pre
+	MOVL    DX, AX
+	SHRL    $4, AX
 
-	// lit_len = token >> 4
-	// if lit_len > 0
-	// CX = lit_len
-	MOVL DX, CX
-	SHRL $4, CX
-
-	// if lit_len != 0xF
-	CMPL CX, $0xF
-	JEQ  lit_len_loop
 	CMPQ DI, R12
-	JAE  copy_literal
+	JAE  copy_literal_pre
 	CMPQ SI, R13
-	JAE  copy_literal
+	JAE  copy_literal_pre
 
-	// copy shortcut
-
-	// A two-stage shortcut for the most common case:
-	// 1) If the literal length is 0..14, and there is enough space,
-	// enter the shortcut and copy 16 bytes on behalf of the literals
-	// (in the fast mode, only 8 bytes can be safely copied this way).
-	// 2) Further if the match length is 4..18, copy 18 bytes in a similar
-	// manner; but we ensure that there's enough space in the output for
-	// those 18 bytes earlier, upon entering the shortcut (in other words,
-	// there is a combined check for both stages).
-
-	// copy literal
-	MOVOU (SI), X0
+	// The room guards cover both stages: 16 literal bytes, then
+	// up to 18 match bytes after at most 14 literals.
+	// SI < R9-17 also covers the indexed offset read and leaves
+	// the next token in bounds after SI advances by lit_len+3.
+	MOVOU 1(SI), X0
 	MOVOU X0, (DI)
-	ADDQ  CX, DI
-	ADDQ  CX, SI
+	ADDQ  AX, DI
 
-	MOVL DX, CX
-	ANDL $0xF, CX
-
-	// The second stage: prepare for match copying, decode full info.
-	// If it doesn't work out, the info won't be wasted.
-	// offset := uint16(data[:2])
-	MOVWLZX (SI), DX
-	TESTL   DX, DX
-	JE      err_corrupt
-	ADDQ    $2, SI
-	JC      err_short_buf
+	MOVL    DX, CX
+	ANDL    $0xF, CX
+	MOVWQZX 1(SI)(AX*1), DX
+	LEAQ    3(SI)(AX*1), SI
 
 	MOVQ DI, AX
 	SUBQ DX, AX
-	JC   err_corrupt
-	CMPQ AX, DI
-	JA   err_short_buf
+	JC   match_len_check
 
-	// if we can't do the second stage then jump straight to read the
-	// match length, we already have the offset.
+	// A zero offset always bails out here; reject it with the
+	// other slow matches, including those with an extended length.
 	CMPL CX, $0xF
-	JEQ  match_len_loop_pre
+	JEQ  match_len_check
 	CMPL DX, $8
-	JLT  match_len_loop_pre
+	JLT  match_len_check
 	CMPQ AX, R11
-	JB   match_len_loop_pre
+	JB   match_len_check
 
-	// memcpy(op + 0, match + 0, 8);
-	MOVQ (AX), BX
-	MOVQ BX, (DI)
-
-	// memcpy(op + 8, match + 8, 8);
-	MOVQ 8(AX), BX
-	MOVQ BX, 8(DI)
-
-	// memcpy(op +16, match +16, 2);
-	MOVW 16(AX), BX
-	MOVW BX, 16(DI)
+	// Sequence the copies so offsets 8..17 can reuse earlier stores.
+	MOVQ    (AX), BX
+	MOVQ    BX, (DI)
+	MOVQ    8(AX), BX
+	MOVQ    BX, 8(DI)
+	MOVWQZX 16(AX), BX
+	MOVW    BX, 16(DI)
 
 	LEAQ const_minMatch(DI)(CX*1), DI
+	JMP  loop
 
-	// shortcut complete, load next token
-	JMP loopcheck
+copy_literal_pre:
+	MOVL AX, CX
+	INCQ SI
+	JMP  copy_literal
 
-// Read the rest of the literal length:
-// do { BX = src[si++]; lit_len += BX } while (BX == 0xFF).
+lit_len_loop_pre:
+	// These 64-bit forms preserve the following inline copy loops
+	// at their old offsets (Go 1.27).
+	MOVQ $15, CX
+	INCQ SI
+
+	// Read the rest of the literal length:
+	// do { BX = src[si++]; lit_len += BX } while (BX == 0xFF).
 lit_len_loop:
 	CMPQ    SI, R9
 	JAE     err_short_buf
@@ -212,7 +197,7 @@ memmove_lit:
 	MOVQ R8, R12
 	SUBQ $32, R12
 	MOVQ R9, R13
-	SUBQ $16, R13
+	SUBQ $17, R13
 
 finish_lit_copy:
 	// CX := mLen
@@ -232,6 +217,7 @@ finish_lit_copy:
 	JA      err_short_buf
 	MOVWQZX -2(SI), DX
 
+match_len_check:
 	// 0 offset is invalid
 	TESTL DX, DX
 	JEQ   err_corrupt
@@ -563,7 +549,7 @@ copy_match_from_dict:
 	MOVQ R8, R12
 	SUBQ $32, R12
 	MOVQ R9, R13
-	SUBQ $16, R13
+	SUBQ $17, R13
 
 	// di+=copy_size
 	ADDQ AX, DI
@@ -599,7 +585,7 @@ memmove_match:
 	MOVQ R8, R12
 	SUBQ $32, R12
 	MOVQ R9, R13
-	SUBQ $16, R13
+	SUBQ $17, R13
 	XORL CX, CX
 
 	// Every sequence that does not take the shortcut ends here: keep this

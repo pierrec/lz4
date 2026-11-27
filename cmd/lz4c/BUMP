@@ -1,0 +1,4 @@
+# Read by release.sh: the next lz4c release is a minor version (v1.1.0),
+# for compress -D and -ccompat and the move to Go 1.27. The release
+# commit deletes this file.
+minor

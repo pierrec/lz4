@@ -14,8 +14,9 @@
 // it as if it preceded the input. CompressBlockWithDict and
 // UncompressBlockWithDict use one for a block, and DictionaryOption for a
 // frame. Decompression needs the same dictionary; frames record at most its
-// ID, from DictionaryIDOption. The output is compatible with the C library's dictionary
-// functions, such as LZ4_loadDict and LZ4_decompress_safe_usingDict.
+// ID, from DictionaryIDOption. The output is compatible with the C library's
+// dictionary functions, such as LZ4_loadDict and
+// LZ4_decompress_safe_usingDict.
 //
 // LZ4 does not define a dictionary format: any bytes will do, and only the
 // last 64 KiB are used, so put the most common content last. A sample of
@@ -186,8 +187,8 @@ func (c *CompressorCCompat) CompressBlock(src, dst []byte) (int, error) {
 // format.
 type CompressorCCompatHC struct {
 	// Level is the C library's compression level, CCompatLevel2 to
-	// CCompatLevel12. As in LZ4_compress_HC, 0 means CCompatLevel9 and 1
-	// means CCompatLevel2. Higher values, such as Level1 to Level9, make
+	// CCompatLevel12. As in LZ4_compress_HC, 0 (Fast) means CCompatLevel9
+	// and 1 (CCompatFast) means CCompatLevel2. Higher values, such as Level1 to Level9, make
 	// CompressBlock return ErrOptionInvalidCompressionLevel.
 	Level CompressionLevel
 	c     lz4block.CompressorCCompatHC

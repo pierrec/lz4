@@ -56,6 +56,7 @@ func TestCompressLevels(t *testing.T) {
 		{name: "ccompat level 9", args: []string{"-ccompat", "-l", "9"}, wantLevel: lz4.CCompatLevel9},
 		{name: "ccompat level 12", args: []string{"-ccompat", "-l", "12"}, wantLevel: lz4.CCompatLevel12},
 		{name: "ccompat level 13 invalid", args: []string{"-ccompat", "-l", "13"}, wantErr: lz4.ErrOptionInvalidCompressionLevel},
+		{name: "ccompat with dictionary", args: []string{"-ccompat", "-l", "9", "-D", "dict"}, wantErr: lz4.ErrOptionNotApplicable},
 	}
 
 	for _, tc := range tests {

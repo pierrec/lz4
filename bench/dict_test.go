@@ -8,7 +8,8 @@ import (
 )
 
 // FuzzDictMatchesC checks that blocks compressed with a dictionary by
-// CompressBlockWithDict decode with LZ4_decompress_safe_usingDict, and that
+// CompressBlockWithDict and CompressorHC.CompressBlockWithDict decode with
+// LZ4_decompress_safe_usingDict, and that
 // UncompressBlockWithDict decodes blocks from LZ4_compress_fast_continue and
 // LZ4_compress_HC_continue after LZ4_loadDict and LZ4_loadDictHC. It needs
 // liblz4, so it runs outside CI, which checks frames against the lz4 command
@@ -36,12 +37,21 @@ func FuzzDictMatchesC(f *testing.F) {
 		out := make([]byte, len(src))
 
 		blk := make([]byte, bound)
-		n, err := lz4.CompressBlockWithDict(src, blk, dict)
-		if err != nil || n == 0 {
-			t.Fatalf("CompressBlockWithDict: %d, %v", n, err)
-		}
-		if m := DecompressSafeUsingDict(blk[:n], out, dict); m != len(src) || !bytes.Equal(out, src) {
-			t.Fatalf("LZ4_decompress_safe_usingDict of Go's block returned %d", m)
+		for _, g := range []struct {
+			name     string
+			compress func(src, dst, dict []byte) (int, error)
+		}{
+			{"Fast", lz4.CompressBlockWithDict},
+			{"Level2", (&lz4.CompressorHC{Level: lz4.Level2}).CompressBlockWithDict},
+			{"Level9", (&lz4.CompressorHC{Level: lz4.Level9}).CompressBlockWithDict},
+		} {
+			n, err := g.compress(src, blk, dict)
+			if err != nil || n == 0 {
+				t.Fatalf("%s: CompressBlockWithDict: %d, %v", g.name, n, err)
+			}
+			if m := DecompressSafeUsingDict(blk[:n], out, dict); m != len(src) || !bytes.Equal(out, src) {
+				t.Fatalf("%s: LZ4_decompress_safe_usingDict of Go's block returned %d", g.name, m)
+			}
 		}
 
 		for _, c := range []struct {

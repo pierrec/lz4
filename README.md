@@ -34,12 +34,16 @@ Subcommands:
 Compress the given files or from stdin to stdout.
 compress [arguments] [<file name> ...]
   -D string
-        compress with the dictionary in this file; uncompress with the same one
+        compress with the dictionary in this file, not with -ccompat; uncompress with the same one
   -bc
         enable block checksum
+  -bench int
+        Run benchmark n times. No output will be written
+  -c int
+        concurrency; -1 uses all CPUs (default -1)
   -ccompat
         -l is a level of the C lz4 tool, 1 to 12, and blocks are compressed as it compresses them
-  -l int
+  -l uint
         compression level (0=fastest)
   -sc
         enable stream checksum
@@ -50,6 +54,8 @@ Uncompress the given files or from stdin to stdout.
 uncompress [arguments] [<file name> ...]
   -D string
         uncompress with the dictionary in this file
+  -bench int
+        Run benchmark n times. No output will be written
 
 ```
 
@@ -85,8 +91,8 @@ A dictionary improves the compression of small inputs that look alike, such
 as log lines or messages that share a schema. `CompressBlockWithDict` and
 `UncompressBlockWithDict` use one for a block, and `DictionaryOption` for a
 `Writer`, `Reader` or `CompressingReader`. Decompression needs the same
-dictionary: frames do not record which one was used. The output is
-compatible with the C library's dictionary functions.
+dictionary; frames record at most its ID, set with `DictionaryIDOption`. The
+output is compatible with the C library's dictionary functions.
 
 LZ4 does not define a dictionary format. Any bytes will do, and only the last
 64 KiB are used, so put the most common content last. A sample of typical

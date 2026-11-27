@@ -65,8 +65,11 @@ func (c *CompressorHC) CompressBlockWithDict(src, dst, dict []byte, depth Compre
 	d.buf = append(append(d.buf[:0], dict...), src...)
 	c.large.start = len(dict)
 	n, err := compressBlockHC(c.large, d.buf, dst, depth)
-	if cap(d.buf) > 2*winSize+int(Block4Mb) {
-		d.buf = nil // don't keep an outsized buffer
+	if len(d.buf) > 2*winSize {
+		// Keep it only for 64 KiB blocks: a Writer with concurrency keeps a
+		// DictCompressor per goroutine, which would otherwise each hold a
+		// block of up to 4 MiB.
+		d.buf = nil
 	}
 	return n, err
 }

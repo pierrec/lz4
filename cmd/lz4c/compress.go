@@ -40,9 +40,9 @@ func Compress(fs *flag.FlagSet) cmdflag.Handler {
 	var ccompat bool
 	fs.BoolVar(&ccompat, "ccompat", false, "-l is a level of the C lz4 tool, 1 to 12, and blocks are compressed as it compresses them")
 	var concurrency int
-	fs.IntVar(&concurrency, "c", -1, "concurrency (default=all CPUs")
+	fs.IntVar(&concurrency, "c", -1, "concurrency; -1 uses all CPUs")
 	bench := fs.Int("bench", 0, "Run benchmark n times. No output will be written")
-	dictFile := fs.String("D", "", "compress with the dictionary in this file; uncompress with the same one")
+	dictFile := fs.String("D", "", "compress with the dictionary in this file, not with -ccompat; uncompress with the same one")
 
 	return func(args ...string) (int, error) {
 		levels := []lz4.CompressionLevel{lz4.Fast, lz4.Level1, lz4.Level2, lz4.Level3, lz4.Level4,
@@ -56,6 +56,9 @@ func Compress(fs *flag.FlagSet) cmdflag.Handler {
 		}
 		if level >= uint(len(levels)) {
 			return 0, fmt.Errorf("%w: %d", lz4.ErrOptionInvalidCompressionLevel, level)
+		}
+		if ccompat && *dictFile != "" {
+			return 0, fmt.Errorf("%w: -D with -ccompat: the C-compatible levels take no dictionary", lz4.ErrOptionNotApplicable)
 		}
 		lvl := levels[level]
 		sz, err := bytefmt.ToBytes(blockMaxSize)

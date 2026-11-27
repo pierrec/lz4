@@ -303,6 +303,11 @@ func (b *FrameDataBlock) CompressWithDict(f *Frame, src []byte, level lz4block.C
 		data = data[:cap(data)]
 	} else {
 		data = data[:len(src)] // trigger the incompressible flag in CompressBlock
+		if level == lz4block.CCompatFast || level.IsCCompatHC() {
+			// As in the C library's LZ4F_makeBlock, which stores a block
+			// raw unless it compresses to less than its size.
+			data = data[:len(src)-1]
+		}
 	}
 	var n int
 	switch {
